@@ -56,7 +56,7 @@ use bevy::platform::collections::HashMap;
 pub mod prelude {
     pub use crate::attribute;
     pub use crate::attributes::{
-        AccessAttribute, Attribute, AttributeTypeId, ReflectAccessAttribute,
+        AccessAttribute, Attribute, ReflectAccessAttribute,
     };
     pub use crate::context::{AbilityExprSchema, ActorExprSchema, EffectExprSchema};
     pub use crate::effect::{EffectApplicationPolicy, EffectBuilder};

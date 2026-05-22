@@ -15,15 +15,13 @@ pub use num_traits::{
     AsPrimitive, Bounded, FromPrimitive, Num, NumAssign, NumAssignOps, NumOps, Saturating,
     SaturatingAdd, SaturatingMul, Zero,
 };
+use smol_str::SmolStr;
 use std::any::Any;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::fmt::Display;
-use std::hash::Hasher;
-use std::hash::{DefaultHasher, Hash};
 use std::iter::Sum;
 use std::marker::PhantomData;
-use smol_str::SmolStr;
 
 pub trait Value
 where
@@ -259,23 +257,6 @@ macro_rules! tag {
         #[reflect(Component)]
         pub struct $StructName;
     };
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect)]
-pub struct AttributeTypeId(pub u64);
-
-impl AttributeTypeId {
-    pub fn of<T: TypePath>() -> Self {
-        let mut hasher = DefaultHasher::new();
-        T::type_path().hash(&mut hasher);
-        Self(hasher.finish())
-    }
-
-    pub fn from_reflect(reflect: &dyn Reflect) -> Self {
-        let mut hasher = DefaultHasher::new();
-        reflect.reflect_type_path().hash(&mut hasher);
-        Self(hasher.finish())
-    }
 }
 
 #[derive(QueryData, Debug)]
