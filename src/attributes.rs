@@ -59,7 +59,6 @@ where
     type Property: Value;
     type ExprType<S: ExprSchema>: ExprNode<Self::Property, S>;
 
-
     fn new<T: Num + AsPrimitive<Self::Property> + Copy>(value: T) -> Self;
     fn base_value(&self) -> Self::Property;
     fn set_base_value(&mut self, value: Self::Property);
@@ -110,6 +109,7 @@ pub trait ExprAttribute: Attribute {}
 macro_rules! attribute_impl {
     ( $StructName:ident, $ValueType:ty ) => {
         #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug)]
+        #[require($crate::modifier::AttributeCalculatorCached<$StructName>)]
         #[reflect(Component, AccessAttribute)]
         pub struct $StructName {
             base_value: $ValueType,

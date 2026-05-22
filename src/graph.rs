@@ -6,7 +6,6 @@ use petgraph::visit::{DfsEvent, Visitable, depth_first_search};
 use petgraph::visit::{GraphBase, IntoNeighbors};
 use ptree::{TreeBuilder, print_tree};
 use std::collections::HashSet;
-use std::panic;
 
 /// Attributes are Components and inserted on Entities.
 /// - Derived attributes could be used

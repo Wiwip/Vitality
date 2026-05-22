@@ -7,7 +7,6 @@ use std::error::Error;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
-use bevy::ecs::resource::IsResource;
 
 pub mod ability;
 pub mod actors;
