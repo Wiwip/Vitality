@@ -70,8 +70,10 @@ use crate::attribute::clamps::{Clamp, apply_clamps, update_clamps};
 use crate::modifier::modifier::update_modifier_when_dependencies_changed;
 
 pub use express_it;
+use hfsm_bevy::{MachineInstance, StateTimer};
 pub use num_traits;
 use smol_str::SmolStr;
+use crate::ability::ability_state::AbilityMachine;
 
 pub struct AttributesPlugin;
 
@@ -243,6 +245,8 @@ pub type AttributesMut<'w, 's> = EntityMutExcept<
         AbilityOf,
         AbilityCooldown,
         ModifierOf,
+        MachineInstance<AbilityMachine>,
+        StateTimer<AbilityMachine>,
     ),
 >;
 
@@ -263,6 +267,8 @@ pub type AttributesRef<'w, 's> = EntityRefExcept<
         AbilityOf,
         AbilityCooldown,
         ModifierOf,
+        MachineInstance<AbilityMachine>,
+        StateTimer<AbilityMachine>,
     ),
 >;
 

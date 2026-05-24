@@ -21,12 +21,19 @@ impl Plugin for RegistryPlugin {
 
 #[derive(SystemParam)]
 pub struct Registry<'w> {
-    ability_registry: Res<'w, AbilityRegistry>,
-    effect_registry: Res<'w, EffectRegistry>,
-    actor_registry: Res<'w, ActorRegistry>,
+    pub ability_registry: Res<'w, AbilityRegistry>,
+    pub ability_assets: Res<'w, Assets<AbilityDef>>,
+    
+    pub effect_registry: Res<'w, EffectRegistry>,
+    
+    pub actor_registry: Res<'w, ActorRegistry>,
 }
 
 impl Registry<'_> {
+    pub fn ability_definitions(&self) -> &Assets<AbilityDef> {
+        &self.ability_assets
+    }
+    
     pub fn effect(&self, name: &EffectToken) -> &Handle<EffectDef> {
         self.effect_registry.get(name).expect("effect not found")
     }
@@ -42,14 +49,14 @@ impl Registry<'_> {
 
 #[derive(SystemParam)]
 pub struct RegistryMut<'w> {
-    ability_registry: ResMut<'w, AbilityRegistry>,
-    ability_assets: ResMut<'w, Assets<AbilityDef>>,
-
-    effect_registry: ResMut<'w, EffectRegistry>,
-    effect_assets: ResMut<'w, Assets<EffectDef>>,
-
-    actor_registry: ResMut<'w, ActorRegistry>,
-    actor_assets: ResMut<'w, Assets<ActorDef>>,
+    pub ability_registry: ResMut<'w, AbilityRegistry>,
+    pub ability_assets: ResMut<'w, Assets<AbilityDef>>,
+ 
+    pub effect_registry: ResMut<'w, EffectRegistry>,
+    pub effect_assets: ResMut<'w, Assets<EffectDef>>,
+ 
+    pub actor_registry: ResMut<'w, ActorRegistry>,
+    pub actor_assets: ResMut<'w, Assets<ActorDef>>,
 }
 
 impl RegistryMut<'_> {

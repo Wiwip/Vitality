@@ -108,7 +108,7 @@ pub trait ExprAttribute: Attribute {}
 #[macro_export]
 macro_rules! attribute_impl {
     ( $StructName:ident, $ValueType:ty ) => {
-        #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug, bevy::prelude::FromTemplate, Deref)]
+        #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug, bevy::prelude::FromTemplate, bevy::prelude::Deref)]
         #[require($crate::modifier::AttributeCalculatorCached<$StructName>)]
         #[reflect(Component, AccessAttribute)]
         pub struct $StructName {

@@ -1,8 +1,10 @@
 use crate::ability::Ability;
+use crate::ability::ability_state::AbilityMachine;
 use crate::assets::AbilityDef;
 use bevy::asset::{Assets, Handle};
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
+use hfsm_bevy::MachineInstance;
 
 pub struct GrantAbilityCommand {
     pub parent: Entity,
@@ -38,7 +40,11 @@ impl EntityCommand for GrantAbilityCommand {
             queue
         };
 
-        actor.insert((Ability(self.handle), Name::new(ability_def.name.clone())));
+        actor.insert((
+            Ability(self.handle),
+            Name::new(ability_def.name.clone()),
+            MachineInstance::<AbilityMachine>::default(),
+        ));
 
         // Apply the commands
         actor.world_scope(|world| {

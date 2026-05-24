@@ -1,7 +1,4 @@
-use crate::ability::{
-    Ability, AbilityCooldown, AbilityOf, BeginAbility, EndAbility, ExecuteAbility,
-    GrantedAbilities, TryActivateAbility,
-};
+use crate::ability::{Ability, AbilityCooldown, AbilityOf, BeginAbility, EndAbility, ExecuteAbility, GrantedAbilities, TargetData, TryActivateAbility};
 use crate::assets::AbilityDef;
 use crate::context::{
     AbilityExprContext, AbilityExprSchema, EffectExprContext, EffectExprContextMut,
@@ -37,14 +34,14 @@ pub fn try_activate_ability_observer(
     mut commands: Commands,
     type_registry: Res<AppTypeRegistry>,
 ) -> Result<(), BevyError> {
-    let Ok((source_entity_ref, actor_abilities)) = actors.get(trigger.ability) else {
-        warn!("The Actor({}) has no GrantedAbilities", trigger.ability);
+    let Ok((source_entity_ref, actor_abilities)) = actors.get(trigger.actor_entity) else {
+        warn!("The Actor({}) has no GrantedAbilities", trigger.actor_entity);
         return Ok(());
     };
 
     let target_entity_ref = match trigger.target_data {
-        crate::ability::TargetData::SelfCast => source_entity_ref,
-        crate::ability::TargetData::Target(target) => {
+        TargetData::SelfCast => source_entity_ref,
+        TargetData::Target(target) => {
             let Ok((entity, _)) = actors.get(target) else {
                 return Ok(());
             };
@@ -97,7 +94,7 @@ pub fn try_activate_ability_observer(
     Ok(())
 }
 
-fn can_activate_ability(
+pub fn can_activate_ability(
     ability_ref: &AttributesRef,
     caster_ref: &AttributesRef,
     target_ref: &AttributesRef,

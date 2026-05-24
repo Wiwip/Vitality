@@ -1,11 +1,13 @@
 use crate::ability::AbilityCooldown;
+use crate::ability::systems::ActivateAbility;
+use crate::ability::tasks::{AbilityTask, BeginTask, CancelTask, EndTask};
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::context::{AbilityExprSchema, EffectExprSchema};
 use crate::inspector::pretty_type_name;
 use crate::modifier::{AttributeCalculatorCached, EffectSubject};
 use crate::mutator::EntityActions;
-use bevy::ecs::system::IntoObserverSystem;
+use bevy::ecs::system::{IntoObserverSystem, StaticSystemParam};
 use bevy::prelude::*;
 use express_it::expr::Expr;
 use express_it::frame::LazyPlan;
@@ -45,7 +47,10 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn with_cost<T: Attribute>(mut self, cost: impl Into<Expr<T::Property, AbilityExprSchema>>) -> Self
+    pub fn with_cost<T: Attribute>(
+        mut self,
+        cost: impl Into<Expr<T::Property, AbilityExprSchema>>,
+    ) -> Self
     where
         Expr<T::Property, AbilityExprSchema>: CompareExpr<AbilityExprSchema>,
     {
@@ -118,6 +123,31 @@ impl AbilityBuilder {
 
     pub fn with_name(mut self, name: String) -> Self {
         self.name = name;
+        self
+    }
+
+    pub fn add_task<T: AbilityTask>(mut self) -> Self {
+        self.mutators.push(EntityActions::new(
+            move |entity_commands: &mut EntityCommands| {
+                entity_commands.observe(
+                    |trigger: On<BeginTask>,
+                     mut query: Query<T::Query>,
+                     params: StaticSystemParam<T::Param>| {
+                        let item = query.get_mut(trigger.event_target()).unwrap();
+                        let mut param_items = params.into_inner();
+                        T::on_begin(item, &mut param_items);
+                    },
+                );
+                entity_commands.observe(|trigger: On<CancelTask>, mut query: Query<T::Query>| {
+                    let item = query.get_mut(trigger.event_target()).unwrap();
+                    T::on_cancel(item);
+                });
+                entity_commands.observe(|trigger: On<EndTask>, mut query: Query<T::Query>| {
+                    let item = query.get_mut(trigger.event_target()).unwrap();
+                    T::on_end(item);
+                });
+            },
+        ));
         self
     }
 

@@ -2,6 +2,8 @@ mod builder;
 mod command;
 mod system_param;
 mod systems;
+pub mod tasks;
+pub mod ability_state;
 
 use crate::ability::systems::{
     activate_ability, reset_ability_cooldown, tick_ability_cooldown, try_activate_ability_observer,
@@ -17,7 +19,9 @@ use express_it::logic::{BoolExpr, BoolExprNode};
 use std::error::Error;
 use std::fmt::Formatter;
 use std::sync::Arc;
+use hfsm_bevy::StateMachinePlugin;
 pub use system_param::Abilities;
+use crate::ability::ability_state::{setup_machine_definition, AbilityMachine};
 use crate::context::AbilityExprSchema;
 use crate::prelude::EffectExprSchema;
 
@@ -25,7 +29,10 @@ pub struct AbilityPlugin;
 
 impl Plugin for AbilityPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, tick_ability_cooldown.in_set(EffectsSet::Prepare))
+        app
+            .add_plugins(StateMachinePlugin::<AbilityMachine>::default())
+            .add_systems(PreStartup, setup_machine_definition)
+            .add_systems(Update, tick_ability_cooldown.in_set(EffectsSet::Prepare))
             .add_observer(try_activate_ability_observer)
             .add_observer(reset_ability_cooldown)
             .add_observer(activate_ability)
@@ -57,7 +64,7 @@ pub struct Ability(pub(crate) Handle<AbilityDef>);
 #[derive(EntityEvent)]
 pub struct TryActivateAbility {
     #[event_target]
-    ability: Entity,
+    actor_entity: Entity,
     condition: BoolExpr<AbilityExprSchema>,
     target_data: TargetData,
 }
@@ -68,7 +75,7 @@ impl TryActivateAbility {
         let expr = Expr::new(Arc::new(node));
 
         Self {
-            ability: target,
+            actor_entity: target,
             condition: expr,
             target_data,
         }
@@ -78,7 +85,7 @@ impl TryActivateAbility {
         let expr = Expr::new(Arc::new(node));
 
         Self {
-            ability: target,
+            actor_entity: target,
             condition: expr,
             target_data,
         }
@@ -91,7 +98,7 @@ pub struct AbilityCooldown {
     pub(crate) value: Expr<f64, EffectExprSchema>,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum TargetData {
     SelfCast,
     Target(Entity),

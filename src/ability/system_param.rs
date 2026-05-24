@@ -1,24 +1,51 @@
-use bevy::ecs::system::lifetimeless::Read;
+use crate::AttributesRef;
+use crate::ability::ability_state::{AbilityEvent, AbilityMachine};
 use crate::ability::{
-    Ability, AbilityCooldown, AbilityError, GrantAbilityCommand, GrantedAbilities, TargetData, TryActivateAbility,
+    Ability, AbilityCooldown, AbilityError, GrantAbilityCommand, GrantedAbilities, TargetData,
+    TryActivateAbility,
 };
 use crate::actors::Actor;
 use crate::assets::AbilityDef;
+use crate::registry::{Registry, ability_registry::AbilityToken};
+use bevy::ecs::resource::IsResource;
 use bevy::ecs::system::SystemParam;
+use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
-use crate::registry::{RegistryMut, ability_registry::AbilityToken};
+use hfsm_bevy::MachineQuery;
 
 #[derive(SystemParam)]
 pub struct Abilities<'w, 's> {
-    abilities: Query<'w, 's, Read<Ability>>,
-    ability_entities: Query<'w, 's, (Read<Ability>, Option<Read<AbilityCooldown>>)>,
-    actors: Query<'w, 's, (Read<Actor>, Read<GrantedAbilities>)>,
-    registry: RegistryMut<'w>,
-    commands: Commands<'w, 's>,
+    pub abilities: Query<
+        'w,
+        's,
+        (
+            Read<Ability>,
+            AttributesRef<'static, 'static>,
+            Option<Read<AbilityCooldown>>,
+        ),
+        Without<IsResource>,
+    >,
+    pub actors: Query<
+        'w,
+        's,
+        (
+            Read<Actor>,
+            AttributesRef<'static, 'static>,
+            Read<GrantedAbilities>,
+        ),
+        Without<IsResource>,
+    >,
+    pub registry: Registry<'w>,
+    pub machines: MachineQuery<'w, 's, AbilityMachine>,
+    pub commands: Commands<'w, 's>,
 }
 
 impl<'w, 's> Abilities<'w, 's> {
-    pub fn grant_ability_by_token(&mut self, entity: Entity, token: &AbilityToken) -> Result<Entity, AbilityError> {
+    pub fn grant_ability_by_token(
+        &mut self,
+        entity: Entity,
+        token: &AbilityToken,
+    ) -> Result<Entity, AbilityError> {
         let handle = self.get_ability_from_token(&token);
         self.grant_ability(&handle, entity)
     }
@@ -46,28 +73,17 @@ impl<'w, 's> Abilities<'w, 's> {
         Ok(ability_id)
     }
 
-    pub fn try_activate_by_tag<T: Component + Reflect>(&mut self, entity: Entity, target_data: TargetData) {
-        self.commands.trigger(TryActivateAbility::by_tag::<T>(
-            entity,
-            target_data,
-        ));
-    }
-
-    pub fn try_activate_by_id(
+    pub fn try_activate_by_tag<T: Component + Reflect>(
         &mut self,
         entity: Entity,
-        definition: AssetId<AbilityDef>,
         target_data: TargetData,
     ) {
-        self.commands.trigger(TryActivateAbility::by_def(
-            entity,
-            definition,
-            target_data,
-        ));
+        self.commands
+            .trigger(TryActivateAbility::by_tag::<T>(entity, target_data));
     }
 
     pub fn ability_def(&self, entity: Entity) -> Result<&AbilityDef, AbilityError> {
-        let ability = self
+        let (ability, _, _) = self
             .abilities
             .get(entity)
             .or(Err(AbilityError::AbilityDoesNotExist(entity)))?;
@@ -80,12 +96,8 @@ impl<'w, 's> Abilities<'w, 's> {
         Ok(definition)
     }
 
-    pub fn register_ability(&mut self, token: AbilityToken, ability: AbilityDef) {
-        self.registry.add_ability(token, ability);
-    }
-
     pub fn is_ability_ready(&self, ability_entity: Entity) -> bool {
-        if let Ok((_, cooldown)) = self.ability_entities.get(ability_entity) {
+        if let Ok((_, _, cooldown)) = self.abilities.get(ability_entity) {
             if let Some(cooldown) = cooldown {
                 return cooldown.timer.is_finished();
             }
@@ -97,11 +109,7 @@ impl<'w, 's> Abilities<'w, 's> {
         self.registry.ability(token)
     }
 
-    pub fn get_ability_entity(
-        &self,
-        actor: Entity,
-        token: &AbilityToken,
-    ) -> Option<Entity> {
+    pub fn get_ability_entity(&self, actor: Entity, token: &AbilityToken) -> Option<Entity> {
         let handle = self.get_ability_from_token(token);
         self.get_ability_entity_by_handle(actor, &handle)
     }
@@ -111,9 +119,9 @@ impl<'w, 's> Abilities<'w, 's> {
         actor: Entity,
         handle: &Handle<AbilityDef>,
     ) -> Option<Entity> {
-        let (_, granted) = self.actors.get(actor).ok()?;
+        let (_, _, granted) = self.actors.get(actor).ok()?;
         for &ability_entity in granted.iter() {
-            if let Ok((ability, _)) = self.ability_entities.get(ability_entity) {
+            if let Ok((ability, _, _)) = self.abilities.get(ability_entity) {
                 if ability.0 == *handle {
                     return Some(ability_entity);
                 }
@@ -122,12 +130,29 @@ impl<'w, 's> Abilities<'w, 's> {
         None
     }
 
-    pub fn has_ability(&self, entity:Entity, token: &AbilityToken) -> bool {
+    pub fn has_ability(&self, entity: Entity, token: &AbilityToken) -> bool {
         self.get_ability_entity(entity, token).is_some()
     }
 
-    pub fn try_activate_by_token(&mut self, entity: Entity, token: &AbilityToken, target_data: TargetData) {
-        let handle = self.get_ability_from_token(token);
-        self.try_activate_by_id(entity, handle.id(), target_data);
+    pub fn try_activate_by_token(
+        &mut self,
+        entity: Entity,
+        token: &AbilityToken,
+        target_data: TargetData,
+    ) {
+        let Some(ability_entity) = self.get_ability_entity(entity, token) else {
+            warn_once!("Ability does not exist on entity.");
+            return;
+        };
+
+        self.machines
+            .dispatch_event(
+                ability_entity,
+                AbilityEvent::TryActivate {
+                    source: entity,
+                    target: target_data,
+                },
+            )
+            .expect("Failed to dispatch abilities");
     }
 }
