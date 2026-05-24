@@ -44,7 +44,8 @@ pub fn explore_actors_system(
     actors: Query<(EntityRef, Option<&AppliedEffects>), (With<Actor>, With<DebugOverlayMarker>)>,
     effects: Query<(&Effect, &Stacks, Option<&Name>, Option<&OwnedModifiers>)>,
     granted_abilities: Query<&GrantedAbilities>,
-    ability_query: Query<(&Ability, Option<&AbilityCooldown>, Option<&Name>, Option<&Tasks>)>,
+    ability_query: Query<(&Ability, Option<&AbilityCooldown>, Option<&Name>)>,
+    tasks: Query<&Tasks>,
     names: Query<&Name>,
     modifiers: Query<EntityRef, With<ModifierMarker>>,
     type_registry: Res<AppTypeRegistry>,
@@ -88,6 +89,7 @@ pub fn explore_actors_system(
                 &mut builder,
                 granted_abilities,
                 &ability_query,
+                &tasks,
                 &names,
             )
         }
@@ -197,29 +199,37 @@ fn list_effects(
     builder.end_child();
 }
 
-fn list_tasks(builder: &mut TreeBuilder, tasks: &Tasks, names: &Query<&Name>) {
+fn list_tasks(
+    builder: &mut TreeBuilder,
+    tasks: &Tasks,
+    names: &Query<&Name>,
+    task_query: &Query<&Tasks>,
+) {
     for task_entity in tasks.iter() {
         let name = names.get(task_entity).map(|n| n.as_str()).unwrap_or("Task");
-        builder
-            .begin_child(format!("[{task_entity}] {name}"))
-            .end_child();
+
+        if let Ok(tasks) = task_query.get(task_entity) {
+            builder.begin_child(format!("[{task_entity}] {name}"));
+            list_tasks(builder, tasks, names, task_query);
+            builder.end_child();
+        } else {
+            builder
+                .begin_child(format!("[{task_entity}] {name}"))
+                .end_child();
+        }
     }
 }
 
 fn list_abilities(
     builder: &mut TreeBuilder,
     abilities: &GrantedAbilities,
-    ability_query: &Query<(
-        &Ability,
-        Option<&AbilityCooldown>,
-        Option<&Name>,
-        Option<&Tasks>,
-    )>,
+    ability_query: &Query<(&Ability, Option<&AbilityCooldown>, Option<&Name>)>,
+    task_query: &Query<&Tasks>,
     names: &Query<&Name>,
 ) {
     builder.begin_child("Abilities".to_string());
     for ability_entity in abilities.iter() {
-        let Ok((_ability, cooldown, name, tasks)) = ability_query.get(*ability_entity) else {
+        let Ok((_ability, cooldown, name)) = ability_query.get(*ability_entity) else {
             continue;
         };
 
@@ -232,8 +242,8 @@ fn list_abilities(
 
         builder.begin_child(format!("[{ability_entity}] {name}{cooldown_str}"));
 
-        if let Some(tasks) = tasks {
-            list_tasks(builder, tasks, names);
+        if let Ok(tasks) = task_query.get(*ability_entity) {
+            list_tasks(builder, tasks, names, task_query);
         }
 
         builder.end_child();
