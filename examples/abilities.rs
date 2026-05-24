@@ -39,6 +39,7 @@ fn main() {
         .add_systems(Startup, setup_camera)
         .add_systems(Startup, (setup_ability, setup_actor).chain())
         .add_systems(PreUpdate, inputs)
+        .add_systems(Update, print_ability)
         .run();
 }
 
@@ -142,4 +143,9 @@ fn inputs(
         println!("Q pressed");
         abilities.try_activate_by_token(*player, &FIREBALL, TargetData::SelfCast);
     }
+}
+
+fn print_ability(){
+    
+    
 }

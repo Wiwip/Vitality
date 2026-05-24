@@ -1,3 +1,6 @@
+use crate::ability::ability_state::AbilityMachine;
+use crate::ability::tasks::Tasks;
+use crate::ability::{Ability, AbilityCooldown, GrantedAbilities};
 use crate::actors::Actor;
 use crate::attributes::ReflectAccessAttribute;
 use crate::effect::{AppliedEffects, Effect, Stacks};
@@ -40,6 +43,9 @@ fn create_overlay() -> impl Scene {
 pub fn explore_actors_system(
     actors: Query<(EntityRef, Option<&AppliedEffects>), (With<Actor>, With<DebugOverlayMarker>)>,
     effects: Query<(&Effect, &Stacks, Option<&Name>, Option<&OwnedModifiers>)>,
+    granted_abilities: Query<&GrantedAbilities>,
+    ability_query: Query<(&Ability, Option<&AbilityCooldown>, Option<&Name>, Option<&Tasks>)>,
+    names: Query<&Name>,
     modifiers: Query<EntityRef, With<ModifierMarker>>,
     type_registry: Res<AppTypeRegistry>,
     world_components: &Components,
@@ -75,6 +81,15 @@ pub fn explore_actors_system(
                 &type_registry,
                 &world_components,
             );
+        }
+
+        if let Ok(granted_abilities) = granted_abilities.get(actor_ref.id()) {
+            list_abilities(
+                &mut builder,
+                granted_abilities,
+                &ability_query,
+                &names,
+            )
         }
 
         builder.end_child();
@@ -177,6 +192,50 @@ fn list_effects(
                 &mut modifier_components,
             );
         }
+        builder.end_child();
+    }
+    builder.end_child();
+}
+
+fn list_tasks(builder: &mut TreeBuilder, tasks: &Tasks, names: &Query<&Name>) {
+    for task_entity in tasks.iter() {
+        let name = names.get(task_entity).map(|n| n.as_str()).unwrap_or("Task");
+        builder
+            .begin_child(format!("[{task_entity}] {name}"))
+            .end_child();
+    }
+}
+
+fn list_abilities(
+    builder: &mut TreeBuilder,
+    abilities: &GrantedAbilities,
+    ability_query: &Query<(
+        &Ability,
+        Option<&AbilityCooldown>,
+        Option<&Name>,
+        Option<&Tasks>,
+    )>,
+    names: &Query<&Name>,
+) {
+    builder.begin_child("Abilities".to_string());
+    for ability_entity in abilities.iter() {
+        let Ok((_ability, cooldown, name, tasks)) = ability_query.get(*ability_entity) else {
+            continue;
+        };
+
+        let name = name.map(|n| n.as_str()).unwrap_or("Ability");
+        let cooldown_str = if let Some(cooldown) = cooldown {
+            format!(" ({:.1}s)", cooldown.timer.remaining_secs())
+        } else {
+            "".to_string()
+        };
+
+        builder.begin_child(format!("[{ability_entity}] {name}{cooldown_str}"));
+
+        if let Some(tasks) = tasks {
+            list_tasks(builder, tasks, names);
+        }
+
         builder.end_child();
     }
     builder.end_child();
