@@ -15,6 +15,7 @@ use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 use std::sync::Arc;
+use crate::ability::Ability;
 
 #[derive(TypePath)]
 pub struct IsAttributeWithinBounds<T: Attribute> {
@@ -167,9 +168,9 @@ impl<C: Component + Reflect> ExprNode<bool, EffectExprSchema> for HasComponent<C
         Ok(any.is_ok())
     }
 
-    fn get_dependencies(&self, _deps: &mut HashSet<Path>) {
+    fn get_dependencies(&self, deps: &mut HashSet<Path>) {
         let type_name = pretty_type_name::<C>();
-        _deps.insert(Path::new(type_name));
+        deps.insert(Path::new(type_name));
     }
 }
 
@@ -198,24 +199,24 @@ impl<C: Component> std::fmt::Debug for HasComponent<C> {
     }
 }
 
-pub struct AbilityCondition {
+pub struct IsAbility {
     asset: AssetId<AbilityDef>,
 }
 
-impl AbilityCondition {
+impl IsAbility {
     pub fn new(asset: AssetId<AbilityDef>) -> Self {
         Self { asset }
     }
 }
 
-impl ExprNode<bool, AbilityExprSchema> for AbilityCondition {
-    fn eval(&self, _ctx: &AbilityExprContext) -> Result<bool, ExpressionError> {
-        /*let path = Path::from_id(self.who, T::ID);
-        let any = ctx.get_any(&path)?;
-        let value = any.downcast_ref::<T::Property>().unwrap();
+impl ExprNode<bool, AbilityExprSchema> for IsAbility {
+    fn eval(&self, ctx: &AbilityExprContext) -> Result<bool, ExpressionError> {
+        let path = Path::new("ability.Ability");
 
-        Ok(self.bounds.contains(&value))*/
-        todo!()
+        let any = ctx.get_any(&path)?;
+        let value = any.downcast_ref::<Ability>().unwrap();
+        
+        Ok(value.0.id() == self.asset)
     }
 
     fn eval_dyn(&self, _ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
@@ -225,7 +226,7 @@ impl ExprNode<bool, AbilityExprSchema> for AbilityCondition {
     fn get_dependencies(&self, _deps: &mut HashSet<Path>) {}
 }
 
-impl std::fmt::Debug for AbilityCondition {
+impl std::fmt::Debug for IsAbility {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Is Ability {}", self.asset)
     }

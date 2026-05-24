@@ -53,6 +53,10 @@ pub struct RegistryMut<'w> {
 }
 
 impl RegistryMut<'_> {
+    pub fn ability_definitions(&self) -> &Assets<AbilityDef> {
+        &self.ability_assets
+    }
+
     pub fn add_effect(&mut self, name: EffectToken, effect: EffectDef) {
         let handle = self.effect_assets.add(effect);
         self.effect_registry.add(name, handle);

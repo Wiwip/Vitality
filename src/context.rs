@@ -1,9 +1,11 @@
+use crate::ability::{Ability, AbilityCooldown, AbilityError, AbilityOf, GrantAbilityCommand, GrantedAbilities};
 use crate::actors::SpawnActorCommand;
-use crate::assets::{ActorDef, EffectDef};
+use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::effect::global_effect::{GlobalActor, GlobalEffects};
 use crate::effect::{ApplyEffectEvent, EffectTargeting};
 use crate::modifier::{AbilitySubject, EffectSubject};
 use crate::registry::Registry;
+use crate::registry::ability_registry::AbilityToken;
 use crate::registry::actor_registry::ActorToken;
 use crate::{AppAttributeBindings, AttributesMut, AttributesRef};
 use bevy::ecs::system::SystemParam;
@@ -12,6 +14,7 @@ use bevy::reflect::TypeRegistryArc;
 use express_it::context::{Path, ReadContext, WriteContext};
 use express_it::expr::{ExprSchema, ExpressionError};
 use std::any::Any;
+use bevy::ecs::system::lifetimeless::Read;
 
 #[derive(SystemParam)]
 pub struct Vitality<'w, 's> {
@@ -21,6 +24,8 @@ pub struct Vitality<'w, 's> {
     registry: Registry<'w>,
     effects: ResMut<'w, Assets<EffectDef>>,
     actors: ResMut<'w, Assets<ActorDef>>,
+    granted_abilities: Query<'w, 's, Read<GrantedAbilities>>,
+    ability_entities: Query<'w, 's, (Read<Ability>, Option<Read<AbilityCooldown>>)>,
 }
 
 impl<'s, 'w> Vitality<'w, 's> {
@@ -73,6 +78,91 @@ impl<'s, 'w> Vitality<'w, 's> {
         self.actors.add(actor)
     }
 
+    pub fn get_ability_from_token(&self, token: &AbilityToken) -> Handle<AbilityDef> {
+        self.registry.ability(token)
+    }
+
+    pub fn get_ability_entity(
+        &self,
+        actor: Entity,
+        handle: &Handle<AbilityDef>,
+    ) -> Option<Entity> {
+        let granted = self.granted_abilities.get(actor).ok()?;
+        for &ability_entity in granted.iter() {
+            if let Ok((ability, _)) = self.ability_entities.get(ability_entity) {
+                if ability.0 == *handle {
+                    return Some(ability_entity);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn is_ability_ready(&self, ability_entity: Entity) -> bool {
+        if let Ok((_, cooldown)) = self.ability_entities.get(ability_entity) {
+            if let Some(cooldown) = cooldown {
+                return cooldown.timer.is_finished();
+            }
+        }
+        true
+    }
+
+    pub fn grant_ability_by_token(&mut self, entity: Entity, token: &AbilityToken) -> Result<Entity, AbilityError> {
+        let handle = self.get_ability_from_token(&token);
+        self.grant_ability(&handle, entity)
+    }
+
+    pub fn grant_ability(
+        &mut self,
+        ability: &Handle<AbilityDef>,
+        grant_ability_target_entity: Entity,
+    ) -> Result<Entity, AbilityError> {
+        if !self.granted_abilities.contains(grant_ability_target_entity) {
+            return Err(
+                AbilityError::GrantingAbilityToNonActor(grant_ability_target_entity).into(),
+            );
+        }
+
+        let ability_id = self
+            .commands
+            .spawn_empty()
+            .queue(GrantAbilityCommand {
+                parent: grant_ability_target_entity,
+                handle: ability.clone(),
+            })
+            .id();
+
+        self.commands.entity(grant_ability_target_entity).add_one_related::<AbilityOf>(ability_id);
+
+        Ok(ability_id)
+    }
+
+
+    pub fn grant_ability_by_token_unchecked(&mut self, entity: Entity, token: &AbilityToken) -> Result<Entity, AbilityError> {
+        let handle = self.get_ability_from_token(&token);
+        self.grant_ability_unchecked(&handle, entity)
+    }
+
+    pub fn grant_ability_unchecked(
+        &mut self,
+        ability: &Handle<AbilityDef>,
+        grant_ability_target_entity: Entity,
+    ) -> Result<Entity, AbilityError> {
+        let ability_id = self
+            .commands
+            .spawn_empty()
+            .queue(GrantAbilityCommand {
+                parent: grant_ability_target_entity,
+                handle: ability.clone(),
+            })
+            .id();
+
+        self.commands.entity(grant_ability_target_entity).add_one_related::<AbilityOf>(ability_id);
+        info!("[{:?}] Spawned ability.", ability_id);
+
+        Ok(ability_id)
+    }
+
     pub fn spawn_actor(&mut self, token: &ActorToken) -> EntityCommands<'_> {
         let handle = self.registry.actor(&token);
 
@@ -98,6 +188,11 @@ impl<'s, 'w> Vitality<'w, 's> {
         self.commands.entity(entity).queue(SpawnActorCommand {
             handle: handle.clone(),
         });
+    }
+
+    pub fn insert_actor_from_token(&mut self, entity: Entity, token: &ActorToken) {
+        let handle = self.registry.actor(token);
+        self.insert_actor(entity, &handle);
     }
 
     pub fn add_global_effect(&mut self, handle: Handle<EffectDef>) {
@@ -175,7 +270,8 @@ impl WriteContext for EffectExprContextMut<'_, '_> {
 
         let reflect_component = {
             let registry_bindings = self.type_registry.read();
-            let Some(type_registration) = registry_bindings.get_with_short_type_path(component) else {
+            let Some(type_registration) = registry_bindings.get_with_short_type_path(component)
+            else {
                 return Err(ExpressionError::FailedReflect(
                     "Failed to get type registration".into(),
                 ));
@@ -331,7 +427,7 @@ fn reflect_path<'a>(
             .type_path_table()
             .short_path()
             .to_string();
-        trace!("Requested type not present on actor: {}", short_name);
+        warn!("Requested type not present on actor: {}", short_name);
         return Err(ExpressionError::FailedReflect(
             "The entity has no component the requested type.".into(),
         ));

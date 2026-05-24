@@ -6,7 +6,7 @@ mod conditions;
 mod systems;
 
 use crate::schedule::EffectsSet;
-pub use conditions::{AbilityCondition, ChanceCondition, HasComponent, IsAttributeWithinBounds};
+pub use conditions::{IsAbility, ChanceCondition, HasComponent, IsAttributeWithinBounds};
 
 pub struct ConditionPlugin;
 

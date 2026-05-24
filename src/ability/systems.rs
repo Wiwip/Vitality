@@ -1,13 +1,18 @@
-use crate::ability::{Ability, BeginAbility, AbilityCooldown, ExecuteAbility, AbilityOf, GrantedAbilities, TryActivateAbility, EndAbility};
+use crate::ability::{
+    Ability, AbilityCooldown, AbilityOf, BeginAbility, EndAbility, ExecuteAbility,
+    GrantedAbilities, TryActivateAbility,
+};
 use crate::assets::AbilityDef;
-use crate::context::{EffectExprContext, EffectExprContextMut, AbilityExprSchema, AbilityExprContext};
+use crate::context::{
+    AbilityExprContext, AbilityExprSchema, EffectExprContext, EffectExprContextMut,
+};
 use crate::{AppAttributeBindings, AttributesMut, AttributesRef};
 use bevy::asset::Assets;
+use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
+use bevy::reflect::TypeRegistryArc;
 use express_it::logic::BoolExpr;
 use std::time::Duration;
-use bevy::ecs::resource::IsResource;
-use bevy::reflect::TypeRegistryArc;
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut cooldown| {
@@ -23,7 +28,10 @@ pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<T
 /// - Cost
 pub fn try_activate_ability_observer(
     trigger: On<TryActivateAbility>,
-    actors: Query<(AttributesRef, &GrantedAbilities), (Without<AbilityCooldown>, Without<IsResource>)>,
+    actors: Query<
+        (AttributesRef, &GrantedAbilities),
+        (Without<AbilityCooldown>, Without<IsResource>),
+    >,
     abilities: Query<(AttributesRef, &Ability, Option<&AbilityCooldown>)>,
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
@@ -104,7 +112,11 @@ fn can_activate_ability(
         type_registry: type_registry.clone(),
     };
 
-    let meet_conditions = conditions.eval(&context).unwrap_or(false);
+    let meet_conditions = conditions.eval(&context).unwrap_or_else(|err| {
+        error_once!("Condition error: {:?}", err);
+        false
+    });
+
     if !meet_conditions {
         debug!(
             "Ability({}) conditions not met for: {}.",
@@ -175,14 +187,14 @@ pub struct ActivateAbility {
 pub(crate) fn activate_ability(
     trigger: On<ActivateAbility>,
     mut actors: Query<AttributesMut<'static, 'static>, Without<IsResource>>,
-    abilities: Query<&Ability>,
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
     type_registry: Res<AppTypeRegistry>,
     type_bindings: Res<AppAttributeBindings>,
 ) -> Result<(), BevyError> {
     debug!("{}: Commit ability cost.", trigger.ability);
-    let ability = abilities.get(trigger.ability)?;
+    let actor = actors.get(trigger.ability)?;
+    let ability = actor.get::<Ability>().unwrap();
     let ability_spec = ability_assets
         .get(&ability.0.clone())
         .ok_or("No ability asset")?;
