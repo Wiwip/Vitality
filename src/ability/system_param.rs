@@ -46,22 +46,23 @@ impl<'w, 's> Abilities<'w, 's> {
         Ok(ability_id)
     }
 
-    pub fn try_activate_by_tag<T: Component + Reflect>(&mut self, entity: Entity) {
+    pub fn try_activate_by_tag<T: Component + Reflect>(&mut self, entity: Entity, target_data: TargetData) {
         self.commands.trigger(TryActivateAbility::by_tag::<T>(
             entity,
-            TargetData::SelfCast,
+            target_data,
         ));
     }
 
-    pub fn try_activate_by_def(
+    pub fn try_activate_by_id(
         &mut self,
         entity: Entity,
         definition: AssetId<AbilityDef>,
+        target_data: TargetData,
     ) {
         self.commands.trigger(TryActivateAbility::by_def(
             entity,
             definition,
-            TargetData::SelfCast,
+            target_data,
         ));
     }
 
@@ -121,8 +122,8 @@ impl<'w, 's> Abilities<'w, 's> {
         None
     }
 
-    pub fn try_activate_by_token(&mut self, entity: Entity, token: &AbilityToken) {
+    pub fn try_activate_by_token(&mut self, entity: Entity, token: &AbilityToken, target_data: TargetData) {
         let handle = self.get_ability_from_token(token);
-        self.try_activate_by_def(entity, handle.id());
+        self.try_activate_by_id(entity, handle.id(), target_data);
     }
 }
