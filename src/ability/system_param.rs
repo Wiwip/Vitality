@@ -122,6 +122,10 @@ impl<'w, 's> Abilities<'w, 's> {
         None
     }
 
+    pub fn has_ability(&self, entity:Entity, token: &AbilityToken) -> bool {
+        self.get_ability_entity(entity, token).is_some()
+    }
+
     pub fn try_activate_by_token(&mut self, entity: Entity, token: &AbilityToken, target_data: TargetData) {
         let handle = self.get_ability_from_token(token);
         self.try_activate_by_id(entity, handle.id(), target_data);

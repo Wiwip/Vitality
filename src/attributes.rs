@@ -59,8 +59,10 @@ where
 
     fn new<T: Num + AsPrimitive<Self::Property> + Copy>(value: T) -> Self;
     fn base_value(&self) -> Self::Property;
+    fn base(&self) -> Self::Property;
     fn set_base_value(&mut self, value: Self::Property);
     fn current_value(&self) -> Self::Property;
+    fn val(&self) -> Self::Property;
     fn borrow_current_value(&self) -> &Self::Property;
     fn set_current_value(&mut self, value: Self::Property);
     // Helper to wrap attribute access in an Expression
@@ -106,11 +108,12 @@ pub trait ExprAttribute: Attribute {}
 #[macro_export]
 macro_rules! attribute_impl {
     ( $StructName:ident, $ValueType:ty ) => {
-        #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug, bevy::prelude::FromTemplate)]
+        #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug, bevy::prelude::FromTemplate, Deref)]
         #[require($crate::modifier::AttributeCalculatorCached<$StructName>)]
         #[reflect(Component, AccessAttribute)]
         pub struct $StructName {
             pub base_value: $ValueType,
+            #[deref]
             current_value: $ValueType,
         }
 
@@ -130,10 +133,16 @@ macro_rules! attribute_impl {
             fn base_value(&self) -> $ValueType {
                 self.base_value
             }
+            fn base(&self) -> $ValueType {
+                self.base_value
+            }
             fn set_base_value(&mut self, value: $ValueType) {
                 self.base_value = value;
             }
             fn current_value(&self) -> $ValueType {
+                self.current_value
+            }
+            fn val(&self) -> $ValueType {
                 self.current_value
             }
             fn borrow_current_value(&self) -> &$ValueType {
