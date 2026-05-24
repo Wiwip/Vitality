@@ -21,6 +21,7 @@ pub struct AbilityBuilder {
     cost_condition: Vec<BoolExpr<AbilityExprSchema>>,
     cost_modifiers: LazyPlan,
     on_execute: Vec<LazyPlan>,
+    scene: Box<dyn Fn() -> Box<dyn Scene> + Send + Sync>,
 }
 
 impl AbilityBuilder {
@@ -32,6 +33,7 @@ impl AbilityBuilder {
             cost_condition: vec![],
             cost_modifiers: LazyPlan::new(),
             on_execute: vec![],
+            scene: Box::new(|| Box::new(())),
         }
     }
 
@@ -151,6 +153,15 @@ impl AbilityBuilder {
         self
     }
 
+    pub fn set_scene<S, F>(mut self, scene_factory: F) -> Self
+    where
+        S: Scene + 'static,
+        F: Fn() -> S + Send + Sync + 'static,
+    {
+        self.scene = Box::new(move || Box::new(scene_factory()));
+        self
+    }
+
     pub fn build(self) -> AbilityDef {
         AbilityDef {
             name: self.name,
@@ -161,6 +172,7 @@ impl AbilityBuilder {
             execution_conditions: vec![],
             cost_modifiers: self.cost_modifiers,
 
+            scene: self.scene,
             on_execute: self.on_execute,
         }
     }

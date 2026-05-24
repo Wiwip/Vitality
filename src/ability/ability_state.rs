@@ -7,7 +7,7 @@ use bevy::ecs::query::QueryData;
 use bevy::ecs::resource::IsResource;
 use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::{Read, Write};
-use bevy::log::warn;
+use bevy::log::{error, warn};
 use bevy::prelude::{AppTypeRegistry, Commands, Entity, Query, Res, Time, Without};
 use express_it::logic::BoolExpr;
 use hfsm_bevy::{
@@ -63,7 +63,7 @@ pub struct AbilitySystemParam<'w, 's> {
     >,
     registry: Registry<'w>,
     type_registry: Res<'w, AppTypeRegistry>,
-    time: Res<'w, Time>,
+    //time: Res<'w, Time>,
 }
 impl ExternalContext for AbilitySystemParam<'static, 'static> {
     type Item<'w, 's> = AbilitySystemParam<'w, 's>;
@@ -164,8 +164,24 @@ impl MachineState<AbilityMachine> for ReadyState {
 
 struct ActiveState;
 impl MachineState<AbilityMachine> for ActiveState {
-    fn on_enter(&self, _ctx: &mut Access<AbilityMachine>) {
+    fn on_enter(&self, ctx: &mut Access<AbilityMachine>) {
         println!("Enter: ActiveState");
+        let Ok((ability, ability_ref, _cooldown)) = ctx.view.abilities.get(ctx.ability_entity)
+        else {
+            error!("Activated an unavailable ability.");
+            return;
+        };
+
+        // Spawn tasks if they exist
+        let ability_def = ctx
+            .view
+            .registry
+            .ability_assets
+            .get(&ability.0.clone())
+            .ok_or("No ability asset.")
+            .unwrap();
+
+
     }
 
     fn on_exit(&self, _ctx: &mut Access<AbilityMachine>) {

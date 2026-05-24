@@ -40,11 +40,14 @@ impl EntityCommand for GrantAbilityCommand {
             queue
         };
 
-        actor.insert((
+        let scene = (ability_def.scene)();
+        let _ = actor.insert((
             Ability(self.handle),
             Name::new(ability_def.name.clone()),
             MachineInstance::<AbilityMachine>::default(),
-        ));
+        )).apply_scene(scene);
+
+        //let _ = actor.apply_scene(ability_def.scene);
 
         // Apply the commands
         actor.world_scope(|world| {

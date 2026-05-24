@@ -9,6 +9,7 @@ use express_it::logic::BoolExpr;
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
 use smol_str::SmolStr;
+use crate::ability::tasks::AbilityTask;
 use crate::context::{AbilityExprSchema, EffectExprSchema};
 
 #[derive(Asset, TypePath)]
@@ -51,6 +52,8 @@ pub struct AbilityDef {
 
     pub cost_condition: Vec<BoolExpr<AbilityExprSchema>>,
     pub cost_modifiers: LazyPlan,
+
+    pub scene: Box<dyn Fn() -> Box<dyn Scene> + Send + Sync>,
 
     pub on_execute: Vec<LazyPlan>,
 }

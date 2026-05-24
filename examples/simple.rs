@@ -44,10 +44,6 @@ fn main() {
             level: bevy::log::Level::DEBUG,
             ..default()
         }))
-        .insert_resource(GlobalUiDebugOptions {
-            //enabled: true,
-            ..default()
-        })
         .add_plugins((
             AttributesPlugin,
             init_attribute::<Strength>,
@@ -261,11 +257,6 @@ fn setup_actor(mut ctx: Vitality, efx: Res<EffectsDatabase>, abilities: Res<Abil
 
 #[derive(Component, Copy, Clone)]
 pub struct Player;
-
-#[derive(Component)]
-pub struct EntityHealthMarker;
-#[derive(Component)]
-pub struct ModifierTree;
 
 fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d::default());

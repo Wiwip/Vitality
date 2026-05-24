@@ -4,20 +4,19 @@ use bevy::ecs::system::lifetimeless::Read;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use hfsm_bevy::MachineQuery;
-use vitality::ability::tasks::{AbilityTask, TaskItem, TaskParam};
+use vitality::ability::ability_state::{AbilityEvent, AbilityMachine};
+use vitality::ability::tasks::{AbilityTask, DebugTask, TaskItem, TaskParam, Tasks, task};
 use vitality::ability::{
     Abilities, AbilityBuilder, ExecuteAbility, TargetData, TryActivateAbility,
 };
-use vitality::actors::{Actor, ActorBuilder};
+use vitality::actors::ActorBuilder;
 use vitality::context::Vitality;
-use vitality::graph::DependencyGraph;
 use vitality::inspector::ActorInspectorPlugin;
+use vitality::inspector::debug_overlay::DebugOverlayMarker;
 use vitality::prelude::*;
 use vitality::registry::RegistryMut;
 use vitality::registry::ability_registry::AbilityToken;
 use vitality::{AttributesPlugin, init_attribute};
-use vitality::ability::ability_state::{AbilityEvent, AbilityMachine};
-use vitality::inspector::debug_overlay::DebugOverlayMarker;
 
 pub const FIREBALL: AbilityToken = AbilityToken::new_static("fireball");
 
@@ -31,15 +30,20 @@ fn main() {
             level: bevy::log::Level::DEBUG,
             ..default()
         }))
-        .add_plugins(ActorInspectorPlugin)
         .add_plugins((
             AttributesPlugin,
             init_attribute::<Health>,
             init_attribute::<Damage>,
         ))
+        .add_plugins(ActorInspectorPlugin)
+        .add_systems(Startup, setup_camera)
         .add_systems(Startup, (setup_ability, setup_actor).chain())
         .add_systems(PreUpdate, inputs)
         .run();
+}
+
+fn setup_camera(mut commands: Commands) {
+    commands.spawn(Camera2d::default());
 }
 
 fn setup_ability(mut registry: RegistryMut) {
@@ -59,6 +63,20 @@ fn setup_ability(mut registry: RegistryMut) {
             },
         )
         .add_task::<TestAbilityTask>()
+        .set_scene(|| {
+            bsn! {
+                Tasks [
+                    #WaitTask
+                    task::<DebugTask>()
+                    Tasks [
+                        #SpawnFireball
+                        task::<DebugTask>(),
+                        #Teleport
+                        task::<DebugTask>(),
+                    ]
+                ]
+            }
+        })
         .build();
 
     registry.add_ability(FIREBALL, fireball);
@@ -79,6 +97,11 @@ fn setup_actor(mut vitality: Vitality) {
     vitality
         .grant_ability_by_token_unchecked(entity, &FIREBALL)
         .expect("Failed to grant ability");
+
+    let effect = EffectBuilder::permanent()
+        .modify::<Health>(10.0, ModOp::Add, EffectSubject::Target)
+        .build();
+    vitality.apply_dynamic_effect_to_self(entity, effect);
 }
 
 struct TestAbilityTask;
@@ -118,6 +141,5 @@ fn inputs(
     if keys.just_pressed(KeyCode::KeyQ) {
         println!("Q pressed");
         abilities.try_activate_by_token(*player, &FIREBALL, TargetData::SelfCast);
-
     }
 }

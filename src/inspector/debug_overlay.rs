@@ -17,6 +17,7 @@ pub fn setup_debug_overlay(mut commands: Commands) {
 }
 
 fn create_overlay() -> impl Scene {
+    println!("Creating overlay");
     bsn! {
         #DebugOverlay
         Node {
@@ -84,6 +85,8 @@ pub fn explore_actors_system(
         let mut w = Vec::new();
         let _ = write_tree(&tree, &mut w);
         text.0 = String::from_utf8(w).unwrap();
+    } else {
+        warn_once!("Debug overlay rendering failed");
     }
 }
 
