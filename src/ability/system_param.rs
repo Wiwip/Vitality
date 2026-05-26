@@ -1,5 +1,6 @@
 use crate::AttributesRef;
 use crate::ability::ability_state::{AbilityEvent, AbilityMachine};
+use crate::ability::tasks::{Task, TaskScope, Tasks};
 use crate::ability::{
     Ability, AbilityCooldown, AbilityError, GrantAbilityCommand, GrantedAbilities, TargetData,
     TryActivateAbility,
@@ -35,6 +36,7 @@ pub struct Abilities<'w, 's> {
         ),
         Without<IsResource>,
     >,
+    pub tasks: Query<'w, 's, Read<Tasks>, With<Task>>,
     pub registry: Registry<'w>,
     pub machines: MachineQuery<'w, 's, AbilityMachine>,
     pub commands: Commands<'w, 's>,
@@ -154,5 +156,13 @@ impl<'w, 's> Abilities<'w, 's> {
                 },
             )
             .expect("Failed to dispatch abilities");
+    }
+
+    pub fn task<'a>(&'a mut self, task_id: Entity) -> TaskScope<'a, 'w, 's> {
+        let Ok(tasks) = self.tasks.get(task_id) else {
+            return TaskScope::empty(&mut self.commands);
+        };
+
+        TaskScope::new(task_id, tasks.iter(), &mut self.commands)
     }
 }

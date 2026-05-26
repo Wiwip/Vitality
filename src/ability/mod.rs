@@ -1,39 +1,42 @@
+pub mod ability_state;
 mod builder;
 mod command;
 mod system_param;
 mod systems;
+pub mod task_states;
 pub mod tasks;
-pub mod ability_state;
 
-use crate::ability::systems::{
-    activate_ability, reset_ability_cooldown, tick_ability_cooldown, try_activate_ability_observer,
-};
+use crate::ability::ability_state::{AbilityMachine, setup_ability_machine_definition};
+use crate::ability::systems::{activate_ability, reset_ability_cooldown, tick_ability_cooldown};
+use crate::ability::task_states::{TaskMachine, setup_task_machine_definition};
+use crate::ability::tasks::{Tasks, handles_wait_task_timers};
 use crate::assets::AbilityDef;
 use crate::condition::{HasComponent, IsAbility};
+use crate::context::AbilityExprSchema;
+use crate::prelude::EffectExprSchema;
 use crate::schedule::EffectsSet;
 use bevy::prelude::*;
 pub use builder::AbilityBuilder;
 pub use command::GrantAbilityCommand;
 use express_it::expr::Expr;
 use express_it::logic::{BoolExpr, BoolExprNode};
+use hfsm_bevy::{MachineQuery, StateMachinePlugin};
 use std::error::Error;
 use std::fmt::Formatter;
 use std::sync::Arc;
-use hfsm_bevy::StateMachinePlugin;
 pub use system_param::Abilities;
-use crate::ability::ability_state::{setup_machine_definition, AbilityMachine};
-use crate::context::AbilityExprSchema;
-use crate::prelude::EffectExprSchema;
 
 pub struct AbilityPlugin;
 
 impl Plugin for AbilityPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .add_plugins(StateMachinePlugin::<AbilityMachine>::default())
-            .add_systems(PreStartup, setup_machine_definition)
+        app.add_plugins(StateMachinePlugin::<AbilityMachine>::default())
+            .add_plugins(StateMachinePlugin::<TaskMachine>::default())
+            .add_systems(PreStartup, setup_ability_machine_definition)
+            .add_systems(PreStartup, setup_task_machine_definition)
             .add_systems(Update, tick_ability_cooldown.in_set(EffectsSet::Prepare))
-            .add_observer(try_activate_ability_observer)
+            .add_systems(PreUpdate, handles_wait_task_timers)
+            //.add_observer(try_activate_ability_observer)
             .add_observer(reset_ability_cooldown)
             .add_observer(activate_ability)
             .register_type::<AbilityOf>()
@@ -59,6 +62,7 @@ impl GrantedAbilities {
 
 #[derive(Component, Reflect)]
 #[reflect(Component)]
+#[require(Tasks)]
 pub struct Ability(pub(crate) Handle<AbilityDef>);
 
 #[derive(EntityEvent)]

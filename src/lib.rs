@@ -69,11 +69,13 @@ pub mod prelude {
 use crate::attribute::clamps::{Clamp, apply_clamps, update_clamps};
 use crate::modifier::modifier::update_modifier_when_dependencies_changed;
 
+use crate::ability::ability_state::AbilityMachine;
+use crate::ability::task_states::TaskMachine;
+use crate::ability::tasks::WaitTask;
 pub use express_it;
 use hfsm_bevy::{MachineInstance, StateTimer};
 pub use num_traits;
 use smol_str::SmolStr;
-use crate::ability::ability_state::AbilityMachine;
 
 pub struct AttributesPlugin;
 
@@ -234,19 +236,26 @@ pub type AttributesMut<'w, 's> = EntityMutExcept<
     (
         // We exclude anything related to effects
         ChildOf,
-        Effect,
-        EffectDuration,
-        EffectTicker,
-        EffectSource,
-        EffectTarget,
-        AppliedEffects,
-        EffectSources,
+        (
+            Effect,
+            EffectDuration,
+            EffectTicker,
+            EffectSource,
+            EffectTarget,
+            AppliedEffects,
+            EffectSources,
+        ),
         GrantedAbilities,
         AbilityOf,
         AbilityCooldown,
         ModifierOf,
-        MachineInstance<AbilityMachine>,
-        StateTimer<AbilityMachine>,
+        (
+            MachineInstance<AbilityMachine>,
+            MachineInstance<TaskMachine>,
+            StateTimer<AbilityMachine>,
+            StateTimer<TaskMachine>,
+            WaitTask,
+        ),
     ),
 >;
 
@@ -256,19 +265,26 @@ pub type AttributesRef<'w, 's> = EntityRefExcept<
     (
         // We exclude anything related to effects
         ChildOf,
-        Effect,
-        EffectDuration,
-        EffectTicker,
-        EffectSource,
-        EffectTarget,
-        AppliedEffects,
-        EffectSources,
+        (
+            Effect,
+            EffectDuration,
+            EffectTicker,
+            EffectSource,
+            EffectTarget,
+            AppliedEffects,
+            EffectSources,
+        ),
         GrantedAbilities,
         AbilityOf,
         AbilityCooldown,
         ModifierOf,
-        MachineInstance<AbilityMachine>,
-        StateTimer<AbilityMachine>,
+        (
+            MachineInstance<AbilityMachine>,
+            MachineInstance<TaskMachine>,
+            StateTimer<AbilityMachine>,
+            StateTimer<TaskMachine>,
+            WaitTask,
+        ),
     ),
 >;
 

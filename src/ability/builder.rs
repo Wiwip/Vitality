@@ -128,7 +128,7 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn add_task<T: AbilityTask>(mut self) -> Self {
+    /*pub fn add_task<T: AbilityTask>(mut self) -> Self {
         self.mutators.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.observe(
@@ -151,9 +151,9 @@ impl AbilityBuilder {
             },
         ));
         self
-    }
+    }*/
 
-    pub fn set_scene<S, F>(mut self, scene_factory: F) -> Self
+    pub fn apply_scene<S, F>(mut self, scene_factory: F) -> Self
     where
         S: Scene + 'static,
         F: Fn() -> S + Send + Sync + 'static,

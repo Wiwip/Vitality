@@ -1,27 +1,38 @@
 use crate::AttributesRef;
 use crate::ability::systems::can_activate_ability;
-use crate::ability::{Abilities, Ability, AbilityCooldown, GrantedAbilities, TargetData};
+use crate::ability::task_states::{TaskEvent, TaskMachine};
+use crate::ability::tasks::{BeginTask, Tasks};
+use crate::ability::{Ability, AbilityCooldown, GrantedAbilities, TargetData};
 use crate::actors::Actor;
-use crate::registry::{Registry, RegistryMut};
+use crate::registry::Registry;
 use bevy::ecs::query::QueryData;
 use bevy::ecs::resource::IsResource;
 use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::{Read, Write};
 use bevy::log::{error, warn};
-use bevy::prelude::{AppTypeRegistry, Commands, Entity, Query, Res, Time, Without};
+use bevy::prelude::{
+    AppTypeRegistry, Commands, Entity, Query, RelationshipTarget, Res, Without, debug,
+};
 use express_it::logic::BoolExpr;
 use hfsm_bevy::{
-    Access, EventResult, ExternalContext, LocalContext, Machine, MachineDefinition, MachineState,
-    StateId, StateTimer,
+    Access, EventResult, ExternalContext, LocalContext, Machine, MachineDefinition, MachineQuery,
+    MachineState, StateId,
 };
+
+pub struct AbilityMachine;
+impl Machine for AbilityMachine {
+    type Local = AbilityContext;
+    type External = AbilitySystemParam<'static, 'static>;
+    type Event = AbilityEvent;
+}
 
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AbilityState {
-    Root,
+    _Root,
     Ready,
     Active,
-    Cooldown,
+    Recovery,
 }
 impl From<AbilityState> for StateId {
     fn from(value: AbilityState) -> Self {
@@ -32,8 +43,8 @@ impl From<AbilityState> for StateId {
 #[derive(QueryData)]
 #[query_data(mutable)]
 pub struct AbilityContext {
-    ability_entity: Entity,
-    timers: Write<StateTimer<AbilityMachine>>,
+    ability_id: Entity,
+    //timers: Write<StateTimer<AbilityMachine>>,
 }
 impl LocalContext for AbilityContext {
     type Item<'w, 's> = <Self as QueryData>::Item<'w, 's>;
@@ -47,6 +58,7 @@ pub struct AbilitySystemParam<'w, 's> {
         (
             Read<Ability>,
             AttributesRef<'static, 'static>,
+            Read<Tasks>,
             Option<Read<AbilityCooldown>>,
         ),
         Without<IsResource>,
@@ -61,9 +73,11 @@ pub struct AbilitySystemParam<'w, 's> {
         ),
         Without<IsResource>,
     >,
+    tasks: Query<'w, 's, Read<Tasks>>,
+    task_machines: MachineQuery<'w, 's, TaskMachine>,
     registry: Registry<'w>,
     type_registry: Res<'w, AppTypeRegistry>,
-    //time: Res<'w, Time>,
+    commands: Commands<'w, 's>,
 }
 impl ExternalContext for AbilitySystemParam<'static, 'static> {
     type Item<'w, 's> = AbilitySystemParam<'w, 's>;
@@ -72,41 +86,46 @@ impl ExternalContext for AbilitySystemParam<'static, 'static> {
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum AbilityEvent {
     TryActivate { source: Entity, target: TargetData },
+    Activate,
     CancelAbility,
     EndAbility,
     TimerExpired,
 }
 
-pub struct AbilityMachine;
-impl Machine for AbilityMachine {
-    type Local = AbilityContext;
-    type External = AbilitySystemParam<'static, 'static>;
-    type Event = AbilityEvent;
-}
-
 fn build_machine() -> MachineDefinition<AbilityMachine> {
     MachineDefinition::<AbilityMachine>::builder(AbilityState::Ready, |root| {
-        root.leaf(AbilityState::Ready, "Ready", ReadyState);
-        root.leaf(AbilityState::Active, "Active", ActiveState);
+        root.leaf(AbilityState::Ready, "Ready", ReadyState)
+            .on(AbilityEvent::Activate, AbilityState::Active);
+
+        root.leaf(AbilityState::Active, "Active", ActiveState)
+            .on(AbilityEvent::EndAbility, AbilityState::Recovery)
+            .on(AbilityEvent::CancelAbility, AbilityState::Recovery)
+            .then(AbilityState::Recovery);
+
+        root.leaf(AbilityState::Recovery, "Cooldown", CooldownState)
+            .then(AbilityState::Ready);
     })
     .build()
     .expect("Failed to build HFSM")
     .into()
 }
 
-pub fn setup_machine_definition(mut commands: Commands) {
+pub fn setup_ability_machine_definition(mut commands: Commands) {
     commands.insert_resource(build_machine());
 }
 
 struct ReadyState;
 impl MachineState<AbilityMachine> for ReadyState {
-    fn on_enter(&self, _ctx: &mut Access<AbilityMachine>) {}
+    fn on_enter(&self, _ctx: &mut Access<AbilityMachine>) {
+        println!("on_enter: ReadyState");
+    }
 
     fn on_event(&self, ctx: &mut Access<AbilityMachine>, event: &AbilityEvent) -> EventResult {
+        debug!("on_event: {:?}", event);
         match event {
             AbilityEvent::TryActivate { source, target } => {
-                let Ok((ability, ability_ref, _cooldown)) =
-                    ctx.view.abilities.get(ctx.ability_entity)
+                let Ok((ability, ability_ref, _, opt_cooldown)) =
+                    ctx.view.abilities.get(ctx.ability_id)
                 else {
                     return EventResult::Ignored;
                 };
@@ -115,7 +134,7 @@ impl MachineState<AbilityMachine> for ReadyState {
                 else {
                     warn!(
                         "[{}] The Actor({}) has no GrantedAbilities",
-                        ctx.ability_entity, source
+                        ctx.ability_id, source
                     );
                     return EventResult::Ignored;
                 };
@@ -129,6 +148,15 @@ impl MachineState<AbilityMachine> for ReadyState {
                         entity
                     }
                 };
+
+                // Handle cooldowns
+                let is_finished = match opt_cooldown {
+                    None => true,
+                    Some(cd) => cd.timer.is_finished(),
+                };
+                if !is_finished {
+                    return EventResult::Ignored;
+                }
 
                 // Get the ability spec from assets
                 let ability_spec = ctx
@@ -151,10 +179,9 @@ impl MachineState<AbilityMachine> for ReadyState {
                 .unwrap_or(false);
 
                 if can_activate {
-                    EventResult::Transition(AbilityState::Active.into())
-                } else {
-                    EventResult::Handled
+                    ctx.internal_events.push_back(AbilityEvent::Activate);
                 }
+                EventResult::Handled
             }
 
             _ => EventResult::Ignored,
@@ -165,9 +192,8 @@ impl MachineState<AbilityMachine> for ReadyState {
 struct ActiveState;
 impl MachineState<AbilityMachine> for ActiveState {
     fn on_enter(&self, ctx: &mut Access<AbilityMachine>) {
-        println!("Enter: ActiveState");
-        let Ok((ability, ability_ref, _cooldown)) = ctx.view.abilities.get(ctx.ability_entity)
-        else {
+        debug!("[{}] Ability enter ActiveState", ctx.ability_id);
+        let Ok((ability, ability_ref, tasks, _)) = ctx.view.abilities.get(ctx.ability_id) else {
             error!("Activated an unavailable ability.");
             return;
         };
@@ -181,13 +207,38 @@ impl MachineState<AbilityMachine> for ActiveState {
             .ok_or("No ability asset.")
             .unwrap();
 
+        if tasks.is_empty() {
+            ctx.internal_events.push_back(AbilityEvent::EndAbility);
+            return;
+        }
 
+        // Signal tasks to begin
+        for task_entity in tasks.iter() {
+            ctx.view.commands.trigger(BeginTask {
+                task_id: task_entity,
+            });
+        }
     }
 
-    fn on_exit(&self, _ctx: &mut Access<AbilityMachine>) {
-        println!("Exit: ActiveState.")
+    fn on_exit(&self, ctx: &mut Access<AbilityMachine>) {
+        debug!("[{}] Ability exit ActiveState", ctx.ability_id);
     }
 }
 
 struct CooldownState;
-impl MachineState<AbilityMachine> for CooldownState {}
+impl MachineState<AbilityMachine> for CooldownState {
+    fn on_exit(&self, ctx: &mut Access<AbilityMachine>) {
+        for task_id in ctx.view.tasks.iter_descendants(ctx.ability_id) {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn print_mermaid_state_machine() {
+        let machine = build_machine();
+        println!("{}", machine.to_mermaid().unwrap());
+    }
+}

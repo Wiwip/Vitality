@@ -4,11 +4,11 @@ use bevy::ecs::system::lifetimeless::Read;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use hfsm_bevy::MachineQuery;
-use vitality::ability::ability_state::{AbilityEvent, AbilityMachine};
-use vitality::ability::tasks::{AbilityTask, DebugTask, TaskItem, TaskParam, Tasks, task};
-use vitality::ability::{
-    Abilities, AbilityBuilder, ExecuteAbility, TargetData, TryActivateAbility,
+use vitality::ability::ability_state::AbilityMachine;
+use vitality::ability::tasks::{
+    AbilityTask, DebugTask, TaskItem, TaskParam, TaskStatus, Tasks, task,
 };
+use vitality::ability::{Abilities, AbilityBuilder, ExecuteAbility, TargetData};
 use vitality::actors::ActorBuilder;
 use vitality::context::Vitality;
 use vitality::inspector::ActorInspectorPlugin;
@@ -63,17 +63,16 @@ fn setup_ability(mut registry: RegistryMut) {
                 }
             },
         )
-        .add_task::<TestAbilityTask>()
-        .set_scene(|| {
+        .apply_scene(|| {
             bsn! {
                 Tasks [
                     #WaitTask
-                    task::<DebugTask>()
+                    task::<DebugTask>(())
                     Tasks [
                         #SpawnFireball
-                        task::<DebugTask>(),
+                        task::<DebugTask>(()),
                         #Teleport
-                        task::<DebugTask>(),
+                        task::<DebugTask>(()),
                     ]
                 ]
             }
@@ -109,13 +108,21 @@ struct TestAbilityTask;
 impl AbilityTask for TestAbilityTask {
     type Query = TaskContext;
     type Param = TaskSystemParam<'static, 'static>;
+    type Data = ();
 
-    fn on_begin(query: TaskItem<Self>, _param: &mut TaskParam<Self>) {
+    fn activate(
+        _task_id: Entity,
+        query: TaskItem<Self>,
+        _param: &mut TaskParam<Self>,
+        //_abilities: &mut Abilities,
+    ) -> TaskStatus {
         println!("[{}] Began AbilityTask", query.entity);
+
+        TaskStatus::Running
     }
 
-    fn on_end(_query: TaskItem<Self>) {
-        println!("End Task");
+    fn on_end(query: TaskItem<Self>) {
+        println!("[{}] Ended AbilityTask", query.entity);
     }
 }
 
@@ -129,23 +136,18 @@ struct TaskContext {
 
 #[derive(SystemParam)]
 pub struct TaskSystemParam<'w, 's> {
-    commands: Commands<'w, 's>,
-    time: Res<'w, Time>,
+    _commands: Commands<'w, 's>,
+    _time: Res<'w, Time>,
 }
 
 fn inputs(
-    mut player: Single<Entity, With<Player>>,
+    player: Single<Entity, With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut abilities: Abilities,
-    //mut machines: MachineQuery<AbilityMachine>,
 ) {
     if keys.just_pressed(KeyCode::KeyQ) {
-        println!("Q pressed");
         abilities.try_activate_by_token(*player, &FIREBALL, TargetData::SelfCast);
     }
 }
 
-fn print_ability(){
-    
-    
-}
+fn print_ability() {}

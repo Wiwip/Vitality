@@ -23,7 +23,7 @@ pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<T
 /// - Cooldown
 /// - Conditions
 /// - Cost
-pub fn try_activate_ability_observer(
+/*pub fn try_activate_ability_observer(
     trigger: On<TryActivateAbility>,
     actors: Query<
         (AttributesRef, &GrantedAbilities),
@@ -92,7 +92,7 @@ pub fn try_activate_ability_observer(
         }
     }
     Ok(())
-}
+}*/
 
 pub fn can_activate_ability(
     ability_ref: &AttributesRef,
