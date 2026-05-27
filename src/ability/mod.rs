@@ -20,7 +20,7 @@ pub use builder::AbilityBuilder;
 pub use command::GrantAbilityCommand;
 use express_it::expr::Expr;
 use express_it::logic::{BoolExpr, BoolExprNode};
-use hfsm_bevy::{MachineQuery, StateMachinePlugin};
+use hfsm_bevy::StateMachinePlugin;
 use std::error::Error;
 use std::fmt::Formatter;
 use std::sync::Arc;
@@ -70,8 +70,8 @@ pub struct Ability(pub(crate) Handle<AbilityDef>);
 pub struct TryActivateAbility {
     #[event_target]
     actor_entity: Entity,
-    condition: BoolExpr<AbilityExprSchema>,
-    target_data: TargetData,
+    _condition: BoolExpr<AbilityExprSchema>,
+    _target_data: TargetData,
 }
 
 impl TryActivateAbility {
@@ -81,8 +81,8 @@ impl TryActivateAbility {
 
         Self {
             actor_entity: target,
-            condition: expr,
-            target_data,
+            _condition: expr,
+            _target_data: target_data,
         }
     }
     pub fn by_def(target: Entity, handle: AssetId<AbilityDef>, target_data: TargetData) -> Self {
@@ -91,8 +91,8 @@ impl TryActivateAbility {
 
         Self {
             actor_entity: target,
-            condition: expr,
-            target_data,
+            _condition: expr,
+            _target_data: target_data,
         }
     }
 }

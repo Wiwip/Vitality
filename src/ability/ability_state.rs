@@ -1,7 +1,7 @@
 use crate::AttributesRef;
 use crate::ability::systems::can_activate_ability;
 use crate::ability::task_states::{TaskEvent, TaskMachine, TaskState};
-use crate::ability::tasks::{ExecuteTask, Tasks};
+use crate::ability::tasks::Tasks;
 use crate::ability::{Ability, AbilityCooldown, GrantedAbilities, TargetData};
 use crate::actors::Actor;
 use crate::registry::Registry;
@@ -15,8 +15,8 @@ use bevy::prelude::{
 };
 use express_it::logic::BoolExpr;
 use hfsm_bevy::{
-    Access, EventResult, ExternalContext, LocalContext, Machine, MachineDefinition, MachineEvent,
-    MachineQuery, MachineState, StateId,
+    Access, EventResult, ExternalContext, LocalContext, Machine, MachineDefinition, MachineQuery,
+    MachineState, StateId,
 };
 
 pub struct AbilityMachine;
@@ -193,7 +193,7 @@ struct ActiveState;
 impl MachineState<AbilityMachine> for ActiveState {
     fn on_enter(&self, ctx: &mut Access<AbilityMachine>) {
         debug!("[{}] Ability enter ActiveState", ctx.ability_id);
-        let Ok((ability, ability_ref, tasks, _)) = ctx.view.abilities.get(ctx.ability_id) else {
+        let Ok((_, _, tasks, _)) = ctx.view.abilities.get(ctx.ability_id) else {
             error!("Activated an unavailable ability.");
             return;
         };

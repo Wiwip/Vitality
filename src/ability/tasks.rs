@@ -2,11 +2,13 @@ use crate::ability::ability_state::{AbilityEvent, AbilityMachine};
 use crate::ability::task_states::{TaskEvent, TaskMachine, TaskState};
 use crate::ability::{Abilities, Ability};
 use bevy::ecs::query::{QueryData, QueryItem};
-use bevy::ecs::system::lifetimeless::Read;
+use bevy::ecs::system::lifetimeless::{Read, Write};
 use bevy::ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
 use bevy::prelude::*;
+use bevy::scene::SceneScope;
 use hfsm_bevy::{MachineEvent, MachineInstance, MachineQuery};
 use std::cmp::PartialEq;
+use std::time::Duration;
 
 #[derive(Component, Default, Copy, Clone, Debug)]
 pub struct Task;
@@ -51,7 +53,7 @@ pub trait AbilityTask: Send + Sync + 'static {
     /// The query descriptor. (e.g. `&'static mut Health` or a struct deriving `QueryData`)
     type EntityItem: QueryData + Send + Sync + 'static;
     type SystemParam: SystemParam + Send + Sync + 'static;
-    type Data: Scene + Clone + Send + Sync + 'static;
+    type Data: FromTemplate + Send + Sync + 'static;
 
     fn activate(
         _task_id: Entity,
@@ -65,10 +67,11 @@ pub trait AbilityTask: Send + Sync + 'static {
     fn on_completion(_item: TaskItem<Self>) {}
 }
 
-pub fn task<T: AbilityTask>(data: T::Data) -> impl Scene {
+pub fn task<T: AbilityTask>(data: T::Data) -> impl Scene
+{
     bsn! {
         Task
-        MachineInstance::<TaskMachine>
+        MachineInstance<TaskMachine>
         data
         on(on_execute_task_observer::<T>)
         on(on_task_completed_observer::<T>)
@@ -218,8 +221,43 @@ pub struct DebugTaskContext {
     name: Read<Name>,
 }
 
-#[derive(Component, FromTemplate)]
+#[derive(Component, Default, Clone)]
 pub struct WaitTask(Timer);
+
+impl WaitTask {
+    pub fn from_secs(seconds: f32) -> Self {
+        Self(Timer::from_seconds(seconds, TimerMode::Once))
+    }
+
+    pub fn from_duration(duration: Duration) -> Self {
+        Self(Timer::new(duration, TimerMode::Once))
+    }
+}
+
+impl AbilityTask for WaitTask {
+    type EntityItem = WaitTaskContext;
+    type SystemParam = ();
+    type Data = WaitTask;
+
+    fn activate(
+        _task_id: Entity,
+        item: TaskItem<Self>,
+        _param: &mut TaskParam<Self>,
+    ) -> TaskStatus {
+        TaskStatus::Running
+    }
+
+    fn on_stop(_item: TaskItem<Self>) {}
+
+    fn on_completion(_item: TaskItem<Self>) {}
+}
+
+#[derive(QueryData)]
+#[query_data(mutable)]
+pub struct WaitTaskContext {
+    entity: Entity,
+    timer: Write<WaitTask>,
+}
 
 pub fn handles_wait_task_timers(
     mut tasks: Query<(Entity, &mut WaitTask)>,
@@ -229,27 +267,27 @@ pub fn handles_wait_task_timers(
     for (task_id, mut wait_task) in tasks.iter_mut() {
         wait_task.0.tick(time.delta());
 
-        /*if wait_task.0.just_finished() {
+        if wait_task.0.just_finished() {
             abilities.task(task_id).complete();
-        }*/
+        }
     }
 }
 
 pub struct TaskScope<'a, 'w, 's> {
     task_id: Option<Entity>,
-    sub_tasks: Vec<Entity>,
+    //sub_tasks: Vec<Entity>,
     commands: &'a mut Commands<'w, 's>,
 }
 
 impl<'a, 'w, 's> TaskScope<'a, 'w, 's> {
     pub fn new(
         task: Entity,
-        sub_tasks: impl IntoIterator<Item = Entity>,
+        //sub_tasks: impl IntoIterator<Item = Entity>,
         commands: &'a mut Commands<'w, 's>,
     ) -> Self {
         Self {
             task_id: Some(task),
-            sub_tasks: sub_tasks.into_iter().collect(),
+            //sub_tasks: sub_tasks.into_iter().collect(),
             commands,
         }
     }
@@ -257,32 +295,38 @@ impl<'a, 'w, 's> TaskScope<'a, 'w, 's> {
     pub fn empty(commands: &'a mut Commands<'w, 's>) -> Self {
         Self {
             task_id: None,
-            sub_tasks: vec![],
+            //sub_tasks: vec![],
             commands,
         }
     }
 
-    pub fn begin(&mut self) {
+    pub fn execute(&mut self) {
         let Some(task_id) = self.task_id else {
             return;
         };
-        todo!();
-        //self.commands.trigger(BeginTask { task_id });
+        self.commands.trigger(MachineEvent {
+            entity: task_id,
+            event: TaskEvent::Execute,
+        });
     }
 
     pub fn complete(&mut self) {
         let Some(task_id) = self.task_id else {
             return;
         };
-        todo!();
-        self.commands.trigger(TaskCompleted { task_id });
+        self.commands.trigger(MachineEvent {
+            entity: task_id,
+            event: TaskEvent::Complete,
+        });
     }
 
-    pub fn cancel(&mut self) {
+    pub fn stop(&mut self) {
         let Some(task_id) = self.task_id else {
             return;
         };
-        todo!();
-        self.commands.trigger(TaskStopped { task_id })
+        self.commands.trigger(MachineEvent {
+            entity: task_id,
+            event: TaskEvent::Stop,
+        });
     }
 }

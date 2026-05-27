@@ -3,10 +3,8 @@ use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use vitality::ability::tasks::{
-    AbilityTask, Complete, DebugInstantTask, DebugLongTask, TaskItem, TaskParam, TaskStatus, Tasks,
-    task,
-};
+use vitality::ability::ability_state::AbilityEvent;
+use vitality::ability::tasks::{AbilityTask, Complete, DebugInstantTask, DebugLongTask, TaskItem, TaskParam, TaskStatus, Tasks, task, WaitTask, NoneComponent};
 use vitality::ability::{Abilities, AbilityBuilder, ExecuteAbility, TargetData};
 use vitality::actors::ActorBuilder;
 use vitality::context::Vitality;
@@ -16,8 +14,6 @@ use vitality::prelude::*;
 use vitality::registry::RegistryMut;
 use vitality::registry::ability_registry::AbilityToken;
 use vitality::{AttributesPlugin, init_attribute};
-use vitality::ability::ability_state::AbilityEvent;
-use vitality::ability::task_states::TaskEvent;
 
 pub const FIREBALL: AbilityToken = AbilityToken::new_static("fireball");
 
@@ -71,7 +67,7 @@ fn setup_ability(mut registry: RegistryMut) {
                     #LongTask
                     task::<DebugLongTask>(()),
                     #WaitTask
-                    task::<DebugInstantTask>(())
+                    task(WaitTask::from_secs(5.0))
                     Tasks [
                         (
                             #SpawnFireball
@@ -154,7 +150,9 @@ fn inputs(
         abilities.try_activate_by_token(*player, &FIREBALL, TargetData::SelfCast);
     } else if keys.just_pressed(KeyCode::KeyE) {
         if let Some(id) = abilities.get_ability_entity(*player, &FIREBALL) {
-            let _ = abilities.machines.dispatch_event(id, AbilityEvent::Recovered);
+            let _ = abilities
+                .machines
+                .dispatch_event(id, AbilityEvent::Recovered);
         };
     }
 }

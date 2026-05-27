@@ -1,5 +1,5 @@
 use crate::ability::tasks::{
-    TaskStopped, TaskCompleted, ExecuteTask, NotifyTaskCompletion, Task, Tasks,
+    ExecuteTask, NotifyTaskCompletion, Task, TaskCompleted, TaskStopped, Tasks,
 };
 use bevy::ecs::query::QueryData;
 use bevy::ecs::resource::IsResource;
@@ -58,7 +58,7 @@ impl ExternalContext for TaskSystemParam<'static, 'static> {
 pub enum TaskEvent {
     Reset,
     Activate,
-    ExecuteTask,
+    Execute,
     Complete,
     Stop,
     TimeOut,

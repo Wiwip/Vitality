@@ -159,10 +159,10 @@ impl<'w, 's> Abilities<'w, 's> {
     }
 
     pub fn task<'a>(&'a mut self, task_id: Entity) -> TaskScope<'a, 'w, 's> {
-        let Ok(tasks) = self.tasks.get(task_id) else {
+        /*let Ok(tasks) = self.tasks.get(task_id) else {
             return TaskScope::empty(&mut self.commands);
-        };
+        };*/
 
-        TaskScope::new(task_id, tasks.iter(), &mut self.commands)
+        TaskScope::new(task_id, /*tasks.iter(),*/ &mut self.commands)
     }
 }
