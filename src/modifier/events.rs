@@ -1,11 +1,11 @@
-use bevy::ecs::resource::IsResource;
+use crate::AttributesMut;
 use crate::context::EffectExprContext;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::AttributeCalculator;
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
-use crate::{AttributesMut};
+use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 
@@ -24,12 +24,8 @@ pub fn apply_modifier_events<T: Attribute>(
     type_registry: Res<AppTypeRegistry>,
 ) {
     for ev in event_reader.read() {
-        let has_changed = apply_modifier(
-            &ev,
-            &mut attributes,
-            type_registry.0.clone(),
-        )
-        .unwrap_or(false);
+        let has_changed =
+            apply_modifier(&ev, &mut attributes, type_registry.0.clone()).unwrap_or(false);
 
         if has_changed {
             commands.trigger(MarkNodeDirty::<T> {

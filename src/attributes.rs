@@ -108,7 +108,15 @@ pub trait ExprAttribute: Attribute {}
 #[macro_export]
 macro_rules! attribute_impl {
     ( $StructName:ident, $ValueType:ty ) => {
-        #[derive(bevy::prelude::Component, Clone, Copy, bevy::prelude::Reflect, Debug, bevy::prelude::FromTemplate, bevy::prelude::Deref)]
+        #[derive(
+            bevy::prelude::Component,
+            Clone,
+            Copy,
+            bevy::prelude::Reflect,
+            Debug,
+            bevy::prelude::FromTemplate,
+            bevy::prelude::Deref,
+        )]
         #[require($crate::modifier::AttributeCalculatorCached<$StructName>)]
         #[reflect(Component, AccessAttribute)]
         pub struct $StructName {
@@ -163,7 +171,7 @@ macro_rules! attribute_impl {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     $crate::express_it::context::Path::from_type_name::<Self>(
                         $crate::modifier::EffectSubject::Target,
-                         "current_value",
+                        "current_value",
                     ),
                 )))
             }
@@ -171,7 +179,7 @@ macro_rules! attribute_impl {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
                     $crate::express_it::context::Path::from_type_name::<Self>(
                         $crate::modifier::EffectSubject::Effect,
-                         "current_value",
+                        "current_value",
                     ),
                 )))
             }
@@ -179,7 +187,10 @@ macro_rules! attribute_impl {
                 subject: impl Into<smol_str::SmolStr>,
             ) -> $crate::express_it::expr::Expr<Self::Property, S> {
                 $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    $crate::express_it::context::Path::from_type_name::<Self>(subject, "base_value"),
+                    $crate::express_it::context::Path::from_type_name::<Self>(
+                        subject,
+                        "base_value",
+                    ),
                 )))
             }
             fn lit<S: ExprSchema>(
@@ -194,7 +205,10 @@ macro_rules! attribute_impl {
                 expr: impl Into<$crate::express_it::expr::Expr<Self::Property, S>>,
             ) -> $crate::express_it::frame::Assignment<Self::Property, S> {
                 $crate::express_it::frame::Assignment {
-                    path: $crate::express_it::context::Path::from_type_name::<Self>(subject, "base_value"),
+                    path: $crate::express_it::context::Path::from_type_name::<Self>(
+                        subject,
+                        "base_value",
+                    ),
                     expr: expr.into(),
                 }
             }
@@ -203,14 +217,16 @@ macro_rules! attribute_impl {
                 expr: impl Into<$crate::express_it::expr::Expr<Self::Property, S>>,
             ) -> $crate::express_it::frame::Assignment<Self::Property, S> {
                 let get_expr = $crate::express_it::expr::Expr::new(std::sync::Arc::new(
-                    Self::ExprType::Attribute($crate::express_it::context::Path::from_type_name::<Self>(
-                        subject,
-                         "base_value",
-                    )),
+                    Self::ExprType::Attribute($crate::express_it::context::Path::from_type_name::<
+                        Self,
+                    >(subject, "base_value")),
                 ));
 
                 $crate::express_it::frame::Assignment {
-                    path: $crate::express_it::context::Path::from_type_name::<Self>(subject, "base_value"),
+                    path: $crate::express_it::context::Path::from_type_name::<Self>(
+                        subject,
+                        "base_value",
+                    ),
                     expr: get_expr + expr.into(),
                 }
             }
@@ -219,14 +235,16 @@ macro_rules! attribute_impl {
                 expr: impl Into<$crate::express_it::expr::Expr<Self::Property, S>>,
             ) -> $crate::express_it::frame::Assignment<Self::Property, S> {
                 let get_expr = $crate::express_it::expr::Expr::new(std::sync::Arc::new(
-                     Self::ExprType::Attribute($crate::express_it::context::Path::from_type_name::<Self>(
-                        subject,
-                        "base_value",
-                    )),
+                    Self::ExprType::Attribute($crate::express_it::context::Path::from_type_name::<
+                        Self,
+                    >(subject, "base_value")),
                 ));
 
                 $crate::express_it::frame::Assignment {
-                    path: $crate::express_it::context::Path::from_type_name::<Self>(subject, "base_value"),
+                    path: $crate::express_it::context::Path::from_type_name::<Self>(
+                        subject,
+                        "base_value",
+                    ),
                     expr: get_expr - expr.into(),
                 }
             }

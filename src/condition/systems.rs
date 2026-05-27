@@ -1,7 +1,7 @@
+use crate::AttributesRef;
 use crate::assets::EffectDef;
 use crate::context::EffectExprContext;
 use crate::effect::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
-use crate::{AttributesRef};
 use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
@@ -88,7 +88,7 @@ mod test {
     use crate::condition::IsAttributeWithinBounds;
     use crate::context::Vitality;
     use crate::effect::{Effect, EffectInactive};
-    use crate::modifier::{ModOp, EffectSubject};
+    use crate::modifier::{EffectSubject, ModOp};
     use crate::prelude::*;
     use crate::registry::ability_registry::AbilityToken;
     use crate::registry::effect_registry::EffectToken;

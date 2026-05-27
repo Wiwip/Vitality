@@ -14,7 +14,7 @@ use vitality::effect::{Effect, EffectStackingPolicy};
 use vitality::graph::DependencyGraph;
 use vitality::inspector::ActorInspectorPlugin;
 use vitality::inspector::debug_overlay::DebugOverlayMarker;
-use vitality::modifier::{ModOp, EffectSubject};
+use vitality::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 use vitality::{AttributesPlugin, attribute, init_attribute, tag};
 
@@ -210,7 +210,10 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
                     }
                 },
             )
-            .on_execute(LazyPlan::new().step(MaxHealth::add::<AbilityExprSchema>(EffectSubject::Source, 5)))
+            .on_execute(LazyPlan::new().step(MaxHealth::add::<AbilityExprSchema>(
+                EffectSubject::Source,
+                5,
+            )))
             .build(),
     );
     commands.insert_resource(AbilityDatabase {

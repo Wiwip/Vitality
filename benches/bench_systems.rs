@@ -1,4 +1,3 @@
-
 use bevy::prelude::*;
 use criterion::*;
 use vitality::attribute;

@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use vitality::actors::ActorBuilder;
 use vitality::context::Vitality;
 use vitality::effect::{Effect, EffectApplicationPolicy, EffectBuilder};
-use vitality::modifier::{ModOp, EffectSubject};
+use vitality::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 use vitality::{AttributesPlugin, attribute, init_attribute};
 

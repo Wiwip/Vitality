@@ -1,4 +1,6 @@
-use crate::ability::{Ability, AbilityCooldown, AbilityError, AbilityOf, GrantAbilityCommand, GrantedAbilities};
+use crate::ability::{
+    Ability, AbilityCooldown, AbilityError, AbilityOf, GrantAbilityCommand, GrantedAbilities,
+};
 use crate::actors::SpawnActorCommand;
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::effect::global_effect::{GlobalActor, GlobalEffects};
@@ -9,12 +11,12 @@ use crate::registry::ability_registry::AbilityToken;
 use crate::registry::actor_registry::ActorToken;
 use crate::{AppAttributeBindings, AttributesMut, AttributesRef};
 use bevy::ecs::system::SystemParam;
+use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 use express_it::context::{Path, ReadContext, WriteContext};
 use express_it::expr::{ExprSchema, ExpressionError};
 use std::any::Any;
-use bevy::ecs::system::lifetimeless::Read;
 
 #[derive(SystemParam)]
 pub struct Vitality<'w, 's> {
@@ -82,11 +84,7 @@ impl<'s, 'w> Vitality<'w, 's> {
         self.registry.ability(token)
     }
 
-    pub fn get_ability_entity(
-        &self,
-        actor: Entity,
-        handle: &Handle<AbilityDef>,
-    ) -> Option<Entity> {
+    pub fn get_ability_entity(&self, actor: Entity, handle: &Handle<AbilityDef>) -> Option<Entity> {
         let granted = self.granted_abilities.get(actor).ok()?;
         for &ability_entity in granted.iter() {
             if let Ok((ability, _)) = self.ability_entities.get(ability_entity) {
@@ -107,7 +105,11 @@ impl<'s, 'w> Vitality<'w, 's> {
         true
     }
 
-    pub fn grant_ability_by_token(&mut self, entity: Entity, token: &AbilityToken) -> Result<Entity, AbilityError> {
+    pub fn grant_ability_by_token(
+        &mut self,
+        entity: Entity,
+        token: &AbilityToken,
+    ) -> Result<Entity, AbilityError> {
         let handle = self.get_ability_from_token(&token);
         self.grant_ability(&handle, entity)
     }
@@ -132,13 +134,18 @@ impl<'s, 'w> Vitality<'w, 's> {
             })
             .id();
 
-        self.commands.entity(grant_ability_target_entity).add_one_related::<AbilityOf>(ability_id);
+        self.commands
+            .entity(grant_ability_target_entity)
+            .add_one_related::<AbilityOf>(ability_id);
 
         Ok(ability_id)
     }
 
-
-    pub fn grant_ability_by_token_unchecked(&mut self, entity: Entity, token: &AbilityToken) -> Result<Entity, AbilityError> {
+    pub fn grant_ability_by_token_unchecked(
+        &mut self,
+        entity: Entity,
+        token: &AbilityToken,
+    ) -> Result<Entity, AbilityError> {
         let handle = self.get_ability_from_token(&token);
         self.grant_ability_unchecked(&handle, entity)
     }
@@ -157,7 +164,9 @@ impl<'s, 'w> Vitality<'w, 's> {
             })
             .id();
 
-        self.commands.entity(grant_ability_target_entity).add_one_related::<AbilityOf>(ability_id);
+        self.commands
+            .entity(grant_ability_target_entity)
+            .add_one_related::<AbilityOf>(ability_id);
         info!("[{:?}] Spawned ability.", ability_id);
 
         Ok(ability_id)

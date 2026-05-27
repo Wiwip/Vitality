@@ -9,7 +9,7 @@ pub mod tasks;
 use crate::ability::ability_state::{AbilityMachine, setup_ability_machine_definition};
 use crate::ability::systems::{activate_ability, reset_ability_cooldown, tick_ability_cooldown};
 use crate::ability::task_states::{TaskMachine, setup_task_machine_definition};
-use crate::ability::tasks::{Tasks, handles_wait_task_timers};
+use crate::ability::tasks::{Tasks, handles_wait_task_timers, on_task_completion_notification};
 use crate::assets::AbilityDef;
 use crate::condition::{HasComponent, IsAbility};
 use crate::context::AbilityExprSchema;
@@ -39,6 +39,7 @@ impl Plugin for AbilityPlugin {
             //.add_observer(try_activate_ability_observer)
             .add_observer(reset_ability_cooldown)
             .add_observer(activate_ability)
+            .add_observer(on_task_completion_notification)
             .register_type::<AbilityOf>()
             .register_type::<GrantedAbilities>();
     }

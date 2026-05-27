@@ -1,22 +1,22 @@
 use crate::AttributesRef;
 use crate::ability::systems::can_activate_ability;
-use crate::ability::task_states::{TaskEvent, TaskMachine};
-use crate::ability::tasks::{BeginTask, Tasks};
+use crate::ability::task_states::{TaskEvent, TaskMachine, TaskState};
+use crate::ability::tasks::{ExecuteTask, Tasks};
 use crate::ability::{Ability, AbilityCooldown, GrantedAbilities, TargetData};
 use crate::actors::Actor;
 use crate::registry::Registry;
 use bevy::ecs::query::QueryData;
 use bevy::ecs::resource::IsResource;
 use bevy::ecs::system::SystemParam;
-use bevy::ecs::system::lifetimeless::{Read, Write};
+use bevy::ecs::system::lifetimeless::Read;
 use bevy::log::{error, warn};
 use bevy::prelude::{
     AppTypeRegistry, Commands, Entity, Query, RelationshipTarget, Res, Without, debug,
 };
 use express_it::logic::BoolExpr;
 use hfsm_bevy::{
-    Access, EventResult, ExternalContext, LocalContext, Machine, MachineDefinition, MachineQuery,
-    MachineState, StateId,
+    Access, EventResult, ExternalContext, LocalContext, Machine, MachineDefinition, MachineEvent,
+    MachineQuery, MachineState, StateId,
 };
 
 pub struct AbilityMachine;
@@ -52,7 +52,7 @@ impl LocalContext for AbilityContext {
 
 #[derive(SystemParam)]
 pub struct AbilitySystemParam<'w, 's> {
-    abilities: Query<
+    pub abilities: Query<
         'w,
         's,
         (
@@ -63,7 +63,7 @@ pub struct AbilitySystemParam<'w, 's> {
         ),
         Without<IsResource>,
     >,
-    actors: Query<
+    pub actors: Query<
         'w,
         's,
         (
@@ -73,11 +73,11 @@ pub struct AbilitySystemParam<'w, 's> {
         ),
         Without<IsResource>,
     >,
-    tasks: Query<'w, 's, Read<Tasks>>,
-    task_machines: MachineQuery<'w, 's, TaskMachine>,
-    registry: Registry<'w>,
-    type_registry: Res<'w, AppTypeRegistry>,
-    commands: Commands<'w, 's>,
+    pub tasks: Query<'w, 's, Read<Tasks>>,
+    pub task_machines: MachineQuery<'w, 's, TaskMachine>,
+    pub registry: Registry<'w>,
+    pub type_registry: Res<'w, AppTypeRegistry>,
+    pub commands: Commands<'w, 's>,
 }
 impl ExternalContext for AbilitySystemParam<'static, 'static> {
     type Item<'w, 's> = AbilitySystemParam<'w, 's>;
@@ -90,6 +90,7 @@ pub enum AbilityEvent {
     CancelAbility,
     EndAbility,
     TimerExpired,
+    Recovered,
 }
 
 fn build_machine() -> MachineDefinition<AbilityMachine> {
@@ -99,11 +100,10 @@ fn build_machine() -> MachineDefinition<AbilityMachine> {
 
         root.leaf(AbilityState::Active, "Active", ActiveState)
             .on(AbilityEvent::EndAbility, AbilityState::Recovery)
-            .on(AbilityEvent::CancelAbility, AbilityState::Recovery)
-            .then(AbilityState::Recovery);
+            .on(AbilityEvent::CancelAbility, AbilityState::Recovery);
 
         root.leaf(AbilityState::Recovery, "Cooldown", CooldownState)
-            .then(AbilityState::Ready);
+            .on(AbilityEvent::Recovered, AbilityState::Ready);
     })
     .build()
     .expect("Failed to build HFSM")
@@ -198,15 +198,7 @@ impl MachineState<AbilityMachine> for ActiveState {
             return;
         };
 
-        // Spawn tasks if they exist
-        let ability_def = ctx
-            .view
-            .registry
-            .ability_assets
-            .get(&ability.0.clone())
-            .ok_or("No ability asset.")
-            .unwrap();
-
+        // Abilities without tasks auto complete
         if tasks.is_empty() {
             ctx.internal_events.push_back(AbilityEvent::EndAbility);
             return;
@@ -214,9 +206,10 @@ impl MachineState<AbilityMachine> for ActiveState {
 
         // Signal tasks to begin
         for task_entity in tasks.iter() {
-            ctx.view.commands.trigger(BeginTask {
-                task_id: task_entity,
-            });
+            let _ = ctx
+                .view
+                .task_machines
+                .dispatch_event(task_entity, TaskEvent::Activate);
         }
     }
 
@@ -227,8 +220,29 @@ impl MachineState<AbilityMachine> for ActiveState {
 
 struct CooldownState;
 impl MachineState<AbilityMachine> for CooldownState {
+    fn on_enter(&self, ctx: &mut Access<AbilityMachine>) {
+        debug!("on_enter: CooldownState");
+
+        for task_id in ctx.view.tasks.iter_descendants(ctx.ability_id) {
+            if ctx
+                .view
+                .task_machines
+                .is_in_state(task_id, TaskState::Running)
+            {
+                ctx.view
+                    .task_machines
+                    .dispatch_event(task_id, TaskEvent::Stop)
+                    .unwrap();
+            }
+        }
+    }
     fn on_exit(&self, ctx: &mut Access<AbilityMachine>) {
-        for task_id in ctx.view.tasks.iter_descendants(ctx.ability_id) {}
+        for task_id in ctx.view.tasks.iter_descendants(ctx.ability_id) {
+            ctx.view
+                .task_machines
+                .dispatch_event(task_id, TaskEvent::Reset)
+                .unwrap();
+        }
     }
 }
 

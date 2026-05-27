@@ -3,10 +3,9 @@ use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use hfsm_bevy::MachineQuery;
-use vitality::ability::ability_state::AbilityMachine;
 use vitality::ability::tasks::{
-    AbilityTask, DebugTask, TaskItem, TaskParam, TaskStatus, Tasks, task,
+    AbilityTask, Complete, DebugInstantTask, DebugLongTask, TaskItem, TaskParam, TaskStatus, Tasks,
+    task,
 };
 use vitality::ability::{Abilities, AbilityBuilder, ExecuteAbility, TargetData};
 use vitality::actors::ActorBuilder;
@@ -17,6 +16,8 @@ use vitality::prelude::*;
 use vitality::registry::RegistryMut;
 use vitality::registry::ability_registry::AbilityToken;
 use vitality::{AttributesPlugin, init_attribute};
+use vitality::ability::ability_state::AbilityEvent;
+use vitality::ability::task_states::TaskEvent;
 
 pub const FIREBALL: AbilityToken = AbilityToken::new_static("fireball");
 
@@ -65,15 +66,22 @@ fn setup_ability(mut registry: RegistryMut) {
         )
         .apply_scene(|| {
             bsn! {
+                Complete::Any
                 Tasks [
+                    #LongTask
+                    task::<DebugLongTask>(()),
                     #WaitTask
-                    task::<DebugTask>(())
+                    task::<DebugInstantTask>(())
                     Tasks [
-                        #SpawnFireball
-                        task::<DebugTask>(()),
-                        #Teleport
-                        task::<DebugTask>(()),
-                    ]
+                        (
+                            #SpawnFireball
+                            task::<DebugInstantTask>(())
+                        ),
+                        (
+                            #Teleport
+                            task::<DebugInstantTask>(())
+                        ),
+                    ],
                 ]
             }
         })
@@ -104,10 +112,11 @@ fn setup_actor(mut vitality: Vitality) {
     vitality.apply_dynamic_effect_to_self(entity, effect);
 }
 
+#[allow(unused)]
 struct TestAbilityTask;
 impl AbilityTask for TestAbilityTask {
-    type Query = TaskContext;
-    type Param = TaskSystemParam<'static, 'static>;
+    type EntityItem = TaskContext;
+    type SystemParam = TaskSystemParam<'static, 'static>;
     type Data = ();
 
     fn activate(
@@ -119,10 +128,6 @@ impl AbilityTask for TestAbilityTask {
         println!("[{}] Began AbilityTask", query.entity);
 
         TaskStatus::Running
-    }
-
-    fn on_end(query: TaskItem<Self>) {
-        println!("[{}] Ended AbilityTask", query.entity);
     }
 }
 
@@ -147,6 +152,10 @@ fn inputs(
 ) {
     if keys.just_pressed(KeyCode::KeyQ) {
         abilities.try_activate_by_token(*player, &FIREBALL, TargetData::SelfCast);
+    } else if keys.just_pressed(KeyCode::KeyE) {
+        if let Some(id) = abilities.get_ability_entity(*player, &FIREBALL) {
+            let _ = abilities.machines.dispatch_event(id, AbilityEvent::Recovered);
+        };
     }
 }
 

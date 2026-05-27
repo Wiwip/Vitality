@@ -1,11 +1,14 @@
-use crate::ability::tasks::{BeginTask, CancelTask, CompleteTask, Task, Tasks};
+use crate::ability::tasks::{
+    TaskStopped, TaskCompleted, ExecuteTask, NotifyTaskCompletion, Task, Tasks,
+};
 use bevy::ecs::query::QueryData;
 use bevy::ecs::resource::IsResource;
 use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
 use hfsm_bevy::{
-    Access, ExternalContext, LocalContext, Machine, MachineDefinition, MachineState, StateId,
+    Access, ExternalContext, LocalContext, Machine, MachineDefinition, MachineEvent, MachineState,
+    StateId,
 };
 
 #[derive(Clone)]
@@ -23,7 +26,7 @@ pub enum TaskState {
     Pending,
     Running,
     Completed,
-    Cancelled,
+    Stopped,
     Failed,
 }
 impl From<TaskState> for StateId {
@@ -57,7 +60,7 @@ pub enum TaskEvent {
     Activate,
     ExecuteTask,
     Complete,
-    Cancel,
+    Stop,
     TimeOut,
 }
 
@@ -68,16 +71,14 @@ fn build_machine() -> MachineDefinition<TaskMachine> {
 
         root.leaf(TaskState::Running, "Running", RunningState)
             .on(TaskEvent::Complete, TaskState::Completed)
-            .on(TaskEvent::Cancel, TaskState::Cancelled)
-            .on(TaskEvent::TimeOut, TaskState::Cancelled)
-            .then(TaskState::Completed);
+            .on(TaskEvent::Stop, TaskState::Stopped)
+            .on(TaskEvent::TimeOut, TaskState::Stopped);
 
         root.leaf(TaskState::Completed, "Completed", CompleteState)
-            .then(TaskState::Pending);
+            .on(TaskEvent::Reset, TaskState::Pending);
 
-        root.leaf(TaskState::Cancelled, "Cancelled", CancelledState)
-            .on(TaskEvent::Reset, TaskState::Pending)
-            .then(TaskState::Pending);
+        root.leaf(TaskState::Stopped, "Cancelled", StoppedState)
+            .on(TaskEvent::Reset, TaskState::Pending);
 
         root.leaf(TaskState::Failed, "Failed", FailedState)
             .on(TaskEvent::Reset, TaskState::Pending);
@@ -106,18 +107,26 @@ struct RunningState;
 impl MachineState<TaskMachine> for RunningState {
     fn on_enter(&self, ctx: &mut Access<TaskMachine>) {
         debug!("[{}] on_enter: Running Task", ctx.task_id);
+
+        // Tells this task to begin
+        ctx.view.commands.trigger(ExecuteTask {
+            task_id: ctx.task_id,
+        });
+
+        // Tells subtasks to activate
+        let Ok(sub_tasks) = ctx.view.tasks.get(ctx.task_id) else {
+            return;
+        };
+        for task_id in sub_tasks.iter() {
+            ctx.view.commands.trigger(MachineEvent {
+                entity: task_id,
+                event: TaskEvent::Activate,
+            });
+        }
     }
 
     fn on_exit(&self, ctx: &mut Access<TaskMachine>) {
         debug!("[{}] on_exit: Running Task", ctx.task_id);
-
-        let Ok(sub_tasks) = ctx.view.tasks.get(ctx.task_id) else {
-            return;
-        };
-
-        for task_id in sub_tasks.iter() {
-            ctx.view.commands.trigger(BeginTask { task_id })
-        }
     }
 }
 
@@ -125,9 +134,15 @@ struct CompleteState;
 impl MachineState<TaskMachine> for CompleteState {
     fn on_enter(&self, ctx: &mut Access<TaskMachine>) {
         debug!("[{}] on_enter: Complete Task", ctx.task_id);
-        ctx.view.commands.trigger(CompleteTask {
+        ctx.view.commands.trigger(TaskCompleted {
             task_id: ctx.task_id,
         });
+
+        ctx.view.commands.trigger(NotifyTaskCompletion {
+            entity: ctx.task_id,
+        });
+
+        //ctx.internal_events.push_back(TaskEvent::Reset);
     }
 
     fn on_exit(&self, _ctx: &mut Access<TaskMachine>) {
@@ -135,13 +150,14 @@ impl MachineState<TaskMachine> for CompleteState {
     }
 }
 
-struct CancelledState;
-impl MachineState<TaskMachine> for CancelledState {
+struct StoppedState;
+impl MachineState<TaskMachine> for StoppedState {
     fn on_enter(&self, ctx: &mut Access<TaskMachine>) {
-        ctx.view.commands.trigger(CancelTask {
+        debug!("[{}] on_enter: Cancelled Task", ctx.task_id);
+        ctx.view.commands.trigger(TaskStopped {
             task_id: ctx.task_id,
         });
-        ctx.internal_events.push_back(TaskEvent::Reset);
+        //ctx.internal_events.push_back(TaskEvent::Reset);
     }
 
     fn on_exit(&self, _ctx: &mut Access<TaskMachine>) {}

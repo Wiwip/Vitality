@@ -1,20 +1,20 @@
-use std::any::type_name_of_val;
+use crate::GrantedAbilities;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
+use crate::attribute::clamps::Clamp;
 use crate::effect::{ApplyEffectEvent, EffectTargeting};
 use crate::graph::NodeType;
+use crate::inspector::pretty_type_name;
 use crate::modifier::AttributeCalculatorCached;
 use crate::mutator::EntityActions;
 use crate::prelude::*;
-use crate::GrantedAbilities;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use express_it::expr::{Expr, ExprNode};
 use num_traits::{AsPrimitive, Num};
-use std::collections::HashSet;
 use smol_str::SmolStr;
-use crate::attribute::clamps::Clamp;
-use crate::inspector::pretty_type_name;
+use std::any::type_name_of_val;
+use std::collections::HashSet;
 
 #[derive(Component, Clone, Debug, Deref)]
 #[require(GrantedAbilities)]
@@ -137,11 +137,14 @@ impl ActorBuilder {
         let mut paths = HashSet::default();
         min_expr.inner.get_dependencies(&mut paths);
         max_expr.inner.get_dependencies(&mut paths);
-        debug!("Clamp<{}> dependencies: {:?}", pretty_type_name::<T>(), paths);
+        debug!(
+            "Clamp<{}> dependencies: {:?}",
+            pretty_type_name::<T>(),
+            paths
+        );
 
         let pair = (min_expr.clone(), max_expr.clone());
         debug!("storing clamp exprs as: {}", type_name_of_val(&pair));
-
 
         // Insert expressions
         let type_name = pretty_type_name::<T>();

@@ -10,12 +10,12 @@ use crate::modifier::modifier::RecalculateExpression;
 use crate::modifier::{ApplyAttributeModifierMessage, AttributeCalculator, OwnedModifiers};
 use crate::prelude::*;
 use crate::{AppAttributeBindings, AttributesRef, CurrentValueChanged, Dirty};
+use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
 use std::marker::PhantomData;
-use bevy::ecs::resource::IsResource;
 
 #[derive(EntityEvent)]
 #[entity_event(propagate=&'static EffectTarget, auto_propagate)]
@@ -234,14 +234,17 @@ pub fn update_attribute<T: Attribute>(
 
 pub fn apply_periodic_effect<T: Attribute>(
     actors: Query<AttributesRef, Without<IsResource>>,
-    effects: Query<(
-        AttributesRef,
-        &Effect,
-        &EffectTicker,
-        &OwnedModifiers,
-        &EffectTarget,
-        &EffectSource,
-    ), Without<IsResource>>,
+    effects: Query<
+        (
+            AttributesRef,
+            &Effect,
+            &EffectTicker,
+            &OwnedModifiers,
+            &EffectTarget,
+            &EffectSource,
+        ),
+        Without<IsResource>,
+    >,
     modifiers: Query<&AttributeModifier<T>>,
     mut event_writer: MessageWriter<ApplyAttributeModifierMessage<T>>,
     effect_assets: Res<Assets<EffectDef>>,

@@ -1,3 +1,4 @@
+use crate::ability::Ability;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::context::{AbilityExprContext, AbilityExprSchema, EffectExprContext, EffectExprSchema};
@@ -15,7 +16,6 @@ use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 use std::sync::Arc;
-use crate::ability::Ability;
 
 #[derive(TypePath)]
 pub struct IsAttributeWithinBounds<T: Attribute> {
@@ -215,7 +215,7 @@ impl ExprNode<bool, AbilityExprSchema> for IsAbility {
 
         let any = ctx.get_any(&path)?;
         let value = any.downcast_ref::<Ability>().unwrap();
-        
+
         Ok(value.0.id() == self.asset)
     }
 

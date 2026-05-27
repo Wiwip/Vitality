@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use crate::assets::ActorDef;
 use bevy::prelude::*;
 use smol_str::SmolStr;
-use crate::assets::ActorDef;
+use std::collections::HashMap;
 
 #[derive(Default, Clone, PartialEq, Eq, Hash, Reflect)]
 pub struct ActorToken(SmolStr);

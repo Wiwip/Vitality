@@ -1,4 +1,4 @@
-use crate::context::{split_path, EffectExprContextMut, EffectExprContext, EffectExprSchema};
+use crate::context::{EffectExprContext, EffectExprContextMut, EffectExprSchema, split_path};
 use crate::effect::{EffectSource, EffectTarget};
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
@@ -13,9 +13,9 @@ use crate::{AttributeBindings, AttributesRef};
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 use express_it::expr::{Expr, ExprNode, SelectExprNodeImpl};
+use smol_str::SmolStr;
 use std::collections::HashSet;
 use std::fmt::Display;
-use smol_str::SmolStr;
 
 pub trait Modifier: Send + Sync {
     /// Spawns the modifier as a component on the effect, targeting the actor for observers.

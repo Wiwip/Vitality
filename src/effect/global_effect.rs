@@ -48,7 +48,7 @@ mod test {
     use crate::condition::IsAttributeWithinBounds;
     use crate::context::Vitality;
     use crate::effect::{Effect, EffectInactive};
-    use crate::modifier::{ModOp, EffectSubject};
+    use crate::modifier::{EffectSubject, ModOp};
     use crate::prelude::*;
     use crate::registry::ability_registry::AbilityToken;
     use crate::registry::effect_registry::EffectToken;

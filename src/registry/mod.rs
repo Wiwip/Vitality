@@ -1,13 +1,13 @@
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::registry::ability_registry::{AbilityRegistry, AbilityToken};
+use crate::registry::actor_registry::{ActorRegistry, ActorToken};
 use crate::registry::effect_registry::{EffectRegistry, EffectToken};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use crate::registry::actor_registry::{ActorRegistry, ActorToken};
 
 pub mod ability_registry;
-pub mod effect_registry;
 pub mod actor_registry;
+pub mod effect_registry;
 
 pub struct RegistryPlugin;
 
@@ -23,9 +23,9 @@ impl Plugin for RegistryPlugin {
 pub struct Registry<'w> {
     pub ability_registry: Res<'w, AbilityRegistry>,
     pub ability_assets: Res<'w, Assets<AbilityDef>>,
-    
+
     pub effect_registry: Res<'w, EffectRegistry>,
-    
+
     pub actor_registry: Res<'w, ActorRegistry>,
 }
 
@@ -33,7 +33,7 @@ impl Registry<'_> {
     pub fn ability_definitions(&self) -> &Assets<AbilityDef> {
         &self.ability_assets
     }
-    
+
     pub fn effect(&self, name: &EffectToken) -> &Handle<EffectDef> {
         self.effect_registry.get(name).expect("effect not found")
     }
@@ -51,10 +51,10 @@ impl Registry<'_> {
 pub struct RegistryMut<'w> {
     pub ability_registry: ResMut<'w, AbilityRegistry>,
     pub ability_assets: ResMut<'w, Assets<AbilityDef>>,
- 
+
     pub effect_registry: ResMut<'w, EffectRegistry>,
     pub effect_assets: ResMut<'w, Assets<EffectDef>>,
- 
+
     pub actor_registry: ResMut<'w, ActorRegistry>,
     pub actor_assets: ResMut<'w, Assets<ActorDef>>,
 }

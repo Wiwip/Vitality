@@ -1,13 +1,13 @@
-use std::any::Any;
 use crate::actors::Actor;
 use crate::assets::ActorDef;
 use crate::attributes::AttributeQueryData;
-use crate::context::{ActorExprContext};
+use crate::context::ActorExprContext;
+use crate::inspector::pretty_type_name;
 use crate::prelude::*;
-use crate::{ AttributesRef, CurrentValueChanged};
+use crate::{AttributesRef, CurrentValueChanged};
 use bevy::prelude::*;
 use express_it::expr::Expr;
-use crate::inspector::pretty_type_name;
+use std::any::Any;
 
 #[derive(Component, Default, Debug, Clone, Reflect)]
 #[reflect(Component, from_reflect = false)]
@@ -53,7 +53,10 @@ pub fn update_clamps<T: Attribute>(
 
         let any_ref: &dyn Any = clamp_exprs.as_ref();
         let (min_expr, max_expr) = any_ref
-            .downcast_ref::<(Expr<T::Property, ActorExprSchema>, Expr<T::Property, ActorExprSchema>)>()
+            .downcast_ref::<(
+                Expr<T::Property, ActorExprSchema>,
+                Expr<T::Property, ActorExprSchema>,
+            )>()
             .ok_or("Failed downcast expressions")?;
 
         let min_value = min_expr.eval(&actor_context)?;

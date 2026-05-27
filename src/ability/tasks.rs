@@ -1,37 +1,39 @@
-use crate::ability::Abilities;
+use crate::ability::ability_state::{AbilityEvent, AbilityMachine};
 use crate::ability::task_states::{TaskEvent, TaskMachine, TaskState};
+use crate::ability::{Abilities, Ability};
 use bevy::ecs::query::{QueryData, QueryItem};
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
 use bevy::prelude::*;
-use hfsm_bevy::{MachineInstance, MachineQuery};
+use hfsm_bevy::{MachineEvent, MachineInstance, MachineQuery};
 use std::cmp::PartialEq;
 
 #[derive(Component, Default, Copy, Clone, Debug)]
 pub struct Task;
 
 #[derive(EntityEvent)]
-pub struct BeginTask {
+pub struct ExecuteTask {
     #[event_target]
     pub task_id: Entity,
 }
 
 #[derive(EntityEvent)]
-pub struct CancelTask {
+pub struct TaskStopped {
     #[event_target]
     pub task_id: Entity,
 }
 
 #[derive(EntityEvent)]
-pub struct EndTask {
+pub struct TaskCompleted {
     #[event_target]
     pub task_id: Entity,
 }
 
 #[derive(EntityEvent)]
-pub struct CompleteTask {
+#[entity_event(propagate = &'static TaskOwner, auto_propagate)]
+pub struct NotifyTaskCompletion {
     #[event_target]
-    pub task_id: Entity,
+    pub entity: Entity,
 }
 
 #[derive(Default, Copy, Clone, Debug, PartialEq)]
@@ -42,13 +44,13 @@ pub enum TaskStatus {
     Failed,
 }
 
-pub type TaskItem<'w, 's, T> = QueryItem<'w, 's, <T as AbilityTask>::Query>;
-pub type TaskParam<'w, 's, T> = SystemParamItem<'w, 's, <T as AbilityTask>::Param>;
+pub type TaskItem<'w, 's, T> = QueryItem<'w, 's, <T as AbilityTask>::EntityItem>;
+pub type TaskParam<'w, 's, T> = SystemParamItem<'w, 's, <T as AbilityTask>::SystemParam>;
 
 pub trait AbilityTask: Send + Sync + 'static {
     /// The query descriptor. (e.g. `&'static mut Health` or a struct deriving `QueryData`)
-    type Query: QueryData + Send + Sync + 'static;
-    type Param: SystemParam + Send + Sync + 'static;
+    type EntityItem: QueryData + Send + Sync + 'static;
+    type SystemParam: SystemParam + Send + Sync + 'static;
     type Data: Scene + Clone + Send + Sync + 'static;
 
     fn activate(
@@ -59,11 +61,8 @@ pub trait AbilityTask: Send + Sync + 'static {
         TaskStatus::Complete
     }
 
-    fn on_cancel(item: TaskItem<Self>) {
-        Self::on_end(item);
-    }
+    fn on_stop(_item: TaskItem<Self>) {}
     fn on_completion(_item: TaskItem<Self>) {}
-    fn on_end(_item: TaskItem<Self>) {}
 }
 
 pub fn task<T: AbilityTask>(data: T::Data) -> impl Scene {
@@ -71,58 +70,77 @@ pub fn task<T: AbilityTask>(data: T::Data) -> impl Scene {
         Task
         MachineInstance::<TaskMachine>
         data
-        on(begin_task_observer::<T>)
-        on(on_cancel_task_observer::<T>)
-        on(on_complete_task_observer::<T>)
-        on(on_end_task_observer::<T>)
+        on(on_execute_task_observer::<T>)
+        on(on_task_completed_observer::<T>)
+        on(on_task_stopped_observer::<T>)
     }
 }
 
-fn begin_task_observer<T: AbilityTask>(
-    trigger: On<BeginTask>,
-    mut query: Query<T::Query>,
-    params: StaticSystemParam<T::Param>,
-    mut tasks: MachineQuery<TaskMachine>,
+fn on_execute_task_observer<T: AbilityTask>(
+    trigger: On<ExecuteTask>,
+    mut query: Query<T::EntityItem>,
+    params: StaticSystemParam<T::SystemParam>,
+    mut commands: Commands,
 ) {
-    if !tasks.is_in_state(trigger.task_id, TaskState::Pending) {
-        error_once!("[{}] The task state is not Pending.", trigger.task_id);
-        return;
-    }
-
-    tasks
-        .dispatch_event(trigger.task_id, TaskEvent::Activate)
-        .unwrap();
-
     let item = query.get_mut(trigger.event_target()).unwrap();
     let mut param_items = params.into_inner();
     let status = T::activate(trigger.task_id, item, &mut param_items);
 
     if status == TaskStatus::Complete {
-        tasks
-            .dispatch_event(trigger.task_id, TaskEvent::Complete)
-            .unwrap();
+        commands.trigger(MachineEvent {
+            entity: trigger.task_id,
+            event: TaskEvent::Complete,
+        });
     }
 }
 
-fn on_cancel_task_observer<T: AbilityTask>(
-    trigger: On<CancelTask>,
-    mut query: Query<T::Query>,
-) {
-    let item = query.get_mut(trigger.event_target()).unwrap();
-    T::on_cancel(item);
-}
-
-fn on_complete_task_observer<T: AbilityTask>(
-    trigger: On<CompleteTask>,
-    mut query: Query<T::Query>,
+fn on_task_completed_observer<T: AbilityTask>(
+    trigger: On<TaskCompleted>,
+    mut query: Query<T::EntityItem>,
 ) {
     let item = query.get_mut(trigger.event_target()).unwrap();
     T::on_completion(item);
 }
 
-fn on_end_task_observer<T: AbilityTask>(trigger: On<EndTask>, mut query: Query<T::Query>) {
+fn on_task_stopped_observer<T: AbilityTask>(
+    trigger: On<TaskStopped>,
+    mut query: Query<T::EntityItem>,
+) {
     let item = query.get_mut(trigger.event_target()).unwrap();
-    T::on_end(item);
+    T::on_stop(item);
+}
+
+pub fn on_task_completion_notification(
+    mut trigger: On<NotifyTaskCompletion>,
+    query: Query<(&Tasks, &Complete)>,
+    abilities: Query<&Ability>,
+    mut ability_machines: MachineQuery<AbilityMachine>,
+) {
+    let Ok((tasks, rule)) = query.get(trigger.entity) else {
+        // Has no subtasks, not a problem.
+        return;
+    };
+    let task_machines = &ability_machines.view.task_machines;
+
+    let result = match rule {
+        Complete::All => tasks
+            .iter()
+            .all(|task| task_machines.is_in_state(task, TaskState::Completed)),
+        Complete::Any => tasks
+            .iter()
+            .any(|task| task_machines.is_in_state(task, TaskState::Completed)),
+    };
+
+    println!(
+        "[{}] Task Completion Notification ({:?}) [{result}] ({rule:?})",
+        trigger.entity, tasks
+    );
+
+    if !abilities.contains(trigger.entity) {
+        trigger.propagate(result);
+    } else if result {
+        let _ = ability_machines.dispatch_event(trigger.entity, AbilityEvent::EndAbility);
+    }
 }
 
 /// The entity that this effect is targeting.
@@ -133,12 +151,20 @@ pub struct TaskOwner(pub Entity);
 /// All abilities granted to this entity.
 #[derive(Component, Reflect, Debug, Default)]
 #[relationship_target(relationship = TaskOwner, linked_spawn)]
+#[require[Task, Complete::All]]
 pub struct Tasks(Vec<Entity>);
 
-pub struct DebugTask;
-impl AbilityTask for DebugTask {
-    type Query = DebugTaskContext;
-    type Param = ();
+#[derive(Component, Debug, FromTemplate)]
+pub enum Complete {
+    #[default]
+    All,
+    Any,
+}
+
+pub struct DebugInstantTask;
+impl AbilityTask for DebugInstantTask {
+    type EntityItem = DebugTaskContext;
+    type SystemParam = ();
     type Data = ();
 
     fn activate(
@@ -151,16 +177,37 @@ impl AbilityTask for DebugTask {
         TaskStatus::Complete
     }
 
-    fn on_cancel(item: TaskItem<Self>) {
-        debug!("[{}] Task Cancelled", item.name);
+    fn on_stop(item: TaskItem<Self>) {
+        debug!("[{}] Task Stopped", item.name);
     }
 
     fn on_completion(item: TaskItem<Self>) {
         debug!("[{}] Task Completed", item.name);
     }
+}
 
-    fn on_end(item: TaskItem<Self>) {
-        debug!("[{}] Task Ended", item.name);
+pub struct DebugLongTask;
+impl AbilityTask for DebugLongTask {
+    type EntityItem = DebugTaskContext;
+    type SystemParam = ();
+    type Data = ();
+
+    fn activate(
+        _task_id: Entity,
+        item: TaskItem<Self>,
+        _param: &mut TaskParam<Self>,
+    ) -> TaskStatus {
+        debug!("[{}] Activate Task", item.name);
+
+        TaskStatus::Running
+    }
+
+    fn on_stop(item: TaskItem<Self>) {
+        debug!("[{}] Task Stopped", item.name);
+    }
+
+    fn on_completion(item: TaskItem<Self>) {
+        debug!("[{}] Task Completed", item.name);
     }
 }
 
@@ -228,7 +275,7 @@ impl<'a, 'w, 's> TaskScope<'a, 'w, 's> {
             return;
         };
         todo!();
-        self.commands.trigger(CompleteTask { task_id });
+        self.commands.trigger(TaskCompleted { task_id });
     }
 
     pub fn cancel(&mut self) {
@@ -236,6 +283,6 @@ impl<'a, 'w, 's> TaskScope<'a, 'w, 's> {
             return;
         };
         todo!();
-        self.commands.trigger(CancelTask { task_id })
+        self.commands.trigger(TaskStopped { task_id })
     }
 }

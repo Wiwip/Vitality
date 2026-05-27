@@ -10,11 +10,11 @@ use crate::modifier::ModifierOf;
 use crate::modifier::modifier::Modifier;
 use crate::{AppAttributeBindings, AttributesMut};
 use bevy::asset::{Assets, Handle};
+use bevy::ecs::resource::IsResource;
 use bevy::log::debug;
 use bevy::prelude::*;
-use std::cmp::PartialEq;
-use bevy::ecs::resource::IsResource;
 use bevy::reflect::TypeRegistryArc;
+use std::cmp::PartialEq;
 
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
@@ -131,7 +131,10 @@ pub struct ApplyEffectEvent {
 impl ApplyEffectEvent {
     fn apply_instant_effect(
         &self,
-        actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), (Without<Effect>, Without<IsResource>)>,
+        actors: &mut Query<
+            (Option<&AppliedEffects>, AttributesMut),
+            (Without<Effect>, Without<IsResource>),
+        >,
         commands: &mut Commands,
         effect: &EffectDef,
         type_registry: TypeRegistryArc,
@@ -170,7 +173,10 @@ impl ApplyEffectEvent {
 
     fn apply_modifiers<'a, I>(
         &self,
-        _actors: &'a mut Query<(Option<&AppliedEffects>, AttributesMut), (Without<Effect>, Without<IsResource>)>,
+        _actors: &'a mut Query<
+            (Option<&AppliedEffects>, AttributesMut),
+            (Without<Effect>, Without<IsResource>),
+        >,
         modifiers: &mut I,
         commands: &mut Commands,
     ) where
@@ -190,7 +196,10 @@ impl ApplyEffectEvent {
         &self,
         commands: &mut Commands,
         effect: &EffectDef,
-        actors: &mut Query<(Option<&AppliedEffects>, AttributesMut), (Without<Effect>, Without<IsResource>)>,
+        actors: &mut Query<
+            (Option<&AppliedEffects>, AttributesMut),
+            (Without<Effect>, Without<IsResource>),
+        >,
         effects: &mut Query<&Effect>,
         add_stack_event: &mut MessageWriter<NotifyAddStackEvent>,
         type_registry: TypeRegistryArc,
@@ -306,7 +315,10 @@ impl ApplyEffectEvent {
 
 pub(crate) fn apply_effect_event_observer(
     trigger: On<ApplyEffectEvent>,
-    mut actors: Query<(Option<&AppliedEffects>, AttributesMut), (Without<Effect>, Without<IsResource>)>,
+    mut actors: Query<
+        (Option<&AppliedEffects>, AttributesMut),
+        (Without<Effect>, Without<IsResource>),
+    >,
     mut effects: Query<&Effect>,
     effect_assets: Res<Assets<EffectDef>>,
     mut writer: MessageWriter<NotifyAddStackEvent>,
@@ -349,7 +361,7 @@ mod test {
     use crate::condition::IsAttributeWithinBounds;
     use crate::context::Vitality;
     use crate::effect::builder::EffectBuilder;
-    use crate::modifier::{ModOp, EffectSubject};
+    use crate::modifier::{EffectSubject, ModOp};
     use crate::prelude::*;
     use crate::registry::effect_registry::EffectToken;
     use crate::registry::{Registry, RegistryMut};
