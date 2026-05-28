@@ -4,7 +4,7 @@ use bevy::ecs::system::lifetimeless::Read;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use vitality::ability::ability_state::AbilityEvent;
-use vitality::ability::tasks::{AbilityTask, Complete, DebugInstantTask, DebugLongTask, TaskItem, TaskParam, TaskStatus, Tasks, task, WaitTask, NoneComponent};
+use vitality::ability::tasks::{AbilityTask, Complete, DebugInstantTask, DebugLongTask, TaskItem, TaskParam, TaskStatus, Tasks, task, WaitTask, NoData};
 use vitality::ability::{Abilities, AbilityBuilder, ExecuteAbility, TargetData};
 use vitality::actors::ActorBuilder;
 use vitality::context::Vitality;
@@ -65,17 +65,17 @@ fn setup_ability(mut registry: RegistryMut) {
                 Complete::Any
                 Tasks [
                     #LongTask
-                    task::<DebugLongTask>(()),
+                    task::<DebugLongTask>(NoData),
                     #WaitTask
-                    task(WaitTask::from_secs(5.0))
+                    task::<WaitTask>(WaitTask::from_secs(5.0))
                     Tasks [
                         (
                             #SpawnFireball
-                            task::<DebugInstantTask>(())
+                            task::<DebugInstantTask>(NoData)
                         ),
                         (
                             #Teleport
-                            task::<DebugInstantTask>(())
+                            task::<DebugInstantTask>(NoData)
                         ),
                     ],
                 ]
@@ -113,7 +113,7 @@ struct TestAbilityTask;
 impl AbilityTask for TestAbilityTask {
     type EntityItem = TaskContext;
     type SystemParam = TaskSystemParam<'static, 'static>;
-    type Data = ();
+    type Data = NoData;
 
     fn activate(
         _task_id: Entity,

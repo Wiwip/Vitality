@@ -5,7 +5,6 @@ use bevy::ecs::query::{QueryData, QueryItem};
 use bevy::ecs::system::lifetimeless::{Read, Write};
 use bevy::ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
 use bevy::prelude::*;
-use bevy::scene::SceneScope;
 use hfsm_bevy::{MachineEvent, MachineInstance, MachineQuery};
 use std::cmp::PartialEq;
 use std::time::Duration;
@@ -53,7 +52,7 @@ pub trait AbilityTask: Send + Sync + 'static {
     /// The query descriptor. (e.g. `&'static mut Health` or a struct deriving `QueryData`)
     type EntityItem: QueryData + Send + Sync + 'static;
     type SystemParam: SystemParam + Send + Sync + 'static;
-    type Data: FromTemplate + Send + Sync + 'static;
+    type Data: Component + Clone + Send + Sync + 'static;
 
     fn activate(
         _task_id: Entity,
@@ -67,12 +66,24 @@ pub trait AbilityTask: Send + Sync + 'static {
     fn on_completion(_item: TaskItem<Self>) {}
 }
 
-pub fn task<T: AbilityTask>(data: T::Data) -> impl Scene
-{
+pub fn task<T: AbilityTask>(data: T::Data) -> impl Scene {
+    let cell = std::sync::Arc::new(std::sync::Mutex::new(Some(data)));
     bsn! {
         Task
         MachineInstance<TaskMachine>
-        data
+
+        on({
+            let cell = cell.clone();
+            move |trigger: On<Add, Task>, mut commands: Commands| {
+                if let Ok(mut guard) = cell.lock() {
+                    // 3. Extract the underlying generic data on the first execution pass
+                    if let Some(payload_data) = guard.take() {
+                        commands.entity(trigger.entity).insert(payload_data);
+                    }
+                }
+            }
+        })
+        //template_value(data)
         on(on_execute_task_observer::<T>)
         on(on_task_completed_observer::<T>)
         on(on_task_stopped_observer::<T>)
@@ -164,11 +175,15 @@ pub enum Complete {
     Any,
 }
 
+#[derive(Component, Reflect, Clone, Default)]
+#[reflect(Component)]
+pub struct NoData;
+
 pub struct DebugInstantTask;
 impl AbilityTask for DebugInstantTask {
     type EntityItem = DebugTaskContext;
     type SystemParam = ();
-    type Data = ();
+    type Data = NoData;
 
     fn activate(
         _task_id: Entity,
@@ -193,7 +208,7 @@ pub struct DebugLongTask;
 impl AbilityTask for DebugLongTask {
     type EntityItem = DebugTaskContext;
     type SystemParam = ();
-    type Data = ();
+    type Data = NoData;
 
     fn activate(
         _task_id: Entity,
@@ -221,7 +236,7 @@ pub struct DebugTaskContext {
     name: Read<Name>,
 }
 
-#[derive(Component, Default, Clone)]
+#[derive(Component, Default, Clone, Reflect)]
 pub struct WaitTask(Timer);
 
 impl WaitTask {
