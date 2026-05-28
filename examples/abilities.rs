@@ -4,7 +4,7 @@ use bevy::ecs::system::lifetimeless::Read;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use vitality::ability::ability_state::AbilityEvent;
-use vitality::ability::tasks::{AbilityTask, Complete, DebugInstantTask, DebugLongTask, TaskItem, TaskParam, TaskStatus, Tasks, task, WaitTask, NoData};
+use vitality::ability::tasks::{AbilityTask, Complete, DebugInstantTask, DebugLongTask, TaskItem, TaskParam, TaskStatus, Tasks, task, WaitTask, NoData, wait_task};
 use vitality::ability::{Abilities, AbilityBuilder, ExecuteAbility, TargetData};
 use vitality::actors::ActorBuilder;
 use vitality::context::Vitality;
@@ -67,7 +67,7 @@ fn setup_ability(mut registry: RegistryMut) {
                     #LongTask
                     task::<DebugLongTask>(NoData),
                     #WaitTask
-                    task::<WaitTask>(WaitTask::from_secs(5.0))
+                    wait_task(3.0)
                     Tasks [
                         (
                             #SpawnFireball

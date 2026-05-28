@@ -7,6 +7,7 @@ use bevy::ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
 use bevy::prelude::*;
 use hfsm_bevy::{MachineEvent, MachineInstance, MachineQuery};
 use std::cmp::PartialEq;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[derive(Component, Default, Copy, Clone, Debug)]
@@ -67,7 +68,7 @@ pub trait AbilityTask: Send + Sync + 'static {
 }
 
 pub fn task<T: AbilityTask>(data: T::Data) -> impl Scene {
-    let cell = std::sync::Arc::new(std::sync::Mutex::new(Some(data)));
+    let cell = Arc::new(Mutex::new(Some(data)));
     bsn! {
         Task
         MachineInstance<TaskMachine>
@@ -76,18 +77,21 @@ pub fn task<T: AbilityTask>(data: T::Data) -> impl Scene {
             let cell = cell.clone();
             move |trigger: On<Add, Task>, mut commands: Commands| {
                 if let Ok(mut guard) = cell.lock() {
-                    // 3. Extract the underlying generic data on the first execution pass
                     if let Some(payload_data) = guard.take() {
                         commands.entity(trigger.entity).insert(payload_data);
+                        commands.entity(trigger.observer()).despawn();
                     }
                 }
             }
         })
-        //template_value(data)
         on(on_execute_task_observer::<T>)
         on(on_task_completed_observer::<T>)
         on(on_task_stopped_observer::<T>)
     }
+}
+
+pub fn wait_task(secs: f32) -> impl Scene {
+    task::<WaitTask>(WaitTask::from_secs(secs))
 }
 
 fn on_execute_task_observer<T: AbilityTask>(
@@ -241,11 +245,15 @@ pub struct WaitTask(Timer);
 
 impl WaitTask {
     pub fn from_secs(seconds: f32) -> Self {
-        Self(Timer::from_seconds(seconds, TimerMode::Once))
+        let mut timer = Timer::from_seconds(seconds, TimerMode::Once);
+        timer.pause();
+        Self(timer)
     }
 
     pub fn from_duration(duration: Duration) -> Self {
-        Self(Timer::new(duration, TimerMode::Once))
+        let mut timer = Timer::new(duration, TimerMode::Once);
+        timer.pause();
+        Self(timer)
     }
 }
 
@@ -256,9 +264,14 @@ impl AbilityTask for WaitTask {
 
     fn activate(
         _task_id: Entity,
-        item: TaskItem<Self>,
+        mut item: TaskItem<Self>,
         _param: &mut TaskParam<Self>,
     ) -> TaskStatus {
+        item.timer.0.reset();
+        item.timer.0.unpause();
+
+        println!("timer reset");
+
         TaskStatus::Running
     }
 
@@ -283,6 +296,7 @@ pub fn handles_wait_task_timers(
         wait_task.0.tick(time.delta());
 
         if wait_task.0.just_finished() {
+            println!("timer just finished");
             abilities.task(task_id).complete();
         }
     }

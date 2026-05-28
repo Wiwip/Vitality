@@ -39,7 +39,6 @@ impl From<TaskState> for StateId {
 #[query_data(mutable)]
 pub struct TaskContext {
     task_id: Entity,
-    //timers: Write<StateTimer<TaskMachine>>,
 }
 impl LocalContext for TaskContext {
     type Item<'w, 's> = <Self as QueryData>::Item<'w, 's>;
@@ -112,17 +111,6 @@ impl MachineState<TaskMachine> for RunningState {
         ctx.view.commands.trigger(ExecuteTask {
             task_id: ctx.task_id,
         });
-
-        // Tells subtasks to activate
-        let Ok(sub_tasks) = ctx.view.tasks.get(ctx.task_id) else {
-            return;
-        };
-        for task_id in sub_tasks.iter() {
-            ctx.view.commands.trigger(MachineEvent {
-                entity: task_id,
-                event: TaskEvent::Activate,
-            });
-        }
     }
 
     fn on_exit(&self, ctx: &mut Access<TaskMachine>) {
@@ -134,15 +122,26 @@ struct CompleteState;
 impl MachineState<TaskMachine> for CompleteState {
     fn on_enter(&self, ctx: &mut Access<TaskMachine>) {
         debug!("[{}] on_enter: Complete Task", ctx.task_id);
+
+        // Complete this task
         ctx.view.commands.trigger(TaskCompleted {
             task_id: ctx.task_id,
         });
 
+        // Tells subtasks to activate
+        if let Ok(sub_tasks) = ctx.view.tasks.get(ctx.task_id) {
+            for task_id in sub_tasks.iter() {
+                ctx.view.commands.trigger(MachineEvent {
+                    entity: task_id,
+                    event: TaskEvent::Activate,
+                });
+            }
+        };
+
+        // Notify parents of completion
         ctx.view.commands.trigger(NotifyTaskCompletion {
             entity: ctx.task_id,
         });
-
-        //ctx.internal_events.push_back(TaskEvent::Reset);
     }
 
     fn on_exit(&self, _ctx: &mut Access<TaskMachine>) {
@@ -157,7 +156,6 @@ impl MachineState<TaskMachine> for StoppedState {
         ctx.view.commands.trigger(TaskStopped {
             task_id: ctx.task_id,
         });
-        //ctx.internal_events.push_back(TaskEvent::Reset);
     }
 
     fn on_exit(&self, _ctx: &mut Access<TaskMachine>) {}
