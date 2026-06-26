@@ -43,7 +43,7 @@ impl EntityCommand for GrantAbilityCommand {
 
         let scene = (ability_def.task_scene)();
 
-        let recovery_observer = |trigger: On<RecalculateExpression>| {
+        let recovery_observer = |_trigger: On<RecalculateExpression>| {
             println!("recalculate expression");
         };
 

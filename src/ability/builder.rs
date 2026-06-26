@@ -12,6 +12,7 @@ use express_it::expr::{AsExpression, BoolExpr, Expr, StoredExpr};
 use express_it::logic::ExprCmpLe;
 use express_it::plan::{AssignmentStep, Plan};
 use num_traits::{AsPrimitive, Num};
+use crate::ability::AbilityCooldown;
 
 pub struct AbilityBuilder {
     name: String,
@@ -91,15 +92,10 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn with_cooldown(mut self, expr: impl AsExpression<f64, EffectExprSchema>) -> Self {
-        //let val = expr.into();
-
+    pub fn with_cooldown(mut self, value: f32) -> Self {
         self.mutators.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
-                /*entity_commands.try_insert(AbilityCooldown {
-                    timer: Timer::from_seconds(0.0, TimerMode::Once),
-                    value: val.clone(),
-                });*/
+                entity_commands.try_insert(AbilityCooldown::new(value));
             },
         ));
         self

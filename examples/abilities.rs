@@ -3,7 +3,6 @@ use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use vitality::ability::ability_state::AbilityEvent;
 use vitality::ability::tasks::{AbilityTask, Complete, DebugInstantTask, DebugLongTask, TaskItem, TaskParam, TaskStatus, Tasks, task, NoData, wait_task};
 use vitality::ability::{Abilities, AbilityBuilder, ExecuteAbility, TargetData};
 use vitality::actors::ActorBuilder;
@@ -120,7 +119,6 @@ impl AbilityTask for TestAbilityTask {
         _task_id: Entity,
         query: TaskItem<Self>,
         _param: &mut TaskParam<Self>,
-        //_abilities: &mut Abilities,
     ) -> TaskStatus {
         println!("[{}] Began AbilityTask", query.entity);
 
@@ -149,12 +147,6 @@ fn inputs(
 ) {
     if keys.just_pressed(KeyCode::KeyQ) {
         abilities.try_activate_by_token(*player, &FIREBALL, TargetData::SelfCast);
-    } else if keys.just_pressed(KeyCode::KeyE) {
-        if let Some(id) = abilities.get_ability_entity(*player, &FIREBALL) {
-            let _ = abilities
-                .machines
-                .dispatch_event(id, AbilityEvent::Recovered);
-        };
     }
 }
 

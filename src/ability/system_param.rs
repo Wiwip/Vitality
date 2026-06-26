@@ -2,8 +2,7 @@ use crate::AttributesRef;
 use crate::ability::ability_state::{AbilityEvent, AbilityMachine, AbilityState};
 use crate::ability::tasks::{Task, TaskScope, Tasks};
 use crate::ability::{
-    Ability, AbilityError, AbilityRecovery, GrantAbilityCommand, GrantedAbilities, TargetData,
-    TryActivateAbility,
+    Ability, AbilityError, GrantAbilityCommand, GrantedAbilities, TargetData,
 };
 use crate::actors::Actor;
 use crate::assets::AbilityDef;
@@ -16,16 +15,8 @@ use hfsm_bevy::MachineQuery;
 
 #[derive(SystemParam)]
 pub struct Abilities<'w, 's> {
-    pub abilities: Query<
-        'w,
-        's,
-        (
-            Read<Ability>,
-            AttributesRef<'static, 'static>,
-            Read<AbilityRecovery>,
-        ),
-        Without<IsResource>,
-    >,
+    pub abilities:
+        Query<'w, 's, (Read<Ability>, AttributesRef<'static, 'static>), Without<IsResource>>,
     pub actors: Query<
         'w,
         's,
@@ -75,17 +66,8 @@ impl<'w, 's> Abilities<'w, 's> {
         Ok(ability_id)
     }
 
-    pub fn try_activate_by_tag<T: Component + Reflect>(
-        &mut self,
-        entity: Entity,
-        target_data: TargetData,
-    ) {
-        self.commands
-            .trigger(TryActivateAbility::by_tag::<T>(entity, target_data));
-    }
-
     pub fn ability_def(&self, entity: Entity) -> Result<&AbilityDef, AbilityError> {
-        let (ability, _, _) = self
+        let (ability, _) = self
             .abilities
             .get(entity)
             .or(Err(AbilityError::AbilityDoesNotExist(entity)))?;
@@ -119,13 +101,35 @@ impl<'w, 's> Abilities<'w, 's> {
     ) -> Option<Entity> {
         let (_, _, granted) = self.actors.get(actor).ok()?;
         for &ability_entity in granted.iter() {
-            if let Ok((ability, _, _)) = self.abilities.get(ability_entity) {
+            if let Ok((ability, _)) = self.abilities.get(ability_entity) {
                 if ability.0 == *handle {
                     return Some(ability_entity);
                 }
             }
         }
         None
+    }
+
+    pub fn get_abilities_by_tag<T: Component + Reflect>(&self, actor: Entity) -> Vec<Entity> {
+        let Ok((_, _, granted)) = self.actors.get(actor) else {
+            return Vec::new();
+        };
+
+        granted
+            .iter()
+            .filter_map(|&ability_entity| {
+                self.abilities
+                    .get(ability_entity)
+                    .ok()
+                    .and_then(|(_, attrs)| {
+                        if attrs.contains::<T>() {
+                            Some(ability_entity)
+                        } else {
+                            None
+                        }
+                    })
+            })
+            .collect()
     }
 
     pub fn has_ability(&self, entity: Entity, token: &AbilityToken) -> bool {
@@ -152,6 +156,26 @@ impl<'w, 's> Abilities<'w, 's> {
                 },
             )
             .expect("Failed to dispatch abilities");
+    }
+
+    pub fn try_activate_by_tag<T: Component + Reflect>(
+        &mut self,
+        actor_id: Entity,
+        target_data: TargetData,
+    ) {
+        let abilities = self.get_abilities_by_tag::<T>(actor_id);
+
+        for ability_id in abilities {
+            self.machines
+                .dispatch_event(
+                    ability_id,
+                    AbilityEvent::TryActivate {
+                        source: actor_id,
+                        target: target_data,
+                    },
+                )
+                .expect("Failed to dispatch abilities");
+        }
     }
 
     pub fn task<'a>(&'a mut self, task_id: Entity) -> TaskScope<'a, 'w, 's> {

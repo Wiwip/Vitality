@@ -21,7 +21,6 @@ pub fn evaluate_effect_conditions(
     >,
     parents: Query<AttributesRef>,
     effects: Res<Assets<EffectDef>>,
-    type_registry: Res<AppTypeRegistry>,
     mut commands: Commands,
 ) {
     for (effect_entity_ref, effect, source, target, status) in query.iter_mut() {
@@ -145,7 +144,7 @@ mod test {
     pub fn fireball_ability() -> AbilityDef {
         AbilityBuilder::new()
             .with_name("Test Ability".into())
-            .with_cooldown(TestB::src())
+            .with_cooldown(3.5)
             .with_cost::<TestB>(3.0)
             .build()
     }

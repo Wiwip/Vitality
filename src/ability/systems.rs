@@ -4,13 +4,11 @@ use crate::ability::{
 use crate::assets::AbilityDef;
 use crate::context::{
     AbilityExprContext, AbilityExprContextMut, AbilityExprSchema, EffectExprContext,
-    EffectExprContextMut,
 };
-use crate::{AppAttributeBindings, AttributesMut, AttributesRef};
+use crate::{AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
-use bevy::reflect::TypeRegistryArc;
 use express_it::expr::{BoolExpr, Expr};
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityRecovery>, time: Res<Time>) {
@@ -47,15 +45,15 @@ pub fn can_activate_ability(
     Ok(true)
 }
 
-#[derive(EntityEvent)]
+/*#[derive(EntityEvent)]
 pub(crate) struct AbilityCooldownReset {
     pub source: Entity,
     pub target: Entity,
     #[event_target]
     pub ability: Entity,
-}
+}*/
 
-pub(crate) fn reset_ability_cooldown(
+/*pub(crate) fn reset_ability_cooldown(
     trigger: On<AbilityCooldownReset>,
     mut cooldowns: Query<(&AbilityOf, &mut AbilityRecovery)>,
     query: Query<AttributesRef>,
@@ -80,7 +78,7 @@ pub(crate) fn reset_ability_cooldown(
         .set_duration(Duration::from_secs_f64(cd_value));
     cooldown.timer.reset();*/
     Ok(())
-}
+}*/
 
 #[derive(EntityEvent)]
 pub struct ActivateAbility {
@@ -118,8 +116,7 @@ pub(crate) fn activate_ability(
         }
 
         // Calculates the costs of the ability and applies them
-        let [caster_mut, ability_mut] =
-            actors.get_many_mut([trigger.source, trigger.ability])?;
+        let [caster_mut, ability_mut] = actors.get_many_mut([trigger.source, trigger.ability])?;
         let mut context = AbilityExprContextMut {
             caster_mut,
             ability_mut,

@@ -13,9 +13,8 @@ use bevy::asset::{Assets, Handle};
 use bevy::ecs::resource::IsResource;
 use bevy::log::debug;
 use bevy::prelude::*;
-use bevy::reflect::TypeRegistryArc;
 use std::cmp::PartialEq;
-use express_it::expr::Expr;
+
 
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
@@ -138,7 +137,6 @@ impl ApplyEffectEvent {
         >,
         commands: &mut Commands,
         effect: &EffectDef,
-        type_registry: TypeRegistryArc,
     ) -> Result<(), BevyError> {
         debug!("Applying instant effect to {}", self.targeting.target());
 
@@ -202,7 +200,6 @@ impl ApplyEffectEvent {
         >,
         effects: &mut Query<&Effect>,
         add_stack_event: &mut MessageWriter<NotifyAddStackEvent>,
-        type_registry: TypeRegistryArc,
         type_bindings: AppAttributeBindings,
     ) -> Result<(), BevyError> {
         // We want to know whether an effect with the same handle already points to the actor
@@ -322,7 +319,6 @@ pub(crate) fn apply_effect_event_observer(
     effect_assets: Res<Assets<EffectDef>>,
     mut writer: MessageWriter<NotifyAddStackEvent>,
     mut commands: Commands,
-    type_registry: Res<AppTypeRegistry>,
     type_bindings: Res<AppAttributeBindings>,
 ) -> Result<(), BevyError> {
     let effect = effect_assets
@@ -334,7 +330,6 @@ pub(crate) fn apply_effect_event_observer(
             &mut actors,
             &mut commands,
             effect,
-            type_registry.0.clone(),
         )?;
     }
 
@@ -345,7 +340,6 @@ pub(crate) fn apply_effect_event_observer(
             &mut actors,
             &mut effects,
             &mut writer,
-            type_registry.0.clone(),
             type_bindings.clone(),
         )?;
     }

@@ -5,7 +5,9 @@ use bevy::window::PresentMode;
 use express_it::plan::Plan;
 use std::fmt::Debug;
 use std::time::Duration;
-use vitality::ability::{AbilityBuilder, ExecuteAbility, TargetData, TryActivateAbility};
+use vitality::ability::{
+    Abilities, AbilityBuilder, ExecuteAbility, TargetData,
+};
 use vitality::actors::ActorBuilder;
 use vitality::assets::{AbilityDef, EffectDef};
 use vitality::attributes::ReflectAccessAttribute;
@@ -210,7 +212,9 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
                     }
                 },
             )
-            .on_execute(Plan::new().step(MaxHealth::add::<Source, _>(5u32 + 8u32 + MaxHealth::src())))
+            .on_execute(
+                Plan::new().step(MaxHealth::add::<Source, _>(5u32 + 8u32 + MaxHealth::src())),
+            )
             .build(),
     );
     commands.insert_resource(AbilityDatabase {
@@ -265,22 +269,16 @@ fn setup_camera(mut commands: Commands) {
 fn inputs(
     mut players: Query<(Entity, &AttackPower), With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
-    mut commands: Commands,
     graph: DependencyGraph,
     actors: Query<Entity, With<Player>>,
+    mut abilities: Abilities,
 ) {
     if let Ok((player_entity, _)) = players.single_mut() {
         if keys.just_pressed(KeyCode::KeyQ) {
-            commands.trigger(TryActivateAbility::by_tag::<Fire>(
-                player_entity,
-                TargetData::SelfCast,
-            ));
+            abilities.try_activate_by_tag::<Fire>(player_entity, TargetData::SelfCast);
         }
         if keys.just_pressed(KeyCode::KeyE) {
-            commands.trigger(TryActivateAbility::by_tag::<Frost>(
-                player_entity,
-                TargetData::SelfCast,
-            ));
+            abilities.try_activate_by_tag::<Frost>(player_entity, TargetData::SelfCast);
         }
         if keys.just_pressed(KeyCode::KeyR) {
             analyze_dependencies_with_petgraph(graph, actors);

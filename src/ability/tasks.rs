@@ -304,19 +304,16 @@ pub fn handles_wait_task_timers(
 
 pub struct TaskScope<'a, 'w, 's> {
     task_id: Option<Entity>,
-    //sub_tasks: Vec<Entity>,
     commands: &'a mut Commands<'w, 's>,
 }
 
 impl<'a, 'w, 's> TaskScope<'a, 'w, 's> {
     pub fn new(
         task: Entity,
-        //sub_tasks: impl IntoIterator<Item = Entity>,
         commands: &'a mut Commands<'w, 's>,
     ) -> Self {
         Self {
             task_id: Some(task),
-            //sub_tasks: sub_tasks.into_iter().collect(),
             commands,
         }
     }
@@ -324,7 +321,6 @@ impl<'a, 'w, 's> TaskScope<'a, 'w, 's> {
     pub fn empty(commands: &'a mut Commands<'w, 's>) -> Self {
         Self {
             task_id: None,
-            //sub_tasks: vec![],
             commands,
         }
     }

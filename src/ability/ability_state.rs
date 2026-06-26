@@ -2,13 +2,15 @@ use crate::AttributesRef;
 use crate::ability::systems::can_activate_ability;
 use crate::ability::task_states::{TaskEvent, TaskMachine, TaskState};
 use crate::ability::tasks::Tasks;
-use crate::ability::{Ability, AbilityRecovery, GrantedAbilities, TargetData};
+use crate::ability::{Ability, AbilityCooldown, AbilityRecovery, GrantedAbilities, TargetData};
 use crate::actors::Actor;
+use crate::attributes::Attribute;
+use crate::context::AbilityExprContext;
 use crate::registry::Registry;
 use bevy::ecs::query::QueryData;
 use bevy::ecs::resource::IsResource;
 use bevy::ecs::system::SystemParam;
-use bevy::ecs::system::lifetimeless::Read;
+use bevy::ecs::system::lifetimeless::{Read, Write};
 use bevy::log::{error, warn};
 use bevy::prelude::{
     AppTypeRegistry, Commands, Entity, Query, RelationshipTarget, Res, Without, debug,
@@ -16,9 +18,8 @@ use bevy::prelude::{
 use express_it::expr::BoolExpr;
 use hfsm_bevy::{
     Access, EventResult, ExternalContext, LocalContext, Machine, MachineDefinition, MachineQuery,
-    MachineState, StateId,
+    MachineState, StateId, StateTimer,
 };
-use crate::context::AbilityExprContext;
 
 pub struct AbilityMachine;
 impl Machine for AbilityMachine {
@@ -45,7 +46,9 @@ impl From<AbilityState> for StateId {
 #[query_data(mutable)]
 pub struct AbilityContext {
     ability_id: Entity,
-    //timers: Write<StateTimer<AbilityMachine>>,
+    recovery_timer: Write<AbilityRecovery>,
+    cooldown: Read<AbilityCooldown>,
+    timers: Write<StateTimer<AbilityMachine>>,
 }
 impl LocalContext for AbilityContext {
     type Item<'w, 's> = <Self as QueryData>::Item<'w, 's>;
@@ -60,7 +63,7 @@ pub struct AbilitySystemParam<'w, 's> {
             Read<Ability>,
             AttributesRef<'static, 'static>,
             Read<Tasks>,
-            Read<AbilityRecovery>,
+            //Read<AbilityRecovery>,
         ),
         Without<IsResource>,
     >,
@@ -125,8 +128,7 @@ impl MachineState<AbilityMachine> for ReadyState {
         debug!("on_event: {:?}", event);
         match event {
             AbilityEvent::TryActivate { source, target } => {
-                let Ok((ability, ability_ref, _, opt_cooldown)) =
-                    ctx.view.abilities.get(ctx.ability_id)
+                let Ok((ability, ability_ref, tasks)) = ctx.view.abilities.get(ctx.ability_id)
                 else {
                     return EventResult::Ignored;
                 };
@@ -164,13 +166,10 @@ impl MachineState<AbilityMachine> for ReadyState {
                     target_ref: Some(target_entity_ref),
                 };
 
-                let can_activate = can_activate_ability(
-                    &context,
-                    &ability_spec,
-                    &BoolExpr::new(|_ctx| true),
-                )
-                .ok()
-                .unwrap_or(false);
+                let can_activate =
+                    can_activate_ability(&context, &ability_spec, &BoolExpr::new(|_ctx| true))
+                        .ok()
+                        .unwrap_or(false);
 
                 if can_activate {
                     ctx.internal_events.push_back(AbilityEvent::Activate);
@@ -187,7 +186,7 @@ struct ActiveState;
 impl MachineState<AbilityMachine> for ActiveState {
     fn on_enter(&self, ctx: &mut Access<AbilityMachine>) {
         debug!("[{}] Ability enter ActiveState", ctx.ability_id);
-        let Ok((_, _, tasks, _)) = ctx.view.abilities.get(ctx.ability_id) else {
+        let Ok((_, _, tasks)) = ctx.view.abilities.get(ctx.ability_id) else {
             error!("Activated an unavailable ability.");
             return;
         };
@@ -217,6 +216,16 @@ impl MachineState<AbilityMachine> for RecoveryState {
     fn on_enter(&self, ctx: &mut Access<AbilityMachine>) {
         debug!("on_enter: CooldownState");
 
+        // Reset recovery elapsed timer
+        ctx.data.recovery_timer.set_base_value(0.0);
+
+        // Sets the recovery timer cooldown. Uses a snapshotting model.
+        ctx.data.timers.set_timer(
+            ctx.data.cooldown.val(),
+            AbilityEvent::Recovered,
+            AbilityState::Recovery,
+        );
+
         for task_id in ctx.view.tasks.iter_descendants(ctx.ability_id) {
             if ctx
                 .view
@@ -230,6 +239,7 @@ impl MachineState<AbilityMachine> for RecoveryState {
             }
         }
     }
+
     fn on_exit(&self, ctx: &mut Access<AbilityMachine>) {
         for task_id in ctx.view.tasks.iter_descendants(ctx.ability_id) {
             ctx.view

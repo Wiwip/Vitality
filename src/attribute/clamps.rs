@@ -33,7 +33,6 @@ pub fn update_clamps<T: Attribute>(
     trigger: On<CurrentValueChanged<T>>,
     mut set: ParamSet<(Query<(&Actor, AttributesRef)>, Query<&mut Clamp<T>>)>,
     actor_assets: Res<Assets<ActorDef>>,
-    type_registry: Res<AppTypeRegistry>,
 ) -> Result<(), BevyError> {
     let (min_value, max_value) = {
         let p0 = set.p0();
