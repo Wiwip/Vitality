@@ -1,8 +1,8 @@
 use crate::AttributesRef;
-use crate::ability::ability_state::{AbilityEvent, AbilityMachine};
+use crate::ability::ability_state::{AbilityEvent, AbilityMachine, AbilityState};
 use crate::ability::tasks::{Task, TaskScope, Tasks};
 use crate::ability::{
-    Ability, AbilityCooldown, AbilityError, GrantAbilityCommand, GrantedAbilities, TargetData,
+    Ability, AbilityError, AbilityRecovery, GrantAbilityCommand, GrantedAbilities, TargetData,
     TryActivateAbility,
 };
 use crate::actors::Actor;
@@ -22,7 +22,7 @@ pub struct Abilities<'w, 's> {
         (
             Read<Ability>,
             AttributesRef<'static, 'static>,
-            Option<Read<AbilityCooldown>>,
+            Read<AbilityRecovery>,
         ),
         Without<IsResource>,
     >,
@@ -99,12 +99,8 @@ impl<'w, 's> Abilities<'w, 's> {
     }
 
     pub fn is_ability_ready(&self, ability_entity: Entity) -> bool {
-        if let Ok((_, _, cooldown)) = self.abilities.get(ability_entity) {
-            if let Some(cooldown) = cooldown {
-                return cooldown.timer.is_finished();
-            }
-        }
-        true
+        self.machines
+            .is_in_state(ability_entity, AbilityState::Ready)
     }
 
     pub fn get_ability_from_token(&self, token: &AbilityToken) -> Handle<AbilityDef> {

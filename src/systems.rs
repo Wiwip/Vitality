@@ -173,7 +173,7 @@ fn update_effect_tree_attributes<T: Attribute>(
                         return None;
                     }
 
-                    let calc = AttributeCalculator::convert(modifier).unwrap_or_default();
+                    let calc = AttributeCalculator::convert(modifier);
 
                     Some(calc)
                 })
@@ -248,7 +248,6 @@ pub fn apply_periodic_effect<T: Attribute>(
     modifiers: Query<&AttributeModifier<T>>,
     mut event_writer: MessageWriter<ApplyAttributeModifierMessage<T>>,
     effect_assets: Res<Assets<EffectDef>>,
-    type_registry: Res<AppTypeRegistry>,
 ) {
     for (effect_ref, effect, timer, owned_modifiers, target, source) in effects.iter() {
         if !timer.just_finished() {
@@ -264,17 +263,16 @@ pub fn apply_periodic_effect<T: Attribute>(
         let target_actor_ref = actors.get(target.0).unwrap();
 
         let context = EffectExprContext {
-            target_actor: &target_actor_ref,
-            source_actor: &source_actor_ref,
-            effect_holder: &effect_ref,
-            type_registry: type_registry.0.clone(),
+            target_actor: Some(target_actor_ref),
+            source_actor: source_actor_ref,
+            effect_holder: effect_ref,
         };
 
         // Determines whether the effect should activate
         let should_be_activated = effect_def
             .activate_conditions
             .iter()
-            .all(|condition| condition.eval(&context).unwrap_or(false));
+            .all(|condition| condition.eval(&context));
 
         if !should_be_activated {
             continue;

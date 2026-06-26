@@ -4,7 +4,7 @@ use bevy::ecs::system::lifetimeless::Read;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use vitality::ability::ability_state::AbilityEvent;
-use vitality::ability::tasks::{AbilityTask, Complete, DebugInstantTask, DebugLongTask, TaskItem, TaskParam, TaskStatus, Tasks, task, WaitTask, NoData, wait_task};
+use vitality::ability::tasks::{AbilityTask, Complete, DebugInstantTask, DebugLongTask, TaskItem, TaskParam, TaskStatus, Tasks, task, NoData, wait_task};
 use vitality::ability::{Abilities, AbilityBuilder, ExecuteAbility, TargetData};
 use vitality::actors::ActorBuilder;
 use vitality::context::Vitality;
@@ -94,6 +94,7 @@ fn setup_actor(mut vitality: Vitality) {
         .name("Actor".into())
         .with::<Health>(10.0)
         .with::<Damage>(2.0)
+        .clamp::<Health>(0.0, 1.0)
         .insert((DebugOverlayMarker, Player))
         .build();
 

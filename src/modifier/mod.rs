@@ -7,7 +7,6 @@ use crate::prelude::*;
 use bevy::prelude::{Component, Entity, EntityCommands, Reflect, reflect_trait};
 pub use calculator::{AttributeCalculator, AttributeCalculatorCached, ModOp};
 pub use events::{ApplyAttributeModifierMessage, apply_modifier_events};
-use express_it::context::Path;
 pub use modifier::AttributeModifier;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -53,7 +52,7 @@ impl Display for EffectSubject {
     }
 }
 
-impl TryFrom<&Path> for EffectSubject {
+/*impl TryFrom<&Path> for EffectSubject {
     type Error = String;
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
         let root = path.0.split('.').next().unwrap_or("");
@@ -64,7 +63,7 @@ impl TryFrom<&Path> for EffectSubject {
             _ => Err(format!("'{}' is not a valid EffectSubject", root)),
         }
     }
-}
+}*/
 
 impl From<EffectSubject> for SmolStr {
     fn from(value: EffectSubject) -> Self {
@@ -79,7 +78,7 @@ pub enum AbilitySubject {
     Target,
 }
 
-impl TryFrom<&Path> for AbilitySubject {
+/*impl TryFrom<&Path> for AbilitySubject {
     type Error = String;
 
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
@@ -96,7 +95,7 @@ impl TryFrom<&Path> for AbilitySubject {
             _ => Err(format!("Unknown subject alias: {}", root)),
         }
     }
-}
+}*/
 
 impl Display for AbilitySubject {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -119,7 +118,7 @@ pub enum ActorSubject {
     Actor,
 }
 
-impl TryFrom<&Path> for ActorSubject {
+/*impl TryFrom<&Path> for ActorSubject {
     type Error = String;
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
         let root = path.0.split('.').next().unwrap_or("");
@@ -128,7 +127,7 @@ impl TryFrom<&Path> for ActorSubject {
             _ => Err(format!("'{}' is not a valid ActorSubject", root)),
         }
     }
-}
+}*/
 
 impl Display for ActorSubject {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

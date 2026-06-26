@@ -2,14 +2,14 @@ use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
-use express_it::frame::LazyPlan;
+use express_it::plan::Plan;
 use std::fmt::Debug;
 use std::time::Duration;
 use vitality::ability::{AbilityBuilder, ExecuteAbility, TargetData, TryActivateAbility};
 use vitality::actors::ActorBuilder;
 use vitality::assets::{AbilityDef, EffectDef};
 use vitality::attributes::ReflectAccessAttribute;
-use vitality::context::Vitality;
+use vitality::context::{Source, Vitality};
 use vitality::effect::{Effect, EffectStackingPolicy};
 use vitality::graph::DependencyGraph;
 use vitality::inspector::ActorInspectorPlugin;
@@ -210,10 +210,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
                     }
                 },
             )
-            .on_execute(LazyPlan::new().step(MaxHealth::add::<AbilityExprSchema>(
-                EffectSubject::Source,
-                5,
-            )))
+            .on_execute(Plan::new().step(MaxHealth::add::<Source, _>(5u32 + 8u32 + MaxHealth::src())))
             .build(),
     );
     commands.insert_resource(AbilityDatabase {

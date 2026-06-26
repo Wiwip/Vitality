@@ -1,24 +1,26 @@
-use crate::ability::AbilityCooldown;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
-use crate::context::{AbilityExprSchema, EffectExprSchema};
+use crate::context::{
+    AbilityExprContext, AbilityExprContextMut, AbilityExprSchema, ActorExprSchema, EffectExprSchema,
+};
 use crate::inspector::pretty_type_name;
-use crate::modifier::{AttributeCalculatorCached, EffectSubject};
+use crate::modifier::AttributeCalculatorCached;
 use crate::mutator::EntityActions;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
-use express_it::expr::Expr;
-use express_it::frame::LazyPlan;
-use express_it::logic::{BoolExpr, CompareExpr};
+use express_it::expr::{AsExpression, BoolExpr, Expr, StoredExpr};
+use express_it::logic::ExprCmpLe;
+use express_it::plan::{AssignmentStep, Plan};
 use num_traits::{AsPrimitive, Num};
 
 pub struct AbilityBuilder {
     name: String,
     mutators: Vec<EntityActions>,
     triggers: Vec<EntityActions>,
-    cost_condition: Vec<BoolExpr<AbilityExprSchema>>,
-    cost_modifiers: LazyPlan,
-    on_execute: Vec<LazyPlan>,
+    cost_condition: Vec<StoredExpr<bool, AbilityExprSchema>>,
+    cost_modifiers: Plan<AbilityExprSchema>,
+    on_execute: Vec<Plan<AbilityExprSchema>>,
+    recovery_condition: Vec<BoolExpr<ActorExprSchema>>,
     scene: Box<dyn Fn() -> Box<dyn Scene> + Send + Sync>,
 }
 
@@ -29,8 +31,9 @@ impl AbilityBuilder {
             mutators: Default::default(),
             triggers: vec![],
             cost_condition: vec![],
-            cost_modifiers: LazyPlan::new(),
+            cost_modifiers: Plan::new(),
             on_execute: vec![],
+            recovery_condition: vec![],
             scene: Box::new(|| Box::new(())),
         }
     }
@@ -49,29 +52,54 @@ impl AbilityBuilder {
 
     pub fn with_cost<T: Attribute>(
         mut self,
-        cost: impl Into<Expr<T::Property, AbilityExprSchema>>,
+        cost: impl AsExpression<T::Property, AbilityExprSchema, Target: Copy + 'static>,
     ) -> Self
     where
-        Expr<T::Property, AbilityExprSchema>: CompareExpr<AbilityExprSchema>,
+        T::Property: std::cmp::PartialOrd + Copy + 'static,
     {
-        let cost_expr = cost.into();
-        let cost_assignment = T::sub(EffectSubject::Source, cost_expr.clone());
-        self.cost_modifiers = self.cost_modifiers.step(cost_assignment);
+        let cost_expr = cost.as_expr();
+        let node_expr = express_it::nodes::Node {
+            expr: cost_expr,
+            _marker: Default::default(),
+        };
+        let step = AssignmentStep {
+            setter_fn: |ctx: &mut AbilityExprContextMut, val: T::Property| match ctx
+                .caster_mut
+                .get_mut::<T>()
+            {
+                None => {
+                    error!("Error during assignment step. No attribute found.")
+                }
+                Some(mut attr) => attr.set_base_value(val),
+            },
+            expr: cost_expr,
+            cache_key: None,
+            _marker: std::marker::PhantomData,
+        };
 
-        let cost_expr = cost_expr.le(T::src());
-        self.cost_condition.push(cost_expr);
+        let plan = Plan::new().step(step);
+        self.cost_modifiers = plan;
+
+        let t_src = express_it::nodes::Node::<T::Property, AbilityExprSchema, _>::new(
+            |ctx: &AbilityExprContext| ctx.caster_ref.get::<T>().unwrap().current_value(),
+        );
+
+        // This will now compile because E satisfies the comparison trait and hasn't been moved
+        let cost_condition = node_expr.le(t_src);
+
+        self.cost_condition.push(Box::new(cost_condition));
         self
     }
 
-    pub fn with_cooldown(mut self, expr: impl Into<Expr<f64, EffectExprSchema>>) -> Self {
-        let val = expr.into();
+    pub fn with_cooldown(mut self, expr: impl AsExpression<f64, EffectExprSchema>) -> Self {
+        //let val = expr.into();
 
         self.mutators.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
-                entity_commands.try_insert(AbilityCooldown {
+                /*entity_commands.try_insert(AbilityCooldown {
                     timer: Timer::from_seconds(0.0, TimerMode::Once),
                     value: val.clone(),
-                });
+                });*/
             },
         ));
         self
@@ -89,7 +117,7 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn on_execute(mut self, plan: LazyPlan) -> Self {
+    pub fn on_execute(mut self, plan: Plan<AbilityExprSchema>) -> Self {
         self.on_execute.push(plan);
         self
     }
@@ -170,7 +198,8 @@ impl AbilityBuilder {
             execution_conditions: vec![],
             cost_modifiers: self.cost_modifiers,
 
-            scene: self.scene,
+            task_scene: self.scene,
+            recovery_condition: self.recovery_condition,
             on_execute: self.on_execute,
         }
     }

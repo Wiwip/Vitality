@@ -2,7 +2,7 @@ use crate::AttributesRef;
 use crate::ability::systems::can_activate_ability;
 use crate::ability::task_states::{TaskEvent, TaskMachine, TaskState};
 use crate::ability::tasks::Tasks;
-use crate::ability::{Ability, AbilityCooldown, GrantedAbilities, TargetData};
+use crate::ability::{Ability, AbilityRecovery, GrantedAbilities, TargetData};
 use crate::actors::Actor;
 use crate::registry::Registry;
 use bevy::ecs::query::QueryData;
@@ -13,11 +13,12 @@ use bevy::log::{error, warn};
 use bevy::prelude::{
     AppTypeRegistry, Commands, Entity, Query, RelationshipTarget, Res, Without, debug,
 };
-use express_it::logic::BoolExpr;
+use express_it::expr::BoolExpr;
 use hfsm_bevy::{
     Access, EventResult, ExternalContext, LocalContext, Machine, MachineDefinition, MachineQuery,
     MachineState, StateId,
 };
+use crate::context::AbilityExprContext;
 
 pub struct AbilityMachine;
 impl Machine for AbilityMachine {
@@ -59,7 +60,7 @@ pub struct AbilitySystemParam<'w, 's> {
             Read<Ability>,
             AttributesRef<'static, 'static>,
             Read<Tasks>,
-            Option<Read<AbilityCooldown>>,
+            Read<AbilityRecovery>,
         ),
         Without<IsResource>,
     >,
@@ -102,7 +103,7 @@ fn build_machine() -> MachineDefinition<AbilityMachine> {
             .on(AbilityEvent::EndAbility, AbilityState::Recovery)
             .on(AbilityEvent::CancelAbility, AbilityState::Recovery);
 
-        root.leaf(AbilityState::Recovery, "Cooldown", CooldownState)
+        root.leaf(AbilityState::Recovery, "Cooldown", RecoveryState)
             .on(AbilityEvent::Recovered, AbilityState::Ready);
     })
     .build()
@@ -149,16 +150,6 @@ impl MachineState<AbilityMachine> for ReadyState {
                     }
                 };
 
-                // Handle cooldowns
-                let is_finished = match opt_cooldown {
-                    None => true,
-                    Some(cd) => cd.timer.is_finished(),
-                };
-                if !is_finished {
-                    return EventResult::Ignored;
-                }
-
-                // Get the ability spec from assets
                 let ability_spec = ctx
                     .view
                     .registry
@@ -167,13 +158,16 @@ impl MachineState<AbilityMachine> for ReadyState {
                     .ok_or("No ability asset.")
                     .unwrap();
 
+                let context = AbilityExprContext {
+                    caster_ref: source_entity_ref,
+                    ability_ref,
+                    target_ref: Some(target_entity_ref),
+                };
+
                 let can_activate = can_activate_ability(
-                    &ability_ref,
-                    &source_entity_ref,
-                    &target_entity_ref,
+                    &context,
                     &ability_spec,
-                    &BoolExpr::true_(),
-                    &ctx.view.type_registry.0.clone(),
+                    &BoolExpr::new(|_ctx| true),
                 )
                 .ok()
                 .unwrap_or(false);
@@ -218,8 +212,8 @@ impl MachineState<AbilityMachine> for ActiveState {
     }
 }
 
-struct CooldownState;
-impl MachineState<AbilityMachine> for CooldownState {
+struct RecoveryState;
+impl MachineState<AbilityMachine> for RecoveryState {
     fn on_enter(&self, ctx: &mut Access<AbilityMachine>) {
         debug!("on_enter: CooldownState");
 

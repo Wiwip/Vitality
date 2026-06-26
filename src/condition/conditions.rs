@@ -7,15 +7,13 @@ use crate::modifier::EffectSubject;
 use bevy::asset::AssetId;
 use bevy::prelude::{Component, TypePath};
 use bevy::reflect::Reflect;
-use express_it::context::{Path, ReadContext};
-use express_it::expr::{Expr, ExprNode, ExpressionError};
-use express_it::logic::{BoolExpr, BoolExprNode};
+use express_it::expr::Expr;
 use serde::Serialize;
+use std::any::TypeId;
 use std::collections::HashSet;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
-use std::sync::Arc;
 
 #[derive(TypePath)]
 pub struct IsAttributeWithinBounds<T: Attribute> {
@@ -52,31 +50,25 @@ impl<T: Attribute> std::fmt::Debug for IsAttributeWithinBounds<T> {
     }
 }
 
-impl<T: Attribute> ExprNode<bool, EffectExprSchema> for IsAttributeWithinBounds<T> {
-    fn eval(&self, ctx: &EffectExprContext) -> Result<bool, ExpressionError> {
-        let type_name = pretty_type_name::<T>();
-        let full_path = Path::new(format!("{}.{}.base_value", self.who, type_name));
+impl<T: Attribute> Expr<bool, EffectExprSchema> for IsAttributeWithinBounds<T> {
+    fn eval(&self, ctx: &EffectExprContext) -> bool {
+        let opt_attribute = match self.who {
+            EffectSubject::Target => match ctx.target_actor {
+                Some(target) => target.get::<T>(),
+                None => ctx.source_actor.get::<T>(),
+            },
+            EffectSubject::Source => ctx.source_actor.get::<T>(),
+            EffectSubject::Effect => ctx.effect_holder.get::<T>(),
+        };
+        let Some(attribute) = opt_attribute else {
+            return false;
+        };
 
-        let any = ctx.get_any(&full_path)?;
-        let value = any.downcast_ref::<T::Property>().unwrap();
-
-        Ok(self.bounds.contains(&value))
+        self.bounds.contains(&attribute.val())
     }
 
-    fn eval_dyn(&self, _ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
-        todo!()
-    }
-
-    fn get_dependencies(&self, _deps: &mut HashSet<Path>) {
-        let type_name = pretty_type_name::<T>();
-        _deps.insert(Path::new(type_name));
-    }
-}
-
-impl<T: Attribute> Into<BoolExpr<EffectExprSchema>> for IsAttributeWithinBounds<T> {
-    fn into(self) -> BoolExpr<EffectExprSchema> {
-        let node = BoolExprNode::Boxed(Box::new(self));
-        Expr::new(Arc::new(node))
+    fn get_dependencies(&self, deps: &mut HashSet<TypeId>) {
+        deps.insert(TypeId::of::<T>());
     }
 }
 
@@ -110,16 +102,10 @@ impl<T: Attribute> std::fmt::Display for IsAttributeWithinBounds<T> {
 #[derive(Serialize)]
 pub struct ChanceCondition(pub f32);
 
-impl ExprNode<bool, EffectExprSchema> for ChanceCondition {
-    fn eval(&self, _: &EffectExprContext) -> Result<bool, ExpressionError> {
-        Ok(rand::random::<f32>() < self.0)
+impl Expr<bool, EffectExprSchema> for ChanceCondition {
+    fn eval(&self, _: &EffectExprContext) -> bool {
+        rand::random::<f32>() < self.0
     }
-
-    fn eval_dyn(&self, _ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
-        todo!()
-    }
-
-    fn get_dependencies(&self, _deps: &mut HashSet<Path>) {}
 }
 
 impl std::fmt::Debug for ChanceCondition {
@@ -155,41 +141,37 @@ impl<C: Component> HasComponent<C> {
     }
 }
 
-impl<C: Component + Reflect> ExprNode<bool, EffectExprSchema> for HasComponent<C> {
-    fn eval(&self, ctx: &EffectExprContext) -> Result<bool, ExpressionError> {
-        let path = Path::new(format!("source.{}", pretty_type_name::<C>()));
-        let any = ctx.get_any(&path);
-        Ok(any.is_ok())
+impl<C: Component + Reflect> Expr<bool, EffectExprSchema> for HasComponent<C> {
+    fn eval(&self, ctx: &EffectExprContext) -> bool {
+        match self.who {
+            EffectSubject::Target => match ctx.target_actor {
+                Some(target) => target.get::<C>().is_some(),
+                None => ctx.source_actor.get::<C>().is_some(),
+            },
+            EffectSubject::Source => ctx.source_actor.get::<C>().is_some(),
+            EffectSubject::Effect => ctx.effect_holder.get::<C>().is_some(),
+        }
     }
 
-    fn eval_dyn(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
-        let path = Path::new(format!("source.{}", pretty_type_name::<C>()));
-        let any = ctx.get_any(&path);
-        Ok(any.is_ok())
-    }
-
-    fn get_dependencies(&self, deps: &mut HashSet<Path>) {
-        let type_name = pretty_type_name::<C>();
-        deps.insert(Path::new(type_name));
+    fn get_dependencies(&self, deps: &mut HashSet<TypeId>) {
+        deps.insert(TypeId::of::<C>());
     }
 }
 
-impl<C: Component + Reflect> ExprNode<bool, AbilityExprSchema> for HasComponent<C> {
-    fn eval(&self, ctx: &AbilityExprContext) -> Result<bool, ExpressionError> {
-        let path = Path::new(format!("ability.{}", pretty_type_name::<C>()));
-        let any = ctx.get_any(&path);
-        Ok(any.is_ok())
+impl<C: Component + Reflect> Expr<bool, AbilityExprSchema> for HasComponent<C> {
+    fn eval(&self, ctx: &AbilityExprContext) -> bool {
+        match self.who {
+            EffectSubject::Target => match ctx.target_ref {
+                Some(target) => target.get::<C>().is_some(),
+                None => ctx.caster_ref.get::<C>().is_some(),
+            },
+            EffectSubject::Source => ctx.caster_ref.get::<C>().is_some(),
+            EffectSubject::Effect => ctx.ability_ref.get::<C>().is_some(),
+        }
     }
 
-    fn eval_dyn(&self, ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
-        let path = Path::new(format!("ability.{}", pretty_type_name::<C>()));
-        let any = ctx.get_any(&path);
-        Ok(any.is_ok())
-    }
-
-    fn get_dependencies(&self, _deps: &mut HashSet<Path>) {
-        let type_name = pretty_type_name::<C>();
-        _deps.insert(Path::new(type_name));
+    fn get_dependencies(&self, deps: &mut HashSet<TypeId>) {
+        deps.insert(TypeId::of::<C>());
     }
 }
 
@@ -209,21 +191,18 @@ impl IsAbility {
     }
 }
 
-impl ExprNode<bool, AbilityExprSchema> for IsAbility {
-    fn eval(&self, ctx: &AbilityExprContext) -> Result<bool, ExpressionError> {
-        let path = Path::new("ability.Ability");
+impl Expr<bool, AbilityExprSchema> for IsAbility {
+    fn eval(&self, ctx: &AbilityExprContext) -> bool {
+        let ability = match ctx.ability_ref.get::<Ability>() {
+            Some(ability) => ability,
+            _ => {
+                return false;
+            }
+        };
 
-        let any = ctx.get_any(&path)?;
-        let value = any.downcast_ref::<Ability>().unwrap();
-
-        Ok(value.0.id() == self.asset)
+        ability.0.id() == self.asset
     }
-
-    fn eval_dyn(&self, _ctx: &dyn ReadContext) -> Result<bool, ExpressionError> {
-        todo!()
-    }
-
-    fn get_dependencies(&self, _deps: &mut HashSet<Path>) {}
+    fn get_dependencies(&self, _deps: &mut HashSet<TypeId>) {}
 }
 
 impl std::fmt::Debug for IsAbility {

@@ -5,7 +5,6 @@ use crate::effect::timing::EffectDuration;
 use crate::prelude::Attribute;
 use crate::{ReflectAccessAttribute, attribute_impl};
 use bevy::prelude::*;
-use express_it::expr::ExprSchema;
 use num_traits::AsPrimitive;
 
 pub enum EffectStackingPolicy {

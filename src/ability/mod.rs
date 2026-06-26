@@ -6,24 +6,28 @@ mod systems;
 pub mod task_states;
 pub mod tasks;
 
-use crate::ability::ability_state::{AbilityMachine, setup_ability_machine_definition};
+use crate::ability::ability_state::{setup_ability_machine_definition, AbilityMachine};
 use crate::ability::systems::{activate_ability, reset_ability_cooldown, tick_ability_cooldown};
-use crate::ability::task_states::{TaskMachine, setup_task_machine_definition};
-use crate::ability::tasks::{Tasks, handles_wait_task_timers, on_task_completion_notification};
+use crate::ability::task_states::{setup_task_machine_definition, TaskMachine};
+use crate::ability::tasks::{handles_wait_task_timers, on_task_completion_notification, Tasks};
 use crate::assets::AbilityDef;
 use crate::condition::{HasComponent, IsAbility};
-use crate::context::AbilityExprSchema;
-use crate::prelude::EffectExprSchema;
+use crate::context::{AbilityExprSchema, ActorProvider};
+use crate::prelude::{Attribute, EffectExprSchema};
 use crate::schedule::EffectsSet;
+use crate::AttributeCalculatorCached;
+use crate::ReflectAccessAttribute;
 use bevy::prelude::*;
 pub use builder::AbilityBuilder;
 pub use command::GrantAbilityCommand;
-use express_it::expr::Expr;
-use express_it::logic::{BoolExpr, BoolExprNode};
 use hfsm_bevy::StateMachinePlugin;
+use num_traits::{AsPrimitive, Num};
+use smol_str::SmolStr;
 use std::error::Error;
 use std::fmt::Formatter;
 use std::sync::Arc;
+use std::time::Duration;
+use express_it::expr::{BoolExpr, StoredExpr};
 pub use system_param::Abilities;
 
 pub struct AbilityPlugin;
@@ -36,7 +40,6 @@ impl Plugin for AbilityPlugin {
             .add_systems(PreStartup, setup_task_machine_definition)
             .add_systems(Update, tick_ability_cooldown.in_set(EffectsSet::Prepare))
             .add_systems(PreUpdate, handles_wait_task_timers)
-            //.add_observer(try_activate_ability_observer)
             .add_observer(reset_ability_cooldown)
             .add_observer(activate_ability)
             .add_observer(on_task_completion_notification)
@@ -63,44 +66,41 @@ impl GrantedAbilities {
 
 #[derive(Component, Reflect)]
 #[reflect(Component)]
-#[require(Tasks)]
+#[require(Tasks, AbilityRecovery)]
 pub struct Ability(pub(crate) Handle<AbilityDef>);
 
 #[derive(EntityEvent)]
 pub struct TryActivateAbility {
     #[event_target]
     actor_entity: Entity,
-    _condition: BoolExpr<AbilityExprSchema>,
-    _target_data: TargetData,
+    condition: StoredExpr<bool, AbilityExprSchema>,
+    target_data: TargetData,
 }
 
 impl TryActivateAbility {
     pub fn by_tag<T: Component + Reflect>(target: Entity, target_data: TargetData) -> Self {
-        let node = BoolExprNode::Boxed(Box::new(HasComponent::<T>::effect()));
-        let expr = Expr::new(Arc::new(node));
+        let node = HasComponent::<T>::effect();
+        let expr = express_it::nodes::Node {
+            expr: node,
+            _marker: Default::default(),
+        };
 
         Self {
             actor_entity: target,
-            _condition: expr,
-            _target_data: target_data,
+            condition: Box::new(expr),
+            target_data,
         }
     }
     pub fn by_def(target: Entity, handle: AssetId<AbilityDef>, target_data: TargetData) -> Self {
-        let node = BoolExprNode::Boxed(Box::new(IsAbility::new(handle)));
-        let expr = Expr::new(Arc::new(node));
-
-        Self {
+        //let node = BoolExprNode::Boxed(Box::new(IsAbility::new(handle)));
+        //let expr = Expr::new(Arc::new(node));
+        todo!();
+        /*Self {
             actor_entity: target,
             _condition: expr,
             _target_data: target_data,
-        }
+        }*/
     }
-}
-
-#[derive(Component)]
-pub struct AbilityCooldown {
-    pub(crate) timer: Timer,
-    pub(crate) value: Expr<f64, EffectExprSchema>,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -166,3 +166,52 @@ impl std::fmt::Display for AbilityError {
 }
 
 impl Error for AbilityError {}
+
+#[derive(Component, Debug, Copy, Clone, Reflect, Default)]
+#[require(AttributeCalculatorCached<AbilityRecovery>)]
+#[reflect(Component, AccessAttribute)]
+pub struct AbilityRecovery {
+    duration: Duration,
+}
+
+impl Attribute for AbilityRecovery {
+    type Property = f32;
+
+    fn new<T>(value: T) -> Self
+    where
+        T: Num + AsPrimitive<Self::Property> + Copy,
+    {
+        Self {
+            duration: Duration::from_secs_f32(value.as_()),
+        }
+    }
+    fn base_value(&self) -> f32 {
+        self.duration.as_secs_f32()
+    }
+    fn base(&self) -> f32 {
+        self.duration.as_secs_f32()
+    }
+    fn set_base_value(&mut self, value: f32) {
+        self.duration = Duration::from_secs_f32(value);
+    }
+    fn current_value(&self) -> f32 {
+        self.duration.as_secs_f32()
+    }
+    fn val(&self) -> f32 {
+        self.duration.as_secs_f32()
+    }
+    fn set_current_value(&mut self, value: f32) {
+        self.duration = Duration::from_secs_f32(value);
+    }
+}
+
+impl std::fmt::Display for AbilityRecovery {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}: {:.1}",
+            stringify!($StructName),
+            self.duration.as_secs_f32()
+        )
+    }
+}

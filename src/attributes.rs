@@ -1,23 +1,33 @@
-use crate::context::{AbilityExprSchema, ActorExprSchema, EffectExprSchema};
-use crate::effect::AttributeDependents;
+use crate::ability::Ability;
+use crate::context::{
+    ActorProvider, ActorProviderMut,
+    EffectExprContext, EffectExprContextMut, EffectExprSchema, Source, Target,
+};
+use crate::effect::{AttributeDependents, Effect};
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
 use crate::systems::MarkNodeDirty;
+use crate::{AttributesMut, AttributesRef};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
-use bevy::prelude::*;
-use bevy::reflect::{GetTypeRegistration, Typed};
-use express_it::expr::{Expr, ExprNode, ExprSchema, SelectExprNodeImpl};
-use express_it::frame::Assignment;
+use bevy::log::error;
+use bevy::prelude::{
+    Changed, Commands, Component, Entity, EntityEvent, Insert, On, Query, Reflect,
+    RelationshipTarget, TypePath,
+};
+use bevy::reflect::{GetTypeRegistration, Typed, reflect_trait};
+use express_it::expr::{AsExpression, Context, ContextMut, Expr};
+use express_it::nodes::Node;
+use express_it::plan::AssignmentStep;
 use num_traits::NumCast;
 pub use num_traits::{
     AsPrimitive, Bounded, FromPrimitive, Num, NumAssign, NumAssignOps, NumOps, Saturating,
     SaturatingAdd, SaturatingMul, Zero,
 };
-use smol_str::SmolStr;
-use std::any::Any;
+use std::any::TypeId;
 use std::collections::HashSet;
+use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::iter::Sum;
@@ -30,9 +40,6 @@ where
     Self: GetTypeRegistration + Typed + Send + Sync,
     Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff,
     Self: FromPrimitive + AsPrimitive<f64> + Reflect,
-    Self: SelectExprNodeImpl<EffectExprSchema, Property = Self>,
-    Self: SelectExprNodeImpl<ActorExprSchema, Property = Self>,
-    Self: SelectExprNodeImpl<AbilityExprSchema, Property = Self>,
 {
 }
 
@@ -43,9 +50,6 @@ where
     Self: GetTypeRegistration + Typed + Send + Sync,
     Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff,
     Self: FromPrimitive + AsPrimitive<f64> + Reflect,
-    Self: SelectExprNodeImpl<EffectExprSchema, Property = Self>,
-    Self: SelectExprNodeImpl<ActorExprSchema, Property = Self>,
-    Self: SelectExprNodeImpl<AbilityExprSchema, Property = Self>,
 {
 }
 
@@ -55,7 +59,6 @@ where
     Self: Reflect + TypePath + GetTypeRegistration,
 {
     type Property: Value;
-    type ExprType<S: ExprSchema>: ExprNode<Self::Property, S>;
 
     fn new<T: Num + AsPrimitive<Self::Property> + Copy>(value: T) -> Self;
     fn base_value(&self) -> Self::Property;
@@ -63,47 +66,105 @@ where
     fn set_base_value(&mut self, value: Self::Property);
     fn current_value(&self) -> Self::Property;
     fn val(&self) -> Self::Property;
-    fn borrow_current_value(&self) -> &Self::Property;
     fn set_current_value(&mut self, value: Self::Property);
-    // Helper to wrap attribute access in an Expression
-    fn src<S: ExprSchema>() -> Expr<Self::Property, S>
-    where
-        Self::Property: SelectExprNodeImpl<S>;
-    fn dst<S: ExprSchema>() -> Expr<Self::Property, S>
-    where
-        Self::Property: SelectExprNodeImpl<S>;
-    fn parent<S: ExprSchema>() -> Expr<Self::Property, S>
-    where
-        Self::Property: SelectExprNodeImpl<S>;
-    fn scoped<S: ExprSchema>(subject: impl Into<SmolStr>) -> Expr<Self::Property, S>
-    where
-        Self::Property: SelectExprNodeImpl<S>;
-    fn lit<S: ExprSchema>(value: Self::Property) -> Expr<Self::Property, S>
-    where
-        Self::Property: SelectExprNodeImpl<S>;
-    // Expression helpers
-    fn set<S: ExprSchema>(
-        subject: impl Into<SmolStr>,
-        expr: impl Into<Expr<Self::Property, S>>,
-    ) -> Assignment<Self::Property, S>
-    where
-        Self::Property: SelectExprNodeImpl<S>;
-    fn add<S: ExprSchema>(
-        subject: impl Into<SmolStr> + Copy,
-        expr: impl Into<Expr<Self::Property, S>>,
-    ) -> Assignment<Self::Property, S>
-    where
-        Self::Property: SelectExprNodeImpl<S>;
-    fn sub<S: ExprSchema>(
-        subject: impl Into<SmolStr> + Copy,
-        expr: impl Into<Expr<Self::Property, S>>,
-    ) -> Assignment<Self::Property, S>
-    where
-        Self::Property: SelectExprNodeImpl<S>;
-}
 
-// Move expression-related functions to this subtrait.
-pub trait ExprAttribute: Attribute {}
+    // Helper to wrap attribute access in an Expression
+    fn src<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
+    where
+        C: Context,
+        for<'a, 'b> C::ContextItem<'a, 'b>:
+            ActorProvider<'a, 'b, Source, ActorRef = AttributesRef<'a, 'b>>,
+    {
+        Self::at::<Source, C>()
+    }
+    fn dst<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
+    where
+        C: Context,
+        for<'a, 'b> C::ContextItem<'a, 'b>:
+            ActorProvider<'a, 'b, Target, ActorRef = AttributesRef<'a, 'b>>,
+    {
+        Self::at::<Target, C>()
+    }
+    fn ability<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
+    where
+        C: Context,
+        for<'a, 'b> C::ContextItem<'a, 'b>:
+            ActorProvider<'a, 'b, Ability, ActorRef = AttributesRef<'a, 'b>>,
+    {
+        Self::at::<Ability, C>()
+    }
+    fn effect<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
+    where
+        C: Context,
+        for<'a, 'b> C::ContextItem<'a, 'b>:
+            ActorProvider<'a, 'b, Effect, ActorRef = AttributesRef<'a, 'b>>,
+    {
+        Self::at::<Effect, C>()
+    }
+    fn at<Role, C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
+    where
+        C: Context,
+        for<'a, 'b> C::ContextItem<'a, 'b>:
+            ActorProvider<'a, 'b, Role, ActorRef = AttributesRef<'a, 'b>>,
+    {
+        Node {
+            expr: AttributeVar {
+                fetch_fn: |ctx: &C::ContextItem<'_, '_>| {
+                    ctx.get_actor().get::<Self>().unwrap().current_value()
+                },
+                _marker: Default::default(),
+            },
+            _marker: Default::default(),
+        }
+    }
+    fn at_base<Role, C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
+    where
+        C: Context,
+        for<'a, 'b> C::ContextItem<'a, 'b>:
+            ActorProvider<'a, 'b, Role, ActorRef = AttributesRef<'a, 'b>>,
+    {
+        Node {
+            expr: AttributeVar {
+                fetch_fn: |ctx: &C::ContextItem<'_, '_>| {
+                    ctx.get_actor().get::<Self>().unwrap().base_value()
+                },
+                _marker: Default::default(),
+            },
+            _marker: Default::default(),
+        }
+    }
+
+    fn add<Role, C: ContextMut>(
+        expr: impl AsExpression<Self::Property, C, Target: Copy + Send + Sync + 'static>,
+    ) -> AssignmentStep<
+        Self::Property,
+        impl Expr<Self::Property, C> + Copy + Send + Sync + 'static,
+        impl Fn(&mut C::ContextItemMut<'_, '_>, Self::Property) + 'static + Send + Sync,
+    >
+    where
+        Role: 'static,
+        C: ContextMut + 'static,
+        for<'a, 'b> C::ContextItemMut<'a, 'b>:
+            ActorProviderMut<'a, 'b, Role, ActorMut = AttributesMut<'a, 'b>>,
+    {
+        let expr = expr.as_expr();
+
+        AssignmentStep {
+            setter_fn: |ctx: &mut C::ContextItemMut<'_, '_>, val: Self::Property| {
+                let actor = ActorProviderMut::<Role>::get_actor_mut(ctx);
+                match actor.get_mut::<Self>() {
+                    None => {
+                        error!("Error during assignment step. No attribute found.")
+                    }
+                    Some(mut attr) => attr.set_base_value(val),
+                }
+            },
+            expr,
+            cache_key: None,
+            _marker: Default::default(),
+        }
+    }
+}
 
 #[macro_export]
 macro_rules! attribute_impl {
@@ -127,7 +188,6 @@ macro_rules! attribute_impl {
 
         impl $crate::attributes::Attribute for $StructName {
             type Property = $ValueType;
-            type ExprType<S: ExprSchema> = $crate::express_it::expr::SelectExprNode<$ValueType, S>;
 
             fn new<T>(value: T) -> Self
             where
@@ -153,100 +213,8 @@ macro_rules! attribute_impl {
             fn val(&self) -> $ValueType {
                 self.current_value
             }
-            fn borrow_current_value(&self) -> &$ValueType {
-                &self.current_value
-            }
             fn set_current_value(&mut self, value: $ValueType) {
                 self.current_value = value;
-            }
-            fn src<S: ExprSchema>() -> $crate::express_it::expr::Expr<Self::Property, S> {
-                $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    $crate::express_it::context::Path::from_type_name::<Self>(
-                        $crate::modifier::EffectSubject::Source,
-                        "current_value",
-                    ),
-                )))
-            }
-            fn dst<S: ExprSchema>() -> $crate::express_it::expr::Expr<Self::Property, S> {
-                $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    $crate::express_it::context::Path::from_type_name::<Self>(
-                        $crate::modifier::EffectSubject::Target,
-                        "current_value",
-                    ),
-                )))
-            }
-            fn parent<S: ExprSchema>() -> $crate::express_it::expr::Expr<Self::Property, S> {
-                $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    $crate::express_it::context::Path::from_type_name::<Self>(
-                        $crate::modifier::EffectSubject::Effect,
-                        "current_value",
-                    ),
-                )))
-            }
-            fn scoped<S: ExprSchema>(
-                subject: impl Into<smol_str::SmolStr>,
-            ) -> $crate::express_it::expr::Expr<Self::Property, S> {
-                $crate::express_it::expr::Expr::new(std::sync::Arc::new(Self::ExprType::Attribute(
-                    $crate::express_it::context::Path::from_type_name::<Self>(
-                        subject,
-                        "base_value",
-                    ),
-                )))
-            }
-            fn lit<S: ExprSchema>(
-                value: $ValueType,
-            ) -> $crate::express_it::expr::Expr<Self::Property, S> {
-                $crate::express_it::expr::Expr::<Self::Property, S>::new(std::sync::Arc::new(
-                    Self::ExprType::Lit(value),
-                ))
-            }
-            fn set<S: ExprSchema>(
-                subject: impl Into<smol_str::SmolStr>,
-                expr: impl Into<$crate::express_it::expr::Expr<Self::Property, S>>,
-            ) -> $crate::express_it::frame::Assignment<Self::Property, S> {
-                $crate::express_it::frame::Assignment {
-                    path: $crate::express_it::context::Path::from_type_name::<Self>(
-                        subject,
-                        "base_value",
-                    ),
-                    expr: expr.into(),
-                }
-            }
-            fn add<S: ExprSchema>(
-                subject: impl Into<smol_str::SmolStr> + std::marker::Copy,
-                expr: impl Into<$crate::express_it::expr::Expr<Self::Property, S>>,
-            ) -> $crate::express_it::frame::Assignment<Self::Property, S> {
-                let get_expr = $crate::express_it::expr::Expr::new(std::sync::Arc::new(
-                    Self::ExprType::Attribute($crate::express_it::context::Path::from_type_name::<
-                        Self,
-                    >(subject, "base_value")),
-                ));
-
-                $crate::express_it::frame::Assignment {
-                    path: $crate::express_it::context::Path::from_type_name::<Self>(
-                        subject,
-                        "base_value",
-                    ),
-                    expr: get_expr + expr.into(),
-                }
-            }
-            fn sub<S: ExprSchema>(
-                subject: impl Into<smol_str::SmolStr> + std::marker::Copy,
-                expr: impl Into<$crate::express_it::expr::Expr<Self::Property, S>>,
-            ) -> $crate::express_it::frame::Assignment<Self::Property, S> {
-                let get_expr = $crate::express_it::expr::Expr::new(std::sync::Arc::new(
-                    Self::ExprType::Attribute($crate::express_it::context::Path::from_type_name::<
-                        Self,
-                    >(subject, "base_value")),
-                ));
-
-                $crate::express_it::frame::Assignment {
-                    path: $crate::express_it::context::Path::from_type_name::<Self>(
-                        subject,
-                        "base_value",
-                    ),
-                    expr: get_expr - expr.into(),
-                }
             }
         }
 
@@ -325,7 +293,6 @@ impl<T: Attribute> AttributeQueryDataItem<'_, '_, T> {
 pub trait AccessAttribute {
     fn access_base_value(&self) -> f64;
     fn access_current_value(&self) -> f64;
-    fn any_current_value(&self) -> &dyn Any;
     fn name(&self) -> String;
 }
 
@@ -338,9 +305,6 @@ where
     }
     fn access_current_value(&self) -> f64 {
         self.current_value().as_()
-    }
-    fn any_current_value(&self) -> &dyn Any {
-        self.borrow_current_value()
     }
     fn name(&self) -> String {
         pretty_type_name::<T>()
@@ -386,5 +350,34 @@ pub fn on_change_notify_attribute_parents<T: Attribute>(
             entity,
             phantom_data: Default::default(),
         });
+    }
+}
+
+pub struct AttributeVar<T, N, C: Context> {
+    pub fetch_fn: for<'w, 's> fn(&C::ContextItem<'w, 's>) -> N,
+    _marker: PhantomData<T>,
+}
+impl<T, N, C: Context> Clone for AttributeVar<T, N, C> {
+    fn clone(&self) -> Self {
+        Self {
+            fetch_fn: self.fetch_fn,
+            _marker: Default::default(),
+        }
+    }
+}
+impl<T: 'static, N: 'static, C: Context + 'static> Expr<N, C> for AttributeVar<T, N, C> {
+    #[inline(always)]
+    fn eval(&self, ctx: &C::ContextItem<'_, '_>) -> N {
+        (self.fetch_fn)(ctx)
+    }
+
+    fn get_dependencies(&self, deps: &mut HashSet<TypeId>) {
+        deps.insert(TypeId::of::<T>());
+    }
+}
+impl<T, N, C: Context> Copy for AttributeVar<T, N, C> {}
+impl<T, N: fmt::Display, C: Context> fmt::Display for AttributeVar<T, N, C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", pretty_type_name::<T>())
     }
 }

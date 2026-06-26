@@ -21,11 +21,10 @@ pub fn apply_modifier_events<T: Attribute>(
     mut event_reader: MessageReader<ApplyAttributeModifierMessage<T>>,
     mut attributes: Query<AttributesMut, Without<IsResource>>,
     mut commands: Commands,
-    type_registry: Res<AppTypeRegistry>,
 ) {
     for ev in event_reader.read() {
         let has_changed =
-            apply_modifier(&ev, &mut attributes, type_registry.0.clone()).unwrap_or(false);
+            apply_modifier(&ev, &mut attributes).unwrap_or(false);
 
         if has_changed {
             commands.trigger(MarkNodeDirty::<T> {
@@ -39,7 +38,6 @@ pub fn apply_modifier_events<T: Attribute>(
 pub fn apply_modifier<T: Attribute>(
     trigger: &ApplyAttributeModifierMessage<T>,
     attributes: &mut Query<AttributesMut, Without<IsResource>>,
-    type_registry: TypeRegistryArc,
 ) -> Result<bool, BevyError> {
     let query = [trigger.source_entity, trigger.target_entity];
     let [source, target] = attributes.get_many(query)?;
@@ -55,18 +53,15 @@ pub fn apply_modifier<T: Attribute>(
 
     // We update the modifier's internal value before applying it.
     let context = EffectExprContext {
-        source_actor: &source,
-        target_actor: &target, // Needs to be fixed.
-        effect_holder: &source,
-        type_registry: type_registry.clone(),
+        source_actor: source,
+        target_actor: Some(target), // Needs to be fixed.
+        effect_holder: source,
     };
     let mut modifier = trigger.modifier.clone();
     modifier.update_value(&context);
 
     // Apply the modifier
-    let Ok(calculator) = AttributeCalculator::<T>::convert(&modifier) else {
-        return Err(format!("Could not convert modifier {} to calculator.", modifier,).into());
-    };
+    let calculator = AttributeCalculator::<T>::convert(&modifier);
     let new_base_value = calculator.eval(base_value);
 
     let has_changed = new_base_value.are_different(base_value);

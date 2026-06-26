@@ -1,134 +1,44 @@
 use crate::ability::{
-    Ability, AbilityCooldown, AbilityOf, BeginAbility, EndAbility, ExecuteAbility,
+    Ability, AbilityOf, AbilityRecovery, BeginAbility, EndAbility, ExecuteAbility,
 };
 use crate::assets::AbilityDef;
 use crate::context::{
-    AbilityExprContext, AbilityExprSchema, EffectExprContext, EffectExprContextMut,
+    AbilityExprContext, AbilityExprContextMut, AbilityExprSchema, EffectExprContext,
+    EffectExprContextMut,
 };
 use crate::{AppAttributeBindings, AttributesMut, AttributesRef};
 use bevy::asset::Assets;
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
-use express_it::logic::BoolExpr;
-use std::time::Duration;
+use express_it::expr::{BoolExpr, Expr};
 
-pub fn tick_ability_cooldown(mut query: Query<&mut AbilityCooldown>, time: Res<Time>) {
-    query.par_iter_mut().for_each(|mut cooldown| {
-        cooldown.timer.tick(time.delta());
+pub fn tick_ability_cooldown(mut query: Query<&mut AbilityRecovery>, time: Res<Time>) {
+    query.par_iter_mut().for_each(|mut recovery| {
+        recovery.duration += time.delta();
     });
 }
 
-/// Tries to activate an ability.
-///
-/// Base conditions are:
-/// - Cooldown
-/// - Conditions
-/// - Cost
-/*pub fn try_activate_ability_observer(
-    trigger: On<TryActivateAbility>,
-    actors: Query<
-        (AttributesRef, &GrantedAbilities),
-        (Without<AbilityCooldown>, Without<IsResource>),
-    >,
-    abilities: Query<(AttributesRef, &Ability, Option<&AbilityCooldown>)>,
-    ability_assets: Res<Assets<AbilityDef>>,
-    mut commands: Commands,
-    type_registry: Res<AppTypeRegistry>,
-) -> Result<(), BevyError> {
-    let Ok((source_entity_ref, actor_abilities)) = actors.get(trigger.actor_entity) else {
-        warn!("The Actor({}) has no GrantedAbilities", trigger.actor_entity);
-        return Ok(());
-    };
-
-    let target_entity_ref = match trigger.target_data {
-        TargetData::SelfCast => source_entity_ref,
-        TargetData::Target(target) => {
-            let Ok((entity, _)) = actors.get(target) else {
-                return Ok(());
-            };
-            entity
-        }
-    };
-
-    for &ability_entity in actor_abilities.0.iter() {
-        let (ability_ref, ability, opt_cooldown) = abilities
-            .get(ability_entity)
-            .expect("Ability not found in: try_activate_ability_observer.");
-
-        // Handle cooldowns
-        let is_finished = match opt_cooldown {
-            None => true,
-            Some(cd) => cd.timer.is_finished(),
-        };
-        if !is_finished {
-            continue;
-        }
-
-        let ability_spec = ability_assets
-            .get(&ability.0.clone())
-            .ok_or("No ability asset.")?;
-
-        let can_activate = can_activate_ability(
-            &ability_ref,
-            &source_entity_ref,
-            &target_entity_ref,
-            &ability_spec,
-            &trigger.condition,
-            &type_registry.0.clone(),
-        )
-        .ok()
-        .unwrap_or(false);
-
-        if can_activate {
-            commands.trigger(AbilityCooldownReset {
-                target: target_entity_ref.id(),
-                source: source_entity_ref.id(),
-                ability: ability_entity,
-            });
-            commands.trigger(ActivateAbility {
-                target: target_entity_ref.id(),
-                source: source_entity_ref.id(),
-                ability: ability_entity,
-            });
-        }
-    }
-    Ok(())
-}*/
-
 pub fn can_activate_ability(
-    ability_ref: &AttributesRef,
-    caster_ref: &AttributesRef,
-    target_ref: &AttributesRef,
+    context: &AbilityExprContext,
     ability_def: &AbilityDef,
     conditions: &BoolExpr<AbilityExprSchema>,
-    type_registry: &TypeRegistryArc,
 ) -> Result<bool, BevyError> {
-    let context = AbilityExprContext {
-        target_ref,
-        caster_ref,
-        ability_ref,
-        type_registry: type_registry.clone(),
-    };
-
-    let meet_conditions = conditions.eval(&context).unwrap_or_else(|err| {
-        error_once!("Condition error: {:?}", err);
-        false
-    });
+    let meet_conditions = conditions.eval(context);
 
     if !meet_conditions {
-        debug!(
+        /*debug!(
             "Ability({}) conditions not met for: {}.",
-            ability_ref.id(),
+            //ability_ref.id(),
             ability_def.name
-        );
+        );*/
         return Ok(false);
     }
 
     let can_activate = ability_def
         .cost_condition
         .iter()
-        .all(|condition| condition.eval(&context).unwrap_or(false));
+        .all(|condition| condition.eval(context));
 
     if !can_activate {
         debug!("Insufficient resources to activate ability!");
@@ -147,9 +57,8 @@ pub(crate) struct AbilityCooldownReset {
 
 pub(crate) fn reset_ability_cooldown(
     trigger: On<AbilityCooldownReset>,
-    mut cooldowns: Query<(&AbilityOf, &mut AbilityCooldown)>,
+    mut cooldowns: Query<(&AbilityOf, &mut AbilityRecovery)>,
     query: Query<AttributesRef>,
-    type_registry: Res<AppTypeRegistry>,
 ) -> Result<(), BevyError> {
     let Ok((_parent, mut cooldown)) = cooldowns.get_mut(trigger.ability) else {
         // This event does not affect an ability without a cooldown.
@@ -159,18 +68,17 @@ pub(crate) fn reset_ability_cooldown(
     let [source, target, owner] =
         query.get_many([trigger.source, trigger.target, trigger.ability])?;
     let context = EffectExprContext {
-        target_actor: &source,
-        source_actor: &target,
-        effect_holder: &owner,
-        type_registry: type_registry.0.clone(),
+        target_actor: Some(target),
+        source_actor: source,
+        effect_holder: owner,
     };
 
-    let cd_value = cooldown.value.eval(&context)?;
+    /*let cd_value = cooldown.value.eval(&context)?;
 
     cooldown
         .timer
         .set_duration(Duration::from_secs_f64(cd_value));
-    cooldown.timer.reset();
+    cooldown.timer.reset();*/
     Ok(())
 }
 
@@ -185,11 +93,9 @@ pub struct ActivateAbility {
 /// Bypass [TryActivateAbility]'s checks. Usually triggered after a successful [TryActivateAbility].
 pub(crate) fn activate_ability(
     trigger: On<ActivateAbility>,
-    mut actors: Query<AttributesMut<'static, 'static>, Without<IsResource>>,
+    mut actors: Query<AttributesMut, Without<IsResource>>,
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
-    type_registry: Res<AppTypeRegistry>,
-    type_bindings: Res<AppAttributeBindings>,
 ) -> Result<(), BevyError> {
     debug!("{}: Commit ability cost.", trigger.ability);
     let actor = actors.get(trigger.ability)?;
@@ -200,93 +106,48 @@ pub(crate) fn activate_ability(
 
     if trigger.source == trigger.target {
         for plan in &ability_spec.on_execute {
-            let [source, ability] = actors.get_many([trigger.source, trigger.ability])?;
-            let immutable_context = AbilityExprContext {
-                caster_ref: &source,
-                target_ref: &source,
-                ability_ref: &ability,
-                type_registry: type_registry.0.clone(),
-            };
-            let output = plan.eval(&immutable_context)?;
-
-            let [mut source, mut owner] = actors.get_many_mut([trigger.source, trigger.ability])?;
-            let mut context = EffectExprContextMut {
-                source_actor: &mut source,
-                target_actor: None,
-                owner: &mut owner,
-                type_registry: type_registry.0.clone(),
-                type_bindings: type_bindings.clone(),
+            let [caster_mut, ability_mut] =
+                actors.get_many_mut([trigger.source, trigger.ability])?;
+            let mut context = AbilityExprContextMut {
+                caster_mut,
+                ability_mut,
+                target_mut: None,
             };
 
-            output.flush_into(&mut context);
+            plan.run(&mut context);
         }
 
         // Calculates the costs of the ability and applies them
-        let [source, ability] = actors.get_many([trigger.source, trigger.ability])?;
-        let immutable_context = AbilityExprContext {
-            caster_ref: &source,
-            target_ref: &source,
-            ability_ref: &ability,
-            type_registry: type_registry.0.clone(),
+        let [caster_mut, ability_mut] =
+            actors.get_many_mut([trigger.source, trigger.ability])?;
+        let mut context = AbilityExprContextMut {
+            caster_mut,
+            ability_mut,
+            target_mut: None,
         };
-
-        let plan_results = ability_spec.cost_modifiers.eval(&immutable_context)?;
-
-        let [mut source, mut owner] = actors.get_many_mut([trigger.source, trigger.ability])?;
-        let mut context = EffectExprContextMut {
-            source_actor: &mut source,
-            target_actor: None,
-            owner: &mut owner,
-            type_registry: type_registry.0.clone(),
-            type_bindings: type_bindings.clone(),
-        };
-
-        plan_results.flush_into(&mut context);
+        ability_spec.cost_modifiers.run(&mut context);
     } else {
         for plan in &ability_spec.on_execute {
-            let [source, target, ability] =
-                actors.get_many([trigger.source, trigger.target, trigger.ability])?;
-            let immutable_context = AbilityExprContext {
-                caster_ref: &source,
-                target_ref: &target,
-                ability_ref: &ability,
-                type_registry: type_registry.0.clone(),
-            };
-            let output = plan.eval(&immutable_context)?;
-
-            let [mut source, mut target, mut owner] =
+            let [caster_mut, target_mut, ability_mut] =
                 actors.get_many_mut([trigger.source, trigger.target, trigger.ability])?;
-            let mut context = EffectExprContextMut {
-                source_actor: &mut source,
-                target_actor: Some(&mut target),
-                owner: &mut owner,
-                type_registry: type_registry.0.clone(),
-                type_bindings: type_bindings.clone(),
-            };
+            let mut context = AbilityExprContextMut {
+                caster_mut,
 
-            output.flush_into(&mut context);
+                ability_mut,
+                target_mut: Some(target_mut),
+            };
+            plan.run(&mut context);
         }
 
         // Calculates the costs of the ability and applies them
-        let [source, ability] = actors.get_many([trigger.source, trigger.ability])?;
-        let immutable_context = AbilityExprContext {
-            caster_ref: &source,
-            target_ref: &source,
-            ability_ref: &ability,
-            type_registry: type_registry.0.clone(),
+        let [caster_mut, target_mut, ability_mut] =
+            actors.get_many_mut([trigger.source, trigger.target, trigger.ability])?;
+        let mut context = AbilityExprContextMut {
+            caster_mut,
+            ability_mut,
+            target_mut: Some(target_mut),
         };
-        let plan_results = ability_spec.cost_modifiers.eval(&immutable_context)?;
-
-        let [mut source, mut owner] = actors.get_many_mut([trigger.source, trigger.ability])?;
-        let mut context = EffectExprContextMut {
-            source_actor: &mut source,
-            target_actor: None,
-            owner: &mut owner,
-            type_registry: type_registry.0.clone(),
-            type_bindings: type_bindings.clone(),
-        };
-
-        plan_results.flush_into(&mut context);
+        ability_spec.cost_modifiers.run(&mut context);
     };
 
     // Activate the ability

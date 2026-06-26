@@ -1,5 +1,5 @@
 use crate::ability::tasks::Tasks;
-use crate::ability::{Ability, AbilityCooldown, GrantedAbilities};
+use crate::ability::{Ability, AbilityRecovery, GrantedAbilities};
 use crate::actors::Actor;
 use crate::attributes::ReflectAccessAttribute;
 use crate::effect::{AppliedEffects, Effect, Stacks};
@@ -43,7 +43,7 @@ pub fn explore_actors_system(
     actors: Query<(EntityRef, Option<&AppliedEffects>), (With<Actor>, With<DebugOverlayMarker>)>,
     effects: Query<(&Effect, &Stacks, Option<&Name>, Option<&OwnedModifiers>)>,
     granted_abilities: Query<&GrantedAbilities>,
-    ability_query: Query<(&Ability, Option<&AbilityCooldown>, Option<&Name>)>,
+    ability_query: Query<(&Ability, Option<&AbilityRecovery>, Option<&Name>)>,
     tasks: Query<&Tasks>,
     names: Query<&Name>,
     modifiers: Query<EntityRef, With<ModifierMarker>>,
@@ -222,23 +222,23 @@ fn list_tasks(
 fn list_abilities(
     builder: &mut TreeBuilder,
     abilities: &GrantedAbilities,
-    ability_query: &Query<(&Ability, Option<&AbilityCooldown>, Option<&Name>)>,
+    ability_query: &Query<(&Ability, Option<&AbilityRecovery>, Option<&Name>)>,
     task_query: &Query<&Tasks>,
     names: &Query<&Name>,
 ) {
     builder.begin_child("Abilities".to_string());
     for ability_entity in abilities.iter() {
-        let Ok((_ability, cooldown, name)) = ability_query.get(*ability_entity) else {
+        let Ok((_ability, recovery, name)) = ability_query.get(*ability_entity) else {
             continue;
         };
 
         let name = name.map(|n| n.as_str()).unwrap_or("Ability");
-        let cooldown_str = if let Some(cooldown) = cooldown {
-            format!(" ({:.1}s)", cooldown.timer.remaining_secs())
+        let cooldown_str = if let Some(cooldown) = recovery {
+            format!(" ({:.1}s)", cooldown.current_value())
         } else {
             "".to_string()
         };
-
+        
         builder.begin_child(format!("[{ability_entity}] {name}{cooldown_str}"));
 
         if let Ok(tasks) = task_query.get(*ability_entity) {

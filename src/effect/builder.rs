@@ -8,8 +8,8 @@ use crate::modifier::{AttributeModifier, EffectSubject, ModOp};
 use crate::mutator::EntityActions;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
-use express_it::expr::Expr;
-use express_it::logic::{BoolExpr, BoolExprNode};
+use express_it::expr::{AsExpression, Expr};
+use express_it::nodes::Node;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
@@ -82,13 +82,13 @@ impl EffectBuilder {
     /// ```
     pub fn modify<T: Attribute>(
         mut self,
-        expr: impl Into<Expr<T::Property, EffectExprSchema>>,
+        expr: impl AsExpression<T::Property, EffectExprSchema> + Send + Sync + 'static,
         op: ModOp,
         who: EffectSubject,
     ) -> Self {
-        let expr = expr.into();
+        let expr = expr.as_expr();
         self.def.modifiers.push(Box::new(AttributeModifier::<T> {
-            expr: expr.clone(),
+            expr: Arc::new(expr),
             value: T::Property::default(),
             who,
             operation: op,
@@ -112,13 +112,19 @@ impl EffectBuilder {
     ///     .attach_if(ChanceCondition(0.10))
     ///     .build()
     /// ```
-    pub fn attach_if(mut self, condition: impl Into<BoolExpr<EffectExprSchema>>) -> Self {
-        self.def.attach_conditions.push(condition.into());
+    pub fn attach_if(
+        mut self,
+        condition: impl Expr<bool, EffectExprSchema> + Send + Sync + 'static,
+    ) -> Self {
+        self.def.attach_conditions.push(Box::new(condition));
         self
     }
 
-    pub fn active_while(mut self, condition: impl Into<BoolExpr<EffectExprSchema>>) -> Self {
-        self.def.activate_conditions.push(condition.into());
+    pub fn active_while(
+        mut self,
+        condition: impl Expr<bool, EffectExprSchema> + Send + Sync + 'static,
+    ) -> Self {
+        self.def.activate_conditions.push(Box::new(condition));
         self
     }
 
@@ -150,9 +156,8 @@ impl EffectBuilder {
         mut self,
         range: impl RangeBounds<T::Property> + Send + Sync + 'static,
     ) -> Self {
-        let predicate = IsAttributeWithinBounds::<T>::new(range, EffectSubject::Source);
-        let node = BoolExprNode::Boxed(Box::new(predicate));
-        self.def.activate_conditions.push(Expr::new(Arc::new(node)));
+        let expr = IsAttributeWithinBounds::<T>::new(range, EffectSubject::Source);
+        self.def.activate_conditions.push(Box::new(expr));
         self
     }
 
@@ -160,10 +165,8 @@ impl EffectBuilder {
         mut self,
         range: impl RangeBounds<T::Property> + Send + Sync + 'static,
     ) -> Self {
-        let predicate = IsAttributeWithinBounds::<T>::new(range, EffectSubject::Target);
-        let node = BoolExprNode::Boxed(Box::new(predicate));
-
-        self.def.activate_conditions.push(Expr::new(Arc::new(node)));
+        let expr = IsAttributeWithinBounds::<T>::new(range, EffectSubject::Target);
+        self.def.activate_conditions.push(Box::new(expr));
         self
     }
 

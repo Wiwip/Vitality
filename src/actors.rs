@@ -10,10 +10,10 @@ use crate::mutator::EntityActions;
 use crate::prelude::*;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use express_it::expr::{Expr, ExprNode};
+use express_it::expr::{AsExpression, Expr};
 use num_traits::{AsPrimitive, Num};
 use smol_str::SmolStr;
-use std::any::type_name_of_val;
+use std::any::{Any, TypeId, type_name_of_val};
 use std::collections::HashSet;
 
 #[derive(Component, Clone, Debug, Deref)]
@@ -124,33 +124,35 @@ impl ActorBuilder {
 
     pub fn clamp<T>(
         mut self,
-        min_expr: impl Into<Expr<T::Property, ActorExprSchema>> + Send + Sync + 'static,
-        max_expr: impl Into<Expr<T::Property, ActorExprSchema>> + Send + Sync + 'static,
+        min: impl AsExpression<T::Property, ActorExprSchema> + Send + Sync + 'static,
+        max: impl AsExpression<T::Property, ActorExprSchema> + Send + Sync + 'static,
     ) -> ActorBuilder
     where
         T: Attribute,
     {
-        let min_expr = min_expr.into();
-        let max_expr = max_expr.into();
+        let min_expr = min.as_expr();
+        let max_expr = max.as_expr();
 
         // Insert dependencies for reverse lookup
         let mut paths = HashSet::default();
-        min_expr.inner.get_dependencies(&mut paths);
-        max_expr.inner.get_dependencies(&mut paths);
+        min_expr.get_dependencies(&mut paths);
+        max_expr.get_dependencies(&mut paths);
         debug!(
             "Clamp<{}> dependencies: {:?}",
             pretty_type_name::<T>(),
             paths
         );
 
-        let pair = (min_expr.clone(), max_expr.clone());
-        debug!("storing clamp exprs as: {}", type_name_of_val(&pair));
+        let min_erased: Box<dyn Expr<T::Property, ActorExprSchema> + Send + Sync> =
+            Box::new(min_expr);
+        let max_erased: Box<dyn Expr<T::Property, ActorExprSchema> + Send + Sync> =
+            Box::new(max_expr);
+        let stored_exprs: Box<dyn Any + Send + Sync> = Box::new((min_erased, max_erased));
 
         // Insert expressions
-        let type_name = pretty_type_name::<T>();
         self.actor
             .clamp_exprs
-            .insert(SmolStr::new(type_name), Box::new((min_expr, max_expr)));
+            .insert(TypeId::of::<T>(), stored_exprs);
 
         self.actor.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {

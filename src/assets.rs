@@ -4,11 +4,12 @@ use crate::modifier::ModifierFn;
 use crate::modifier::modifier::Modifier;
 use crate::mutator::EntityActions;
 use bevy::prelude::*;
-use express_it::frame::LazyPlan;
-use express_it::logic::BoolExpr;
 use smol_str::SmolStr;
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::collections::{HashMap, VecDeque};
+use express_it::expr::{BoolExpr, StoredExpr};
+use express_it::plan::Plan;
+use crate::prelude::ActorExprSchema;
 
 #[derive(Asset, TypePath)]
 pub struct ActorDef {
@@ -20,7 +21,7 @@ pub struct ActorDef {
 
     // The value below is hidden behind 'Any' but actually:
     // Box<(Expr<T::Property>, Expr<T::Property>)>
-    pub clamp_exprs: HashMap<SmolStr, Box<dyn Any + Send + Sync>>,
+    pub clamp_exprs: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
     pub clamp_reverse_lookup: HashMap<SmolStr, Vec<SmolStr>>,
 }
 
@@ -31,8 +32,8 @@ pub struct EffectDef {
     pub effect_fn: Vec<Box<ModifierFn>>,
     pub modifiers: Vec<Box<dyn Modifier>>,
 
-    pub attach_conditions: Vec<BoolExpr<EffectExprSchema>>,
-    pub activate_conditions: Vec<BoolExpr<EffectExprSchema>>,
+    pub attach_conditions: Vec<StoredExpr<bool, EffectExprSchema>>,
+    pub activate_conditions: Vec<StoredExpr<bool, EffectExprSchema>>,
 
     pub on_actor_triggers: Vec<EntityActions>,
     pub on_effect_triggers: Vec<EntityActions>,
@@ -48,10 +49,12 @@ pub struct AbilityDef {
 
     pub execution_conditions: Vec<BoolExpr<AbilityExprSchema>>,
 
-    pub cost_condition: Vec<BoolExpr<AbilityExprSchema>>,
-    pub cost_modifiers: LazyPlan,
+    pub cost_condition: Vec<StoredExpr<bool, AbilityExprSchema>>,
+    pub cost_modifiers: Plan<AbilityExprSchema>,
 
-    pub scene: Box<dyn Fn() -> Box<dyn Scene> + Send + Sync>,
+    pub task_scene: Box<dyn Fn() -> Box<dyn Scene> + Send + Sync>,
 
-    pub on_execute: Vec<LazyPlan>,
+    pub recovery_condition: Vec<BoolExpr<ActorExprSchema>>,
+    
+    pub on_execute: Vec<Plan<AbilityExprSchema>>,
 }

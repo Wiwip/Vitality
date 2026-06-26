@@ -6,7 +6,7 @@ use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
 use bevy::prelude::*;
-use express_it::expr::ExprNode;
+use express_it::expr::Expr;
 
 pub fn evaluate_effect_conditions(
     mut query: Query<
@@ -52,19 +52,16 @@ pub fn evaluate_effect_conditions(
         };
 
         let context = EffectExprContext {
-            target_actor: &target_actor_ref,
-            source_actor: &source_actor_ref,
-            effect_holder: &effect_entity_ref,
-            type_registry: type_registry.0.clone(),
+            target_actor: Some(target_actor_ref),
+            source_actor: source_actor_ref,
+            effect_holder: effect_entity_ref,
         };
 
         // Determines whether the effect should activate
-        let should_be_active = effect.activate_conditions.iter().all(|condition| {
-            condition.inner.eval(&context).unwrap_or_else(|_| {
-                error!("A condition failed to execute.");
-                false
-            })
-        });
+        let should_be_active = effect
+            .activate_conditions
+            .iter()
+            .all(|condition| condition.eval(&context));
 
         let is_inactive = status.is_some();
         if should_be_active && is_inactive {

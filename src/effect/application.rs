@@ -15,6 +15,7 @@ use bevy::log::debug;
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 use std::cmp::PartialEq;
+use express_it::expr::Expr;
 
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
@@ -151,17 +152,16 @@ impl ApplyEffectEvent {
         };
 
         let context = EffectExprContext {
-            target_actor: &target_actor_ref,
-            source_actor: &source_actor_ref,
-            effect_holder: &source_actor_ref, // TODO: Make optional
-            type_registry: type_registry.clone(),
+            target_actor: Some(target_actor_ref),
+            source_actor: source_actor_ref,
+            effect_holder: source_actor_ref, // TODO: Make optional
         };
 
         // Determines whether the effect should activate
         let should_apply = effect
             .activate_conditions
             .iter()
-            .all(|condition| condition.eval(&context).unwrap_or(false));
+            .all(|condition| condition.eval(&context));
 
         if !should_apply {
             return Ok(());
@@ -246,17 +246,16 @@ impl ApplyEffectEvent {
         let (_, target_actor_ref) = actors.get(self.targeting.target())?;
 
         let context = EffectExprContext {
-            target_actor: &target_actor_ref,
-            source_actor: &source_actor_ref,
-            effect_holder: &source_actor_ref, // TODO: Should this be the source actor? The effect doesn't exist for instant effects.
-            type_registry,
+            target_actor: Some(target_actor_ref),
+            source_actor: source_actor_ref,
+            effect_holder: source_actor_ref, // TODO: Should this be the source actor? The effect doesn't exist for instant effects.
         };
 
         // Determines whether the effect should activate
         let should_be_applied = effect
             .attach_conditions
             .iter()
-            .all(|condition| condition.eval(&context).unwrap_or(true));
+            .all(|condition| condition.eval(&context));
 
         if !should_be_applied {
             return Ok(());

@@ -26,7 +26,7 @@ mod schedule;
 mod systems;
 mod trigger;
 
-use crate::ability::{AbilityCooldown, AbilityOf, AbilityPlugin, GrantedAbilities};
+use crate::ability::{AbilityOf, AbilityPlugin, AbilityRecovery, GrantedAbilities};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{
     ReflectAccessAttribute, on_add_attribute, on_change_notify_attribute_dependencies,
@@ -52,6 +52,7 @@ use crate::systems::{
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 use bevy::platform::collections::HashMap;
 use bevy::platform::collections::hash_map::Entry;
+use bevy::reflect::Type;
 
 pub mod prelude {
     pub use crate::attribute;
@@ -60,7 +61,7 @@ pub mod prelude {
     pub use crate::effect::{EffectApplicationPolicy, EffectBuilder};
     pub use crate::modifier::{AccessModifier, AttributeModifier, EffectSubject, ModOp};
 
-    pub use express_it::expr::ExprSchema;
+    pub use express_it::expr::Expr;
 
     // Necessary for attribute macro
     pub use bevy::prelude::ReflectComponent;
@@ -129,7 +130,7 @@ pub struct AppAttributeBindings {
 pub struct AttributeBindings {
     type_id_map: HashMap<SmolStr, TypeId>,
     convert: HashMap<SmolStr, fn(&dyn Any) -> Option<&dyn Reflect>>,
-    how_to_insert_dependency: HashMap<SmolStr, fn(Entity, &mut EntityCommands)>,
+    insert_dependency_functions: HashMap<TypeId, fn(Entity, &mut EntityCommands)>,
 }
 
 impl AttributeBindings {
@@ -141,8 +142,9 @@ impl AttributeBindings {
         self.convert
             .insert(name.clone().into(), Self::convert_fn::<T>);
 
-        self.how_to_insert_dependency
-            .insert(name.clone().into(), Self::dependency_fn::<T>);
+        println!("Registered attribute: {} with [{:?}]", name, TypeId::of::<T>());
+        self.insert_dependency_functions
+            .insert(TypeId::of::<T>(), Self::dependency_fn::<T>);
     }
 
     // Binds the AttributeId to a specific TypeId used for reflection
@@ -247,7 +249,7 @@ pub type AttributesMut<'w, 's> = EntityMutExcept<
         ),
         GrantedAbilities,
         AbilityOf,
-        AbilityCooldown,
+        AbilityRecovery,
         ModifierOf,
         (
             MachineInstance<AbilityMachine>,
@@ -276,7 +278,7 @@ pub type AttributesRef<'w, 's> = EntityRefExcept<
         ),
         GrantedAbilities,
         AbilityOf,
-        AbilityCooldown,
+        AbilityRecovery,
         ModifierOf,
         (
             MachineInstance<AbilityMachine>,

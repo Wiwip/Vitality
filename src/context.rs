@@ -1,10 +1,11 @@
+use crate::ability::ability_state::AbilityState;
 use crate::ability::{
-    Ability, AbilityCooldown, AbilityError, AbilityOf, GrantAbilityCommand, GrantedAbilities,
+    Ability, AbilityError, AbilityOf, AbilityRecovery, GrantAbilityCommand, GrantedAbilities,
 };
 use crate::actors::SpawnActorCommand;
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::effect::global_effect::{GlobalActor, GlobalEffects};
-use crate::effect::{ApplyEffectEvent, EffectTargeting};
+use crate::effect::{ApplyEffectEvent, Effect, EffectTargeting};
 use crate::modifier::{AbilitySubject, EffectSubject};
 use crate::registry::Registry;
 use crate::registry::ability_registry::AbilityToken;
@@ -14,8 +15,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
-use express_it::context::{Path, ReadContext, WriteContext};
-use express_it::expr::{ExprSchema, ExpressionError};
+use express_it::expr::{Context, ContextMut};
 use std::any::Any;
 
 #[derive(SystemParam)]
@@ -27,7 +27,7 @@ pub struct Vitality<'w, 's> {
     effects: ResMut<'w, Assets<EffectDef>>,
     actors: ResMut<'w, Assets<ActorDef>>,
     granted_abilities: Query<'w, 's, Read<GrantedAbilities>>,
-    ability_entities: Query<'w, 's, (Read<Ability>, Option<Read<AbilityCooldown>>)>,
+    ability_entities: Query<'w, 's, (Read<Ability>, Read<AbilityRecovery>)>,
 }
 
 impl<'s, 'w> Vitality<'w, 's> {
@@ -94,15 +94,6 @@ impl<'s, 'w> Vitality<'w, 's> {
             }
         }
         None
-    }
-
-    pub fn is_ability_ready(&self, ability_entity: Entity) -> bool {
-        if let Ok((_, cooldown)) = self.ability_entities.get(ability_entity) {
-            if let Some(cooldown) = cooldown {
-                return cooldown.timer.is_finished();
-            }
-        }
-        true
     }
 
     pub fn grant_ability_by_token(
@@ -225,234 +216,225 @@ impl<'s, 'w> Vitality<'w, 's> {
     }
 }
 
-pub struct EffectExprContextMut<'w, 's> {
-    pub source_actor: &'w mut AttributesMut<'w, 's>,
-    pub target_actor: Option<&'w mut AttributesMut<'w, 's>>,
-    pub owner: &'w mut AttributesMut<'w, 's>,
+pub struct Source;
+pub struct Target;
+pub struct Caster;
 
-    pub type_registry: TypeRegistryArc,
-    pub type_bindings: AppAttributeBindings,
+// A trait for contexts that have a "Source" or primary actor
+pub trait ActorProvider<'a, 'b, Role> {
+    type ActorRef;
+    fn get_actor(&self) -> &Self::ActorRef;
+}
+pub trait ActorProviderMut<'a, 'b, Role> {
+    type ActorMut;
+    fn get_actor_mut(&mut self) -> &mut Self::ActorMut;
 }
 
-impl<'w, 's> EffectExprContextMut<'w, 's> {
-    pub fn entity(&self, who: EffectSubject) -> Entity {
-        match who {
-            EffectSubject::Target => match &self.target_actor {
-                None => self.source_actor.id(),
-                Some(actor) => actor.id(),
-            },
-            EffectSubject::Source => self.source_actor.id(),
-            EffectSubject::Effect => self.owner.id(),
-        }
-    }
-
-    pub fn attribute_mut(&mut self, who: EffectSubject) -> &mut AttributesMut<'w, 's> {
-        match who {
-            EffectSubject::Target => {
-                if let Some(target) = self.target_actor.as_deref_mut() {
-                    target
-                } else {
-                    self.source_actor
-                }
-            }
-            EffectSubject::Source => self.source_actor,
-            EffectSubject::Effect => self.owner,
-        }
-    }
-}
-
-impl WriteContext for EffectExprContextMut<'_, '_> {
-    fn write(
-        &mut self,
-        path: &Path,
-        value: Box<dyn Any + Send + Sync>,
-    ) -> Result<(), ExpressionError> {
-        let who = EffectSubject::try_from(path)
-            .map_err(|_| ExpressionError::InvalidPath(path.0.clone()))?;
-
-        let (_, component, _) = split_path(&*path.0).expect("Wrong path in reflect path");
-
-        let any_to_reflect = {
-            let bindings = self.type_bindings.internal.read().unwrap();
-            *bindings.convert.get(component).unwrap()
-        };
-
-        let reflect_component = {
-            let registry_bindings = self.type_registry.read();
-            let Some(type_registration) = registry_bindings.get_with_short_type_path(component)
-            else {
-                return Err(ExpressionError::FailedReflect(
-                    "Failed to get type registration".into(),
-                ));
-            };
-
-            type_registration
-                .data::<ReflectComponent>()
-                .expect("No reflect access attribute found")
-                .clone()
-        };
-
-        let actor = self.attribute_mut(who);
-        let mut dyn_reflect = reflect_component.reflect_mut(actor).ok_or_else(|| {
-            ExpressionError::FailedReflect("The entity has no component the requested type.".into())
-        })?;
-
-        let dyn_partial_reflect = dyn_reflect.reflect_path_mut("base_value").map_err(|err| {
-            ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())
-        })?;
-
-        let value_reflect = any_to_reflect(&*value).ok_or_else(|| {
-            ExpressionError::FailedReflect("Type mismatch while converting expression value".into())
-        })?;
-
-        dyn_partial_reflect.apply(value_reflect);
-        Ok(())
-    }
-}
-
+/*********************************************************
+ * Actor
+ *********************************************************/
 pub struct ActorExprSchema;
-impl ExprSchema for ActorExprSchema {
-    type Context<'w, 's>
-        = ActorExprContext<'w, 's>
-    where
-        's: 'w;
+impl Context for ActorExprSchema {
+    type ContextItem<'w, 's> = ActorExprContext<'w, 's>;
+}
+impl ContextMut for ActorExprSchema {
+    type ContextItemMut<'w, 's> = ActorExprContextMut<'w, 's>;
+
+    fn as_readonly<'w, 's, 'a>(
+        mut_item: &'a Self::ContextItemMut<'w, 's>,
+    ) -> Self::ContextItem<'a, 's> {
+        ActorExprContext {
+            actor_context: mut_item.actor_context.as_readonly(),
+        }
+    }
 }
 
 pub struct ActorExprContext<'w, 's> {
-    pub actor_context: &'w AttributesRef<'w, 's>,
-
-    pub type_registry: TypeRegistryArc,
+    pub actor_context: AttributesRef<'w, 's>,
+}
+pub struct ActorExprContextMut<'w, 's> {
+    pub actor_context: AttributesMut<'w, 's>,
 }
 
-impl ReadContext for ActorExprContext<'_, '_> {
-    fn get_any(&self, path: &Path) -> Result<&dyn Any, ExpressionError> {
-        reflect_path(path, self.actor_context, &self.type_registry)
+impl<'w, 's> ActorProvider<'w, 's, Source> for ActorExprContext<'w, 's> {
+    type ActorRef = AttributesRef<'w, 's>;
+    fn get_actor(&self) -> &Self::ActorRef {
+        &self.actor_context
+    }
+}
+impl<'w, 's> ActorProviderMut<'w, 's, Source> for ActorExprContextMut<'w, 's> {
+    type ActorMut = AttributesMut<'w, 's>;
+    fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
+        &mut self.actor_context
     }
 }
 
+/*********************************************************
+ * Effect
+ *********************************************************/
 pub struct EffectExprSchema;
-impl ExprSchema for EffectExprSchema {
-    type Context<'w, 's>
-        = EffectExprContext<'w, 's>
-    where
-        's: 'w;
+impl Context for EffectExprSchema {
+    type ContextItem<'w, 's> = EffectExprContext<'w, 's>;
+}
+impl ContextMut for EffectExprSchema {
+    type ContextItemMut<'w, 's> = EffectExprContextMut<'w, 's>;
+
+    fn as_readonly<'w, 's, 'a>(
+        mut_item: &'a Self::ContextItemMut<'w, 's>,
+    ) -> Self::ContextItem<'a, 's> {
+        EffectExprContext {
+            source_actor: mut_item.source_actor.as_readonly(),
+            target_actor: mut_item.target_actor.as_ref().map(|v| v.as_readonly()),
+            effect_holder: mut_item.effect_holder.as_readonly(),
+        }
+    }
 }
 
 pub struct EffectExprContext<'w, 's> {
-    pub source_actor: &'w AttributesRef<'w, 's>,
-    pub target_actor: &'w AttributesRef<'w, 's>,
-    pub effect_holder: &'w AttributesRef<'w, 's>,
-
-    pub type_registry: TypeRegistryArc,
+    pub source_actor: AttributesRef<'w, 's>,
+    pub target_actor: Option<AttributesRef<'w, 's>>,
+    pub effect_holder: AttributesRef<'w, 's>,
 }
 
-impl EffectExprContext<'_, '_> {
-    pub fn attribute_ref(&self, who: EffectSubject) -> &AttributesRef<'_, '_> {
-        match who {
-            EffectSubject::Target => self.target_actor,
-            EffectSubject::Source => self.source_actor,
-            EffectSubject::Effect => self.effect_holder,
+pub struct EffectExprContextMut<'w, 's> {
+    pub source_actor: AttributesMut<'w, 's>,
+    pub target_actor: Option<AttributesMut<'w, 's>>,
+    pub effect_holder: AttributesMut<'w, 's>,
+}
+
+impl<'w, 's> ActorProvider<'w, 's, Source> for EffectExprContext<'w, 's> {
+    type ActorRef = AttributesRef<'w, 's>;
+    fn get_actor(&self) -> &Self::ActorRef {
+        &self.source_actor
+    }
+}
+impl<'w, 's> ActorProviderMut<'w, 's, Source> for EffectExprContextMut<'w, 's> {
+    type ActorMut = AttributesMut<'w, 's>;
+    fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
+        &mut self.source_actor
+    }
+}
+impl<'w, 's> ActorProvider<'w, 's, Target> for EffectExprContext<'w, 's> {
+    type ActorRef = AttributesRef<'w, 's>;
+    fn get_actor(&self) -> &Self::ActorRef {
+        if let Some(target) = &self.target_actor {
+            target
+        } else {
+            &self.source_actor
         }
     }
 }
-
-impl ReadContext for EffectExprContext<'_, '_> {
-    fn get_any(&self, path: &Path) -> Result<&dyn Any, ExpressionError> {
-        let who = EffectSubject::try_from(path)
-            .map_err(|_| ExpressionError::InvalidPath(path.0.clone()))?;
-        let actor = self.attribute_ref(who);
-
-        reflect_path(path, actor, &self.type_registry)
+impl<'w, 's> ActorProviderMut<'w, 's, Target> for EffectExprContextMut<'w, 's> {
+    type ActorMut = AttributesMut<'w, 's>;
+    fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
+        if let Some(target) = &mut self.target_actor {
+            target
+        } else {
+            &mut self.source_actor
+        }
+    }
+}
+impl<'w, 's> ActorProvider<'w, 's, Effect> for EffectExprContext<'w, 's> {
+    type ActorRef = AttributesRef<'w, 's>;
+    fn get_actor(&self) -> &Self::ActorRef {
+        &self.effect_holder
+    }
+}
+impl<'w, 's> ActorProviderMut<'w, 's, Effect> for EffectExprContextMut<'w, 's> {
+    type ActorMut = AttributesMut<'w, 's>;
+    fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
+        &mut self.effect_holder
     }
 }
 
+/*********************************************************
+ * Ability
+ *********************************************************/
 pub struct AbilityExprSchema;
-impl ExprSchema for AbilityExprSchema {
-    type Context<'w, 's>
-        = AbilityExprContext<'w, 's>
-    where
-        's: 'w;
+impl Context for AbilityExprSchema {
+    type ContextItem<'w, 's> = AbilityExprContext<'w, 's>;
+}
+impl ContextMut for AbilityExprSchema {
+    type ContextItemMut<'w, 's> = AbilityExprContextMut<'w, 's>;
+
+    fn as_readonly<'w, 's, 'a>(
+        mut_item: &'a Self::ContextItemMut<'w, 's>,
+    ) -> Self::ContextItem<'a, 's> {
+        AbilityExprContext {
+            caster_ref: mut_item.caster_mut.as_readonly(),
+            ability_ref: mut_item.ability_mut.as_readonly(),
+            target_ref: mut_item.target_mut.as_ref().map(|v| v.as_readonly()),
+        }
+    }
 }
 
 pub struct AbilityExprContext<'w, 's> {
-    pub caster_ref: &'w AttributesRef<'w, 's>,
-    pub ability_ref: &'w AttributesRef<'w, 's>,
-    pub target_ref: &'w AttributesRef<'w, 's>,
-
-    pub type_registry: TypeRegistryArc,
+    pub caster_ref: AttributesRef<'w, 's>,
+    pub target_ref: Option<AttributesRef<'w, 's>>,
+    pub ability_ref: AttributesRef<'w, 's>,
 }
 
-impl AbilityExprContext<'_, '_> {
-    pub fn attribute_ref(&self, who: AbilitySubject) -> &AttributesRef<'_, '_> {
-        match who {
-            AbilitySubject::Ability => self.ability_ref,
-            AbilitySubject::Caster => self.caster_ref,
-            AbilitySubject::Target => self.target_ref,
+pub struct AbilityExprContextMut<'w, 's> {
+    pub caster_mut: AttributesMut<'w, 's>,
+    pub target_mut: Option<AttributesMut<'w, 's>>,
+    pub ability_mut: AttributesMut<'w, 's>,
+}
+
+impl<'w, 's> ActorProvider<'w, 's, Caster> for AbilityExprContext<'w, 's> {
+    type ActorRef = AttributesRef<'w, 's>;
+    fn get_actor(&self) -> &Self::ActorRef {
+        &self.caster_ref
+    }
+}
+impl<'w, 's> ActorProvider<'w, 's, Source> for AbilityExprContext<'w, 's> {
+    type ActorRef = AttributesRef<'w, 's>;
+    fn get_actor(&self) -> &Self::ActorRef {
+        &self.caster_ref
+    }
+}
+impl<'w, 's> ActorProviderMut<'w, 's, Caster> for AbilityExprContextMut<'w, 's> {
+    type ActorMut = AttributesMut<'w, 's>;
+    fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
+        &mut self.caster_mut
+    }
+}
+impl<'w, 's> ActorProviderMut<'w, 's, Source> for AbilityExprContextMut<'w, 's> {
+    type ActorMut = AttributesMut<'w, 's>;
+    fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
+        &mut self.caster_mut
+    }
+}
+
+impl<'w, 's> ActorProvider<'w, 's, Target> for AbilityExprContext<'w, 's> {
+    type ActorRef = AttributesRef<'w, 's>;
+    fn get_actor(&self) -> &Self::ActorRef {
+        if let Some(target) = &self.target_ref {
+            target
+        } else {
+            &self.caster_ref
+        }
+    }
+}
+impl<'w, 's> ActorProviderMut<'w, 's, Target> for AbilityExprContextMut<'w, 's> {
+    type ActorMut = AttributesMut<'w, 's>;
+    fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
+        if let Some(target) = &mut self.target_mut {
+            target
+        } else {
+            &mut self.caster_mut
         }
     }
 }
 
-impl ReadContext for AbilityExprContext<'_, '_> {
-    fn get_any(&self, path: &Path) -> std::result::Result<&dyn Any, ExpressionError> {
-        let who = AbilitySubject::try_from(path)
-            .map_err(|_| ExpressionError::InvalidPath(path.0.clone()))?;
-
-        let actor = self.attribute_ref(who);
-
-        reflect_path(path, actor, &self.type_registry)
+impl<'w, 's> ActorProvider<'w, 's, Ability> for AbilityExprContext<'w, 's> {
+    type ActorRef = AttributesRef<'w, 's>;
+    fn get_actor(&self) -> &Self::ActorRef {
+        &self.ability_ref
     }
 }
-
-pub fn split_path(path: &str) -> Result<(&str, &str, Option<&str>), &'static str> {
-    let (subject, rest) = path.split_once('.').ok_or("missing . separator")?;
-    let Some((component, value)) = rest.split_once('.') else {
-        return Ok((subject, rest, None));
-    };
-    Ok((subject, component, Some(value)))
-}
-
-fn reflect_path<'a>(
-    path: &Path,
-    actor: &'a AttributesRef,
-    type_registry: &'a TypeRegistryArc,
-) -> Result<&'a dyn Any, ExpressionError> {
-    let (_, component, value) = split_path(&*path.0).expect("Wrong path in reflect path");
-
-    let registry_bindings = type_registry.read();
-    let Some(type_registration) = registry_bindings.get_with_short_type_path(component) else {
-        return Err(ExpressionError::FailedReflect(
-            "Failed to get type registration".into(),
-        ));
-    };
-    let Some(reflect_component) = type_registration.data::<ReflectComponent>() else {
-        return Err(ExpressionError::FailedReflect(
-            "No reflect access attribute found".into(),
-        ));
-    };
-
-    let Some(dyn_reflect) = reflect_component.reflect(actor) else {
-        let short_name = type_registration
-            .type_info()
-            .type_path_table()
-            .short_path()
-            .to_string();
-        warn!("Requested type not present on actor: {}", short_name);
-        return Err(ExpressionError::FailedReflect(
-            "The entity has no component the requested type.".into(),
-        ));
-    };
-
-    let Some(value) = value else {
-        return Ok(dyn_reflect.as_any());
-    };
-
-    let dyn_partial_reflect = dyn_reflect.reflect_path(value).map_err(|err| {
-        ExpressionError::FailedReflect(format!("Invalid reflect path: {err}").into())
-    })?;
-
-    let dyn_path_reflect = dyn_partial_reflect.try_as_reflect().ok_or_else(|| {
-        ExpressionError::FailedReflect("Reflect value does not support further reflection".into())
-    })?;
-
-    Ok(dyn_path_reflect.as_any())
+impl<'w, 's> ActorProviderMut<'w, 's, Ability> for AbilityExprContextMut<'w, 's> {
+    type ActorMut = AttributesMut<'w, 's>;
+    fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
+        &mut self.ability_mut
+    }
 }

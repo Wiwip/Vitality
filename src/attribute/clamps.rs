@@ -7,7 +7,7 @@ use crate::prelude::*;
 use crate::{AttributesRef, CurrentValueChanged};
 use bevy::prelude::*;
 use express_it::expr::Expr;
-use std::any::Any;
+use std::any::{Any, TypeId};
 
 #[derive(Component, Default, Debug, Clone, Reflect)]
 #[reflect(Component, from_reflect = false)]
@@ -43,24 +43,23 @@ pub fn update_clamps<T: Attribute>(
             .ok_or("Missing actor asset")?;
 
         let actor_context = ActorExprContext {
-            actor_context: &attribute_ref,
-            type_registry: type_registry.0.clone(),
+            actor_context: attribute_ref,
         };
 
-        let Some(clamp_exprs) = actor_def.clamp_exprs.get(pretty_type_name::<T>().as_str()) else {
+        let Some(clamp_exprs) = actor_def.clamp_exprs.get(&TypeId::of::<T>()) else {
             return Ok(());
         };
 
         let any_ref: &dyn Any = clamp_exprs.as_ref();
         let (min_expr, max_expr) = any_ref
             .downcast_ref::<(
-                Expr<T::Property, ActorExprSchema>,
-                Expr<T::Property, ActorExprSchema>,
+                Box<dyn Expr<T::Property, ActorExprSchema> + Send + Sync>,
+                Box<dyn Expr<T::Property, ActorExprSchema> + Send + Sync>,
             )>()
             .ok_or("Failed downcast expressions")?;
 
-        let min_value = min_expr.eval(&actor_context)?;
-        let max_value = max_expr.eval(&actor_context)?;
+        let min_value = min_expr.eval(&actor_context);
+        let max_value = max_expr.eval(&actor_context);
 
         (min_value, max_value)
     };
