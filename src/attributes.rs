@@ -311,8 +311,6 @@ macro_rules! tag {
             Copy,
             Clone,
             Debug,
-            //serde::Serialize,
-            //serde::Deserialize,
         )]
         #[reflect(Component)]
         pub struct $StructName;

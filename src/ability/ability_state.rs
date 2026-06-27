@@ -1,20 +1,23 @@
-use crate::ability::systems::{can_activate_ability, ActivateAbility};
+use crate::AttributesRef;
+use crate::ability::systems::{ActivateAbility, can_activate_ability};
 use crate::ability::task_states::{TaskEvent, TaskMachine, TaskState};
 use crate::ability::tasks::Tasks;
-use crate::ability::{Ability, AbilityCooldown, AbilityRecovery, GrantedAbilities, TargetData};
+use crate::ability::{
+    Ability, AbilityCooldown, AbilityRecovery, BeginAbility, ExecuteAbility, GrantedAbilities,
+    TargetData,
+};
 use crate::actors::Actor;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::context::AbilityExprContext;
 use crate::registry::Registry;
-use crate::AttributesRef;
 use bevy::asset::Assets;
 use bevy::ecs::query::QueryData;
 use bevy::ecs::resource::IsResource;
-use bevy::ecs::system::lifetimeless::{Read, Write};
 use bevy::ecs::system::SystemParam;
+use bevy::ecs::system::lifetimeless::{Read, Write};
 use bevy::log::{error, warn};
-use bevy::prelude::{debug, Commands, Entity, Query, RelationshipTarget, Res, Without};
+use bevy::prelude::{Commands, Entity, Query, RelationshipTarget, Res, Without, debug};
 use express_it::expr::BoolExpr;
 use hfsm_bevy::{
     Access, EventResult, ExternalContext, LocalContext, Machine, MachineDefinition, MachineQuery,
@@ -168,7 +171,16 @@ impl MachineState<AbilityMachine> for ReadyState {
                         TargetData::SelfCast => *source,
                         TargetData::Target(target) => *target,
                     };
+                    ctx.view.commands.trigger(BeginAbility {
+                        source: *source,
+                        ability: ctx.ability_id,
+                    });
                     ctx.view.commands.trigger(ActivateAbility {
+                        target: target_id,
+                        source: *source,
+                        ability: ctx.ability_id,
+                    });
+                    ctx.view.commands.trigger(ExecuteAbility {
                         target: target_id,
                         source: *source,
                         ability: ctx.ability_id,
