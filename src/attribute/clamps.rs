@@ -2,7 +2,6 @@ use crate::actors::Actor;
 use crate::assets::ActorDef;
 use crate::attributes::AttributeQueryData;
 use crate::context::ActorExprContext;
-use crate::inspector::pretty_type_name;
 use crate::prelude::*;
 use crate::{AttributesRef, CurrentValueChanged};
 use bevy::prelude::*;

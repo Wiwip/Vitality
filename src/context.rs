@@ -1,4 +1,3 @@
-use crate::ability::ability_state::AbilityState;
 use crate::ability::{
     Ability, AbilityError, AbilityOf, AbilityRecovery, GrantAbilityCommand, GrantedAbilities,
 };
@@ -6,17 +5,14 @@ use crate::actors::SpawnActorCommand;
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::effect::global_effect::{GlobalActor, GlobalEffects};
 use crate::effect::{ApplyEffectEvent, Effect, EffectTargeting};
-use crate::modifier::{AbilitySubject, EffectSubject};
-use crate::registry::Registry;
 use crate::registry::ability_registry::AbilityToken;
 use crate::registry::actor_registry::ActorToken;
-use crate::{AppAttributeBindings, AttributesMut, AttributesRef};
-use bevy::ecs::system::SystemParam;
+use crate::registry::Registry;
+use crate::{AttributesMut, AttributesRef};
 use bevy::ecs::system::lifetimeless::Read;
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use bevy::reflect::TypeRegistryArc;
 use express_it::expr::{Context, ContextMut};
-use std::any::Any;
 
 #[derive(SystemParam)]
 pub struct Vitality<'w, 's> {
@@ -94,42 +90,6 @@ impl<'s, 'w> Vitality<'w, 's> {
             }
         }
         None
-    }
-
-    pub fn grant_ability_by_token(
-        &mut self,
-        entity: Entity,
-        token: &AbilityToken,
-    ) -> Result<Entity, AbilityError> {
-        let handle = self.get_ability_from_token(&token);
-        self.grant_ability(&handle, entity)
-    }
-
-    pub fn grant_ability(
-        &mut self,
-        ability: &Handle<AbilityDef>,
-        grant_ability_target_entity: Entity,
-    ) -> Result<Entity, AbilityError> {
-        if !self.granted_abilities.contains(grant_ability_target_entity) {
-            return Err(
-                AbilityError::GrantingAbilityToNonActor(grant_ability_target_entity).into(),
-            );
-        }
-
-        let ability_id = self
-            .commands
-            .spawn_empty()
-            .queue(GrantAbilityCommand {
-                parent: grant_ability_target_entity,
-                handle: ability.clone(),
-            })
-            .id();
-
-        self.commands
-            .entity(grant_ability_target_entity)
-            .add_one_related::<AbilityOf>(ability_id);
-
-        Ok(ability_id)
     }
 
     pub fn grant_ability_by_token_unchecked(

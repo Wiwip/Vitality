@@ -1,13 +1,12 @@
-use crate::AttributesMut;
 use crate::context::EffectExprContext;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::AttributeCalculator;
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
+use crate::AttributesMut;
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
-use bevy::reflect::TypeRegistryArc;
 
 #[derive(Message)]
 pub struct ApplyAttributeModifierMessage<T: Attribute> {

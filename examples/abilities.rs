@@ -59,7 +59,7 @@ fn setup_ability(mut registry: RegistryMut) {
                 }
             },
         )
-        .apply_scene(|| {
+        .set_tasks(|| {
             bsn! {
                 Complete::Any
                 Tasks [

@@ -1,14 +1,14 @@
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::context::{
-    AbilityExprContext, AbilityExprContextMut, AbilityExprSchema, ActorExprSchema, EffectExprSchema,
+    AbilityExprContext, AbilityExprContextMut, AbilityExprSchema, ActorExprSchema,
 };
 use crate::inspector::pretty_type_name;
 use crate::modifier::AttributeCalculatorCached;
 use crate::mutator::EntityActions;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
-use express_it::expr::{AsExpression, BoolExpr, Expr, StoredExpr};
+use express_it::expr::{AsExpression, BoolExpr, StoredExpr};
 use express_it::logic::ExprCmpLe;
 use express_it::plan::{AssignmentStep, Plan};
 use num_traits::{AsPrimitive, Num};
@@ -175,7 +175,7 @@ impl AbilityBuilder {
         self
     }*/
 
-    pub fn apply_scene<S, F>(mut self, scene_factory: F) -> Self
+    pub fn set_tasks<S, F>(mut self, scene_factory: F) -> Self
     where
         S: Scene + 'static,
         F: Fn() -> S + Send + Sync + 'static,

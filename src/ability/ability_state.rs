@@ -1,20 +1,20 @@
-use crate::AttributesRef;
-use crate::ability::systems::can_activate_ability;
+use crate::ability::systems::{can_activate_ability, ActivateAbility};
 use crate::ability::task_states::{TaskEvent, TaskMachine, TaskState};
 use crate::ability::tasks::Tasks;
 use crate::ability::{Ability, AbilityCooldown, AbilityRecovery, GrantedAbilities, TargetData};
 use crate::actors::Actor;
+use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::context::AbilityExprContext;
 use crate::registry::Registry;
+use crate::AttributesRef;
+use bevy::asset::Assets;
 use bevy::ecs::query::QueryData;
 use bevy::ecs::resource::IsResource;
-use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::{Read, Write};
+use bevy::ecs::system::SystemParam;
 use bevy::log::{error, warn};
-use bevy::prelude::{
-    AppTypeRegistry, Commands, Entity, Query, RelationshipTarget, Res, Without, debug,
-};
+use bevy::prelude::{debug, Commands, Entity, Query, RelationshipTarget, Res, Without};
 use express_it::expr::BoolExpr;
 use hfsm_bevy::{
     Access, EventResult, ExternalContext, LocalContext, Machine, MachineDefinition, MachineQuery,
@@ -56,17 +56,8 @@ impl LocalContext for AbilityContext {
 
 #[derive(SystemParam)]
 pub struct AbilitySystemParam<'w, 's> {
-    pub abilities: Query<
-        'w,
-        's,
-        (
-            Read<Ability>,
-            AttributesRef<'static, 'static>,
-            Read<Tasks>,
-            //Read<AbilityRecovery>,
-        ),
-        Without<IsResource>,
-    >,
+    pub abilities:
+        Query<'w, 's, (Read<Ability>, AttributesRef<'static, 'static>), Without<IsResource>>,
     pub actors: Query<
         'w,
         's,
@@ -80,7 +71,7 @@ pub struct AbilitySystemParam<'w, 's> {
     pub tasks: Query<'w, 's, Read<Tasks>>,
     pub task_machines: MachineQuery<'w, 's, TaskMachine>,
     pub registry: Registry<'w>,
-    pub type_registry: Res<'w, AppTypeRegistry>,
+    pub ability_assets: Res<'w, Assets<AbilityDef>>,
     pub commands: Commands<'w, 's>,
 }
 impl ExternalContext for AbilitySystemParam<'static, 'static> {
@@ -128,8 +119,7 @@ impl MachineState<AbilityMachine> for ReadyState {
         debug!("on_event: {:?}", event);
         match event {
             AbilityEvent::TryActivate { source, target } => {
-                let Ok((ability, ability_ref, tasks)) = ctx.view.abilities.get(ctx.ability_id)
-                else {
+                let Ok((ability, ability_ref)) = ctx.view.abilities.get(ctx.ability_id) else {
                     return EventResult::Ignored;
                 };
 
@@ -173,6 +163,16 @@ impl MachineState<AbilityMachine> for ReadyState {
 
                 if can_activate {
                     ctx.internal_events.push_back(AbilityEvent::Activate);
+
+                    let target_id = match target {
+                        TargetData::SelfCast => *source,
+                        TargetData::Target(target) => *target,
+                    };
+                    ctx.view.commands.trigger(ActivateAbility {
+                        target: target_id,
+                        source: *source,
+                        ability: ctx.ability_id,
+                    });
                 }
                 EventResult::Handled
             }
@@ -186,7 +186,7 @@ struct ActiveState;
 impl MachineState<AbilityMachine> for ActiveState {
     fn on_enter(&self, ctx: &mut Access<AbilityMachine>) {
         debug!("[{}] Ability enter ActiveState", ctx.ability_id);
-        let Ok((_, _, tasks)) = ctx.view.abilities.get(ctx.ability_id) else {
+        let Ok(tasks) = ctx.view.tasks.get(ctx.ability_id) else {
             error!("Activated an unavailable ability.");
             return;
         };

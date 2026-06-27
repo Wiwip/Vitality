@@ -6,7 +6,6 @@ use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
 use bevy::prelude::*;
-use express_it::expr::Expr;
 
 pub fn evaluate_effect_conditions(
     mut query: Query<

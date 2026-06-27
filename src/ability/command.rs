@@ -1,11 +1,9 @@
-use crate::ability::ability_state::AbilityMachine;
 use crate::ability::Ability;
 use crate::assets::AbilityDef;
 use crate::modifier::modifier::RecalculateExpression;
 use bevy::asset::{Assets, Handle};
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use hfsm_bevy::MachineInstance;
 
 pub struct GrantAbilityCommand {
     pub parent: Entity,
@@ -51,7 +49,6 @@ impl EntityCommand for GrantAbilityCommand {
             .insert((
                 Ability(self.handle),
                 Name::new(ability_def.name.clone()),
-                MachineInstance::<AbilityMachine>::default(),
             ))
             .observe(recovery_observer)
             .apply_scene(scene);

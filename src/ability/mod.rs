@@ -19,6 +19,7 @@ use bevy::prelude::*;
 pub use builder::AbilityBuilder;
 pub use command::GrantAbilityCommand;
 use hfsm_bevy::StateMachinePlugin;
+use hfsm_bevy::MachineInstance;
 use num_traits::{AsPrimitive, Num};
 use std::error::Error;
 use std::fmt::Formatter;
@@ -60,7 +61,7 @@ impl GrantedAbilities {
 
 #[derive(Component, Reflect)]
 #[reflect(Component)]
-#[require(Tasks, AbilityRecovery, AbilityCooldown)]
+#[require(Tasks, AbilityRecovery, AbilityCooldown, MachineInstance<AbilityMachine>)]
 pub struct Ability(pub(crate) Handle<AbilityDef>);
 
 #[derive(Copy, Clone, PartialEq, Debug)]

@@ -2,14 +2,13 @@ use crate::assets::EffectDef;
 use crate::attributes::Attribute;
 use crate::condition::IsAttributeWithinBounds;
 use crate::context::EffectExprSchema;
-use crate::effect::EffectStackingPolicy;
 use crate::effect::application::EffectApplicationPolicy;
+use crate::effect::EffectStackingPolicy;
 use crate::modifier::{AttributeModifier, EffectSubject, ModOp};
 use crate::mutator::EntityActions;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
 use express_it::expr::{AsExpression, Expr};
-use express_it::nodes::Node;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
@@ -57,7 +56,7 @@ impl EffectBuilder {
 
     /// Modifies an attribute.
     ///
-    /// A [Value](crate::attributes::Value) represents the value of the change to the attribute.
+    /// A [Value](crate::attributes::GameValue) represents the value of the change to the attribute.
     /// It can be a literal [Lit](crate::attributes::Lit), an [AttributeValue](crate::attributes::AttributeValue), or anything implementing [ValueSource](crate::attributes::ValueSource)
     ///
     /// # Example

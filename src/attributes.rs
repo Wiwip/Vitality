@@ -1,8 +1,5 @@
 use crate::ability::Ability;
-use crate::context::{
-    ActorProvider, ActorProviderMut,
-    EffectExprContext, EffectExprContextMut, EffectExprSchema, Source, Target,
-};
+use crate::context::{ActorProvider, ActorProviderMut, Source, Target};
 use crate::effect::{AttributeDependents, Effect};
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
@@ -33,7 +30,7 @@ use std::fmt::Display;
 use std::iter::Sum;
 use std::marker::PhantomData;
 
-pub trait Value
+pub trait GameValue
 where
     Self: Num + NumOps + NumAssign + NumAssignOps + NumCast,
     Self: Default + PartialOrd + Copy + Debug + Display,
@@ -43,7 +40,7 @@ where
 {
 }
 
-impl<T> Value for T
+impl<T> GameValue for T
 where
     Self: Num + NumOps + NumAssign + NumAssignOps + NumCast,
     Self: Default + PartialOrd + Copy + Debug + Display,
@@ -58,7 +55,7 @@ where
     Self: Component<Mutability = Mutable> + Copy + Debug + Display,
     Self: Reflect + TypePath + GetTypeRegistration,
 {
-    type Property: Value;
+    type Property: GameValue;
 
     fn new<T: Num + AsPrimitive<Self::Property> + Copy>(value: T) -> Self;
     fn base_value(&self) -> Self::Property;
@@ -150,13 +147,81 @@ where
         let expr = expr.as_expr();
 
         AssignmentStep {
-            setter_fn: |ctx: &mut C::ContextItemMut<'_, '_>, val: Self::Property| {
+            setter_fn: |ctx: &mut C::ContextItemMut<'_, '_>, expr_val: Self::Property| {
                 let actor = ActorProviderMut::<Role>::get_actor_mut(ctx);
                 match actor.get_mut::<Self>() {
                     None => {
                         error!("Error during assignment step. No attribute found.")
                     }
-                    Some(mut attr) => attr.set_base_value(val),
+                    Some(mut attr) => {
+                        let base = attr.base();
+                        attr.set_base_value(base + expr_val)
+                    }
+                }
+            },
+            expr,
+            cache_key: None,
+            _marker: Default::default(),
+        }
+    }
+
+    fn sub<Role, C: ContextMut>(
+        expr: impl AsExpression<Self::Property, C, Target: Copy + Send + Sync + 'static>,
+    ) -> AssignmentStep<
+        Self::Property,
+        impl Expr<Self::Property, C> + Copy + Send + Sync + 'static,
+        impl Fn(&mut C::ContextItemMut<'_, '_>, Self::Property) + 'static + Send + Sync,
+    >
+    where
+        Role: 'static,
+        C: ContextMut + 'static,
+        for<'a, 'b> C::ContextItemMut<'a, 'b>:
+            ActorProviderMut<'a, 'b, Role, ActorMut = AttributesMut<'a, 'b>>,
+    {
+        let expr = expr.as_expr();
+
+        AssignmentStep {
+            setter_fn: |ctx: &mut C::ContextItemMut<'_, '_>, expr_val: Self::Property| {
+                let actor = ActorProviderMut::<Role>::get_actor_mut(ctx);
+                match actor.get_mut::<Self>() {
+                    None => {
+                        error!("Error during assignment step. No attribute found.")
+                    }
+                    Some(mut attr) => {
+                        let base = attr.base();
+                        attr.set_base_value(base - expr_val)
+                    }
+                }
+            },
+            expr,
+            cache_key: None,
+            _marker: Default::default(),
+        }
+    }
+
+    fn set<Role, C: ContextMut>(
+        expr: impl AsExpression<Self::Property, C, Target: Copy + Send + Sync + 'static>,
+    ) -> AssignmentStep<
+        Self::Property,
+        impl Expr<Self::Property, C> + Copy + Send + Sync + 'static,
+        impl Fn(&mut C::ContextItemMut<'_, '_>, Self::Property) + 'static + Send + Sync,
+    >
+    where
+        Role: 'static,
+        C: ContextMut + 'static,
+        for<'a, 'b> C::ContextItemMut<'a, 'b>:
+            ActorProviderMut<'a, 'b, Role, ActorMut = AttributesMut<'a, 'b>>,
+    {
+        let expr = expr.as_expr();
+
+        AssignmentStep {
+            setter_fn: |ctx: &mut C::ContextItemMut<'_, '_>, expr_val: Self::Property| {
+                let actor = ActorProviderMut::<Role>::get_actor_mut(ctx);
+                match actor.get_mut::<Self>() {
+                    None => {
+                        error!("Error during assignment step. No attribute found.")
+                    }
+                    Some(mut attr) => attr.set_base_value(expr_val),
                 }
             },
             expr,

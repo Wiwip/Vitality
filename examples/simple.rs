@@ -195,7 +195,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
     let frostball = effects.add(
         AbilityBuilder::new()
             .with_name("Frostball".into())
-            .with_cooldown(1.0)
+            .with_cooldown(3.0)
             .with_cost::<Mana>(10)
             .with_tag::<Frost>()
             .add_execution(
@@ -213,7 +213,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
                 },
             )
             .on_execute(
-                Plan::new().step(MaxHealth::add::<Source, _>(5u32 + 8u32 + MaxHealth::src())),
+                Plan::new().step(MaxHealth::add::<Source, _>(5u32)),
             )
             .build(),
     );

@@ -2,7 +2,7 @@ extern crate core;
 
 use crate::effect::{AttributeDependency, Stacks};
 use bevy::prelude::*;
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 use std::error::Error;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
@@ -24,13 +24,12 @@ pub mod mutator;
 pub mod registry;
 mod schedule;
 mod systems;
-mod trigger;
 
 use crate::ability::{AbilityOf, AbilityPlugin, AbilityRecovery, GrantedAbilities};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{
-    ReflectAccessAttribute, on_add_attribute, on_change_notify_attribute_dependencies,
-    on_change_notify_attribute_parents,
+    on_add_attribute, on_change_notify_attribute_dependencies, on_change_notify_attribute_parents,
+    ReflectAccessAttribute,
 };
 use crate::condition::ConditionPlugin;
 use crate::effect::global_effect::GlobalEffectPlugin;
@@ -41,7 +40,7 @@ use crate::effect::{
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
 use crate::modifier::{
-    ApplyAttributeModifierMessage, AttributeCalculatorCached, ModifierOf, apply_modifier_events,
+    apply_modifier_events, ApplyAttributeModifierMessage, AttributeCalculatorCached, ModifierOf,
 };
 use crate::prelude::*;
 use crate::registry::RegistryPlugin;
@@ -50,9 +49,8 @@ use crate::systems::{
     apply_periodic_effect, mark_node_dirty_observer, update_attribute, update_current_value_system,
 };
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
-use bevy::platform::collections::HashMap;
 use bevy::platform::collections::hash_map::Entry;
-use bevy::reflect::Type;
+use bevy::platform::collections::HashMap;
 
 pub mod prelude {
     pub use crate::attribute;
@@ -67,12 +65,12 @@ pub mod prelude {
     pub use bevy::prelude::ReflectComponent;
 }
 
-use crate::attribute::clamps::{Clamp, apply_clamps, update_clamps};
+use crate::attribute::clamps::{apply_clamps, update_clamps, Clamp};
 use crate::modifier::modifier::update_modifier_when_dependencies_changed;
 
 use crate::ability::ability_state::AbilityMachine;
 use crate::ability::task_states::TaskMachine;
-use crate::ability::tasks::WaitTask;
+use crate::ability::tasks::{Tasks, WaitTask};
 pub use express_it;
 use hfsm_bevy::{MachineInstance, StateTimer};
 pub use num_traits;
@@ -129,7 +127,6 @@ pub struct AppAttributeBindings {
 #[derive(Default)]
 pub struct AttributeBindings {
     type_id_map: HashMap<SmolStr, TypeId>,
-    convert: HashMap<SmolStr, fn(&dyn Any) -> Option<&dyn Reflect>>,
     insert_dependency_functions: HashMap<TypeId, fn(Entity, &mut EntityCommands)>,
 }
 
@@ -139,10 +136,11 @@ impl AttributeBindings {
 
         self.bind_type_id::<T>();
 
-        self.convert
-            .insert(name.clone().into(), Self::convert_fn::<T>);
-
-        println!("Registered attribute: {} with [{:?}]", name, TypeId::of::<T>());
+        println!(
+            "Registered attribute: {} with [{:?}]",
+            name,
+            TypeId::of::<T>()
+        );
         self.insert_dependency_functions
             .insert(TypeId::of::<T>(), Self::dependency_fn::<T>);
     }
@@ -165,12 +163,6 @@ impl AttributeBindings {
                 );
             }
         };
-    }
-
-    // Allows conversions from dyn Any to dyn Reflect when all we know is the attribute ID
-    fn convert_fn<T: Attribute>(any: &dyn Any) -> Option<&dyn Reflect> {
-        any.downcast_ref::<T::Property>()
-            .map(|value| value.as_reflect())
     }
 
     // Inserts dependency injection closures
@@ -248,6 +240,7 @@ pub type AttributesMut<'w, 's> = EntityMutExcept<
             EffectSources,
         ),
         GrantedAbilities,
+        Tasks,
         AbilityOf,
         AbilityRecovery,
         ModifierOf,
@@ -277,6 +270,7 @@ pub type AttributesRef<'w, 's> = EntityRefExcept<
             EffectSources,
         ),
         GrantedAbilities,
+        Tasks,
         AbilityOf,
         AbilityRecovery,
         ModifierOf,

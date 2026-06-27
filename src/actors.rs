@@ -1,3 +1,4 @@
+use std::any::{Any, TypeId};
 use crate::GrantedAbilities;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
@@ -12,8 +13,6 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use express_it::expr::{AsExpression, Expr};
 use num_traits::{AsPrimitive, Num};
-use smol_str::SmolStr;
-use std::any::{Any, TypeId, type_name_of_val};
 use std::collections::HashSet;
 
 #[derive(Component, Clone, Debug, Deref)]
