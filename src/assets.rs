@@ -47,7 +47,7 @@ pub struct AbilityDef {
     pub mutators: Vec<EntityActions>,
     pub observers: Vec<EntityActions>,
 
-    pub execution_conditions: Vec<BoolExpr<AbilityExprSchema>>,
+    pub execution_conditions: Vec<StoredExpr<bool, ActorExprSchema>>,
 
     pub cost_condition: Vec<StoredExpr<bool, AbilityExprSchema>>,
     pub cost_modifiers: Plan<AbilityExprSchema>,

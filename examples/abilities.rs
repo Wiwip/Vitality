@@ -1,9 +1,8 @@
 use bevy::ecs::query::QueryData;
 use bevy::ecs::system::SystemParam;
-use bevy::ecs::system::lifetimeless::Read;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use vitality::ability::tasks::{AbilityTask, Complete, DebugInstantTask, DebugLongTask, TaskItem, TaskParam, TaskStatus, Tasks, task, NoData, wait_task};
+use vitality::ability::tasks::{AbilityTask, Complete, DebugInstantTask, DebugLongTask, AbilityItem, TaskParam, TaskStatus, Tasks, task, NoData, wait_task, CasterItem, TaskItem};
 use vitality::ability::{Abilities, AbilityBuilder, ExecuteAbility, TargetData};
 use vitality::actors::ActorBuilder;
 use vitality::context::Vitality;
@@ -35,7 +34,6 @@ fn main() {
         .add_systems(Startup, setup_camera)
         .add_systems(Startup, (setup_ability, setup_actor).chain())
         .add_systems(PreUpdate, inputs)
-        .add_systems(Update, print_ability)
         .run();
 }
 
@@ -111,16 +109,20 @@ fn setup_actor(mut vitality: Vitality) {
 #[allow(unused)]
 struct TestAbilityTask;
 impl AbilityTask for TestAbilityTask {
-    type EntityItem = TaskContext;
+    type CasterItem = ();
+    type AbilityItem = ();
+    type TaskItem = TaskContext;
     type SystemParam = TaskSystemParam<'static, 'static>;
     type Data = NoData;
 
     fn activate(
         _task_id: Entity,
-        query: TaskItem<Self>,
+        _caster: CasterItem<Self>,
+        _ability: AbilityItem<Self>,
+        _task: TaskItem<Self>,
         _param: &mut TaskParam<Self>,
     ) -> TaskStatus {
-        println!("[{}] Began AbilityTask", query.entity);
+        println!("[{}] Began AbilityTask", _task.entity);
 
         TaskStatus::Running
     }
@@ -130,8 +132,8 @@ impl AbilityTask for TestAbilityTask {
 #[query_data(mutable)]
 struct TaskContext {
     entity: Entity,
-    health: Read<Health>,
-    damage: Read<Damage>,
+    //health: Read<Health>,
+    //damage: Read<Damage>,
 }
 
 #[derive(SystemParam)]
@@ -149,5 +151,3 @@ fn inputs(
         abilities.try_activate_by_token(*player, &FIREBALL, TargetData::SelfCast);
     }
 }
-
-fn print_ability() {}

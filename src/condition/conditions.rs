@@ -1,9 +1,12 @@
 use crate::ability::Ability;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
-use crate::context::{AbilityExprContext, AbilityExprSchema, EffectExprContext, EffectExprSchema};
+use crate::context::{
+    AbilityExprContext, AbilityExprSchema, ActorExprContext, EffectExprContext, EffectExprSchema,
+};
 use crate::inspector::pretty_type_name;
 use crate::modifier::EffectSubject;
+use crate::prelude::ActorExprSchema;
 use bevy::asset::AssetId;
 use bevy::prelude::{Component, TypePath};
 use bevy::reflect::Reflect;
@@ -167,6 +170,20 @@ impl<C: Component + Reflect> Expr<bool, AbilityExprSchema> for HasComponent<C> {
             },
             EffectSubject::Source => ctx.caster_ref.get::<C>().is_some(),
             EffectSubject::Effect => ctx.ability_ref.get::<C>().is_some(),
+        }
+    }
+
+    fn get_dependencies(&self, deps: &mut HashSet<TypeId>) {
+        deps.insert(TypeId::of::<C>());
+    }
+}
+
+impl<C: Component> Expr<bool, ActorExprSchema> for HasComponent<C> {
+    fn eval(&self, ctx: &ActorExprContext) -> bool {
+        match self.who {
+            EffectSubject::Target => false,
+            EffectSubject::Source => ctx.actor_context.get::<C>().is_some(),
+            EffectSubject::Effect => false,
         }
     }
 

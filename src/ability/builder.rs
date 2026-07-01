@@ -9,17 +9,17 @@ use crate::modifier::AttributeCalculatorCached;
 use crate::mutator::EntityActions;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
-use express_it::expr::{AsExpression, BoolExpr, StoredExpr};
+use express_it::expr::{AsExpression, BoolExpr, Expr, StoredExpr};
 use express_it::logic::ExprCmpLe;
 use express_it::plan::{AssignmentStep, Plan};
 use num_traits::{AsPrimitive, Num};
-use std::any::TypeId;
 
 pub struct AbilityBuilder {
     name: String,
     mutators: Vec<EntityActions>,
     triggers: Vec<EntityActions>,
     cost_condition: Vec<StoredExpr<bool, AbilityExprSchema>>,
+    execution_condition: Vec<StoredExpr<bool, ActorExprSchema>>,
     cost_modifiers: Plan<AbilityExprSchema>,
     on_execute: Vec<Plan<AbilityExprSchema>>,
     recovery_condition: Vec<BoolExpr<ActorExprSchema>>,
@@ -33,6 +33,7 @@ impl AbilityBuilder {
             mutators: Default::default(),
             triggers: vec![],
             cost_condition: vec![],
+            execution_condition: vec![],
             cost_modifiers: Plan::new(),
             on_execute: vec![],
             recovery_condition: vec![],
@@ -98,6 +99,14 @@ impl AbilityBuilder {
         let cost_condition = node_expr.le(t_src);
 
         self.cost_condition.push(Box::new(cost_condition));
+        self
+    }
+
+    pub fn with_activation_condition(
+        mut self,
+        expr: StoredExpr<bool, ActorExprSchema>,
+    ) -> Self {
+        self.execution_condition.push(expr);
         self
     }
 
@@ -175,7 +184,7 @@ impl AbilityBuilder {
             mutators: self.mutators,
             observers: self.triggers,
             cost_condition: self.cost_condition,
-            execution_conditions: vec![],
+            execution_conditions: self.execution_condition,
             cost_modifiers: self.cost_modifiers,
 
             task_scene: self.scene,

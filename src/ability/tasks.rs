@@ -1,7 +1,8 @@
 use crate::ability::ability_state::{AbilityEvent, AbilityMachine};
 use crate::ability::task_states::{TaskEvent, TaskMachine, TaskState};
-use crate::ability::{Abilities, Ability};
+use crate::ability::{Abilities, Ability, AbilityOf};
 use bevy::ecs::query::{QueryData, QueryItem};
+use bevy::ecs::relationship::Relationship;
 use bevy::ecs::system::lifetimeless::{Read, Write};
 use bevy::ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
 use bevy::prelude::*;
@@ -46,25 +47,45 @@ pub enum TaskStatus {
     Failed,
 }
 
-pub type TaskItem<'w, 's, T> = QueryItem<'w, 's, <T as AbilityTask>::EntityItem>;
+pub type CasterItem<'w, 's, T> = QueryItem<'w, 's, <T as AbilityTask>::CasterItem>;
+pub type AbilityItem<'w, 's, T> = QueryItem<'w, 's, <T as AbilityTask>::AbilityItem>;
+pub type TaskItem<'w, 's, T> = QueryItem<'w, 's, <T as AbilityTask>::TaskItem>;
 pub type TaskParam<'w, 's, T> = SystemParamItem<'w, 's, <T as AbilityTask>::SystemParam>;
 
 pub trait AbilityTask: Send + Sync + 'static {
     /// The query descriptor. (e.g. `&'static mut Health` or a struct deriving `QueryData`)
-    type EntityItem: QueryData + Send + Sync + 'static;
+    type CasterItem: QueryData + Send + Sync + 'static;
+    type AbilityItem: QueryData + Send + Sync + 'static;
+    type TaskItem: QueryData + Send + Sync + 'static;
     type SystemParam: SystemParam + Send + Sync + 'static;
     type Data: Component + Clone + Send + Sync + 'static;
 
     fn activate(
         _task_id: Entity,
-        _item: TaskItem<Self>,
+        _caster: CasterItem<Self>,
+        _ability: AbilityItem<Self>,
+        _task: TaskItem<Self>,
         _param: &mut TaskParam<Self>,
     ) -> TaskStatus {
         TaskStatus::Complete
     }
 
-    fn on_stop(_item: TaskItem<Self>) {}
-    fn on_completion(_item: TaskItem<Self>) {}
+    fn on_stop(
+        _task_id: Entity,
+        _caster: CasterItem<Self>,
+        _ability: AbilityItem<Self>,
+        _task: TaskItem<Self>,
+        _param: &mut TaskParam<Self>,
+    ) {
+    }
+    fn on_completion(
+        _task_id: Entity,
+        _caster: CasterItem<Self>,
+        _ability: AbilityItem<Self>,
+        _task: TaskItem<Self>,
+        _param: &mut TaskParam<Self>,
+    ) {
+    }
 }
 
 pub fn task<T: AbilityTask>(data: T::Data) -> impl Scene {
@@ -72,7 +93,6 @@ pub fn task<T: AbilityTask>(data: T::Data) -> impl Scene {
     bsn! {
         Task
         MachineInstance<TaskMachine>
-
         on({
             let cell = cell.clone();
             move |trigger: On<Add, Task>, mut commands: Commands| {
@@ -96,13 +116,35 @@ pub fn wait_task(secs: f32) -> impl Scene {
 
 fn on_execute_task_observer<T: AbilityTask>(
     trigger: On<ExecuteTask>,
-    mut query: Query<T::EntityItem>,
+    abilities: Query<Entity, With<Ability>>,
+    tasks: Query<&TaskOwner>,
+    casters: Query<&AbilityOf>,
+    mut ability_items: Query<T::AbilityItem>,
+    mut task_items: Query<T::TaskItem>,
+    mut caster_items: Query<T::CasterItem>,
     params: StaticSystemParam<T::SystemParam>,
     mut commands: Commands,
 ) {
-    let item = query.get_mut(trigger.event_target()).unwrap();
+    let ability_id = find_ability_ancestor(trigger.task_id, &tasks, &abilities);
+    let task_item = task_items.get_mut(trigger.task_id).unwrap();
+    let ability_item = ability_items.get_mut(ability_id).expect(&format!(
+        "[{}] AbilityTask error fetching AbilityItem",
+        ability_id
+    ));
+    let caster_id = casters.get(ability_id).expect(&format!(
+        "[{}] Abilities must have an owner caster",
+        ability_id
+    ));
+    let caster_item = caster_items.get_mut(caster_id.0).unwrap();
+
     let mut param_items = params.into_inner();
-    let status = T::activate(trigger.task_id, item, &mut param_items);
+    let status = T::activate(
+        trigger.task_id,
+        caster_item,
+        ability_item,
+        task_item,
+        &mut param_items,
+    );
 
     if status == TaskStatus::Complete {
         commands.trigger(MachineEvent {
@@ -114,18 +156,68 @@ fn on_execute_task_observer<T: AbilityTask>(
 
 fn on_task_completed_observer<T: AbilityTask>(
     trigger: On<TaskCompleted>,
-    mut query: Query<T::EntityItem>,
+    abilities: Query<Entity, With<Ability>>,
+    tasks: Query<&TaskOwner>,
+    casters: Query<&AbilityOf>,
+    mut ability_items: Query<T::AbilityItem>,
+    mut task_items: Query<T::TaskItem>,
+    mut caster_items: Query<T::CasterItem>,
+    params: StaticSystemParam<T::SystemParam>,
 ) {
-    let item = query.get_mut(trigger.event_target()).unwrap();
-    T::on_completion(item);
+    let ability_id = find_ability_ancestor(trigger.task_id, &tasks, &abilities);
+    let task_item = task_items.get_mut(trigger.task_id).unwrap();
+    let ability_item = ability_items.get_mut(ability_id).expect(&format!(
+        "[{}] AbilityTask error fetching AbilityItem",
+        ability_id
+    ));
+    let caster_id = casters.get(ability_id).expect(&format!(
+        "[{}] Abilities must have an owner caster",
+        ability_id
+    ));
+    let caster_item = caster_items.get_mut(caster_id.0).unwrap();
+
+    let mut param_items = params.into_inner();
+
+    T::on_completion(
+        trigger.task_id,
+        caster_item,
+        ability_item,
+        task_item,
+        &mut param_items,
+    );
 }
 
 fn on_task_stopped_observer<T: AbilityTask>(
     trigger: On<TaskStopped>,
-    mut query: Query<T::EntityItem>,
+    abilities: Query<Entity, With<Ability>>,
+    tasks: Query<&TaskOwner>,
+    casters: Query<&AbilityOf>,
+    mut ability_items: Query<T::AbilityItem>,
+    mut task_items: Query<T::TaskItem>,
+    mut caster_items: Query<T::CasterItem>,
+    params: StaticSystemParam<T::SystemParam>,
 ) {
-    let item = query.get_mut(trigger.event_target()).unwrap();
-    T::on_stop(item);
+    let ability_id = find_ability_ancestor(trigger.task_id, &tasks, &abilities);
+    let task_item = task_items.get_mut(trigger.task_id).unwrap();
+    let ability_item = ability_items.get_mut(ability_id).expect(&format!(
+        "[{}] AbilityTask error fetching AbilityItem",
+        ability_id
+    ));
+    let caster_id = casters.get(ability_id).expect(&format!(
+        "[{}] Abilities must have an owner caster",
+        ability_id
+    ));
+    let caster_item = caster_items.get_mut(caster_id.0).unwrap();
+
+    let mut param_items = params.into_inner();
+
+    T::on_stop(
+        trigger.task_id,
+        caster_item,
+        ability_item,
+        task_item,
+        &mut param_items,
+    );
 }
 
 pub fn on_task_completion_notification(
@@ -149,7 +241,7 @@ pub fn on_task_completion_notification(
             .any(|task| task_machines.is_in_state(task, TaskState::Completed)),
     };
 
-    println!(
+    debug!(
         "[{}] Task Completion Notification ({:?}) [{result}] ({rule:?})",
         trigger.entity, tasks
     );
@@ -159,6 +251,29 @@ pub fn on_task_completion_notification(
     } else if result {
         let _ = ability_machines.dispatch_event(trigger.entity, AbilityEvent::EndAbility);
     }
+}
+
+fn find_ability_ancestor(
+    current_entity: Entity,
+    parent_query: &Query<&TaskOwner>,
+    ability_query: &Query<Entity, With<Ability>>,
+) -> Entity {
+    let mut current = current_entity;
+
+    // Traverse upwards using the Parent chain
+    while let Ok(task_parent) = parent_query.get(current) {
+        let parent_entity = task_parent.get();
+
+        // Check if the current parent has the 'Ability' component
+        if ability_query.contains(parent_entity) {
+            return parent_entity;
+        }
+
+        // Move to the next parent
+        current = parent_entity;
+    }
+
+    unreachable!("should always have an ability in the hierarchy");
 }
 
 /// The entity that this effect is targeting.
@@ -185,51 +300,83 @@ pub struct NoData;
 
 pub struct DebugInstantTask;
 impl AbilityTask for DebugInstantTask {
-    type EntityItem = DebugTaskContext;
+    type CasterItem = ();
+    type AbilityItem = ();
+    type TaskItem = DebugTaskContext;
     type SystemParam = ();
     type Data = NoData;
 
     fn activate(
         _task_id: Entity,
-        item: TaskItem<Self>,
+        _caster: CasterItem<Self>,
+        _ability: AbilityItem<Self>,
+        task: TaskItem<Self>,
         _param: &mut TaskParam<Self>,
     ) -> TaskStatus {
-        debug!("[{}] Activate Task", item.name);
+        debug!("[{}] Activate Task", task.name);
 
         TaskStatus::Complete
     }
 
-    fn on_stop(item: TaskItem<Self>) {
-        debug!("[{}] Task Stopped", item.name);
+    fn on_stop(
+        _task_id: Entity,
+        _caster: CasterItem<Self>,
+        _ability: AbilityItem<Self>,
+        task: TaskItem<Self>,
+        _param: &mut TaskParam<Self>,
+    ) {
+        debug!("[{}] Task Stopped", task.name);
     }
 
-    fn on_completion(item: TaskItem<Self>) {
-        debug!("[{}] Task Completed", item.name);
+    fn on_completion(
+        _task_id: Entity,
+        _caster: CasterItem<Self>,
+        _ability: AbilityItem<Self>,
+        task: TaskItem<Self>,
+        _param: &mut TaskParam<Self>,
+    ) {
+        debug!("[{}] Task Completed", task.name);
     }
 }
 
 pub struct DebugLongTask;
 impl AbilityTask for DebugLongTask {
-    type EntityItem = DebugTaskContext;
+    type CasterItem = ();
+    type AbilityItem = ();
+    type TaskItem = DebugTaskContext;
     type SystemParam = ();
     type Data = NoData;
 
     fn activate(
         _task_id: Entity,
-        item: TaskItem<Self>,
+        _caster: CasterItem<Self>,
+        _ability: AbilityItem<Self>,
+        task: TaskItem<Self>,
         _param: &mut TaskParam<Self>,
     ) -> TaskStatus {
-        debug!("[{}] Activate Task", item.name);
+        debug!("[{}] Activate Task", task.name);
 
         TaskStatus::Running
     }
 
-    fn on_stop(item: TaskItem<Self>) {
-        debug!("[{}] Task Stopped", item.name);
+    fn on_stop(
+        _task_id: Entity,
+        _caster: CasterItem<Self>,
+        _ability: AbilityItem<Self>,
+        task: TaskItem<Self>,
+        _param: &mut TaskParam<Self>,
+    ) {
+        debug!("[{}] Task Stopped", task.name);
     }
 
-    fn on_completion(item: TaskItem<Self>) {
-        debug!("[{}] Task Completed", item.name);
+    fn on_completion(
+        _task_id: Entity,
+        _caster: CasterItem<Self>,
+        _ability: AbilityItem<Self>,
+        task: TaskItem<Self>,
+        _param: &mut TaskParam<Self>,
+    ) {
+        debug!("[{}] Task Completed", task.name);
     }
 }
 
@@ -258,26 +405,23 @@ impl WaitTask {
 }
 
 impl AbilityTask for WaitTask {
-    type EntityItem = WaitTaskContext;
+    type CasterItem = ();
+    type AbilityItem = ();
+    type TaskItem = WaitTaskContext;
     type SystemParam = ();
     type Data = WaitTask;
 
     fn activate(
         _task_id: Entity,
-        mut item: TaskItem<Self>,
+        _caster: CasterItem<Self>,
+        _ability: AbilityItem<Self>,
+        mut task: TaskItem<Self>,
         _param: &mut TaskParam<Self>,
     ) -> TaskStatus {
-        item.timer.0.reset();
-        item.timer.0.unpause();
-
-        println!("timer reset");
-
+        task.timer.0.reset();
+        task.timer.0.unpause();
         TaskStatus::Running
     }
-
-    fn on_stop(_item: TaskItem<Self>) {}
-
-    fn on_completion(_item: TaskItem<Self>) {}
 }
 
 #[derive(QueryData)]
@@ -296,7 +440,6 @@ pub fn handles_wait_task_timers(
         wait_task.0.tick(time.delta());
 
         if wait_task.0.just_finished() {
-            println!("timer just finished");
             abilities.task(task_id).complete();
         }
     }
@@ -308,10 +451,7 @@ pub struct TaskScope<'a, 'w, 's> {
 }
 
 impl<'a, 'w, 's> TaskScope<'a, 'w, 's> {
-    pub fn new(
-        task: Entity,
-        commands: &'a mut Commands<'w, 's>,
-    ) -> Self {
+    pub fn new(task: Entity, commands: &'a mut Commands<'w, 's>) -> Self {
         Self {
             task_id: Some(task),
             commands,

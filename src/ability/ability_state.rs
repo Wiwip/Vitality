@@ -9,7 +9,7 @@ use crate::ability::{
 use crate::actors::Actor;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
-use crate::context::AbilityExprContext;
+use crate::context::{AbilityExprContext, ActorExprContext};
 use crate::registry::Registry;
 use bevy::asset::Assets;
 use bevy::ecs::query::QueryData;
@@ -154,6 +154,19 @@ impl MachineState<AbilityMachine> for ReadyState {
                     .get(&ability.0.clone())
                     .ok_or("No ability asset.")
                     .unwrap();
+
+                // Checks if we meet the Actor-based conditions (i.e. is not stunned)
+                let context = ActorExprContext {
+                    actor_context: source_entity_ref,
+                };
+                let meets_actor_exec_conditions = ability_spec
+                    .execution_conditions
+                    .iter()
+                    .all(|expr| expr.eval(&context));
+
+                if !meets_actor_exec_conditions {
+                    return EventResult::Ignored;
+                }
 
                 let context = AbilityExprContext {
                     caster_ref: source_entity_ref,
