@@ -3,23 +3,9 @@ name = "vitality"
 version = "0.2.0"
 edition = "2024"
 
-# Enable a small amount of optimization in debug mode
-[profile.dev]
-opt-level = 1
-
-# Enable high optimizations for dependencies (incl. Bevy), but not for our code:
-[profile.dev.package."*"]
-opt-level = 3
-
-# Add this to your Cargo.toml
-[profile.release]
-codegen-units = 1
-debug = true
-
 [dependencies]
 rand = "0.10"
 ptree = "0.5"
-#bevy_egui = "0.39"
 #bevy-inspector-egui = "0.36"
 petgraph = "0.8"
 serde = "1.0"
@@ -57,3 +43,16 @@ features = [
 [[bench]]
 name = "bench_systems"
 harness = false
+
+# Enable a small amount of optimization in debug mode
+[profile.dev]
+opt-level = 1
+
+# Enable high optimizations for dependencies (incl. Bevy), but not for our code:
+[profile.dev.package."*"]
+opt-level = 3
+
+# Add this to your Cargo.toml
+[profile.release]
+codegen-units = 1
+debug = true

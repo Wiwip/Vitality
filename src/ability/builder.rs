@@ -1,3 +1,4 @@
+use crate::ability::AbilityCooldown;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::context::{
@@ -12,7 +13,7 @@ use express_it::expr::{AsExpression, BoolExpr, StoredExpr};
 use express_it::logic::ExprCmpLe;
 use express_it::plan::{AssignmentStep, Plan};
 use num_traits::{AsPrimitive, Num};
-use crate::ability::AbilityCooldown;
+use std::any::TypeId;
 
 pub struct AbilityBuilder {
     name: String,
@@ -58,11 +59,14 @@ impl AbilityBuilder {
     where
         T::Property: std::cmp::PartialOrd + Copy + 'static,
     {
-        let cost_expr = cost.as_expr();
         let node_expr = express_it::nodes::Node {
-            expr: cost_expr,
+            expr: cost.as_expr(),
             _marker: Default::default(),
         };
+
+        let get_attr = T::src();
+        let final_expr = get_attr - node_expr;
+
         let step = AssignmentStep {
             setter_fn: |ctx: &mut AbilityExprContextMut, val: T::Property| match ctx
                 .caster_mut
@@ -73,7 +77,7 @@ impl AbilityBuilder {
                 }
                 Some(mut attr) => attr.set_base_value(val),
             },
-            expr: cost_expr,
+            expr: final_expr,
             cache_key: None,
             _marker: std::marker::PhantomData,
         };
@@ -82,7 +86,12 @@ impl AbilityBuilder {
         self.cost_modifiers = plan;
 
         let t_src = express_it::nodes::Node::<T::Property, AbilityExprSchema, _>::new(
-            |ctx: &AbilityExprContext| ctx.caster_ref.get::<T>().unwrap().current_value(),
+            |ctx: &AbilityExprContext| {
+                ctx.caster_ref
+                    .get::<T>()
+                    .expect(&format!("Caster should have {}", pretty_type_name::<T>()))
+                    .current_value()
+            },
         );
 
         // This will now compile because E satisfies the comparison trait and hasn't been moved
@@ -149,31 +158,6 @@ impl AbilityBuilder {
         self.name = name;
         self
     }
-
-    /*pub fn add_task<T: AbilityTask>(mut self) -> Self {
-        self.mutators.push(EntityActions::new(
-            move |entity_commands: &mut EntityCommands| {
-                entity_commands.observe(
-                    |trigger: On<BeginTask>,
-                     mut query: Query<T::Query>,
-                     params: StaticSystemParam<T::Param>| {
-                        let item = query.get_mut(trigger.event_target()).unwrap();
-                        let mut param_items = params.into_inner();
-                        T::on_begin(item, &mut param_items);
-                    },
-                );
-                entity_commands.observe(|trigger: On<CancelTask>, mut query: Query<T::Query>| {
-                    let item = query.get_mut(trigger.event_target()).unwrap();
-                    T::on_cancel(item);
-                });
-                entity_commands.observe(|trigger: On<EndTask>, mut query: Query<T::Query>| {
-                    let item = query.get_mut(trigger.event_target()).unwrap();
-                    T::on_end(item);
-                });
-            },
-        ));
-        self
-    }*/
 
     pub fn set_tasks<S, F>(mut self, scene_factory: F) -> Self
     where

@@ -1,5 +1,5 @@
 use crate::AttributesMut;
-use crate::ability::{Ability, AbilityRecovery};
+use crate::ability::{Ability, AbilityRecovery, TargetData};
 use crate::assets::AbilityDef;
 use crate::context::{AbilityExprContext, AbilityExprContextMut, AbilityExprSchema};
 use bevy::asset::Assets;
@@ -39,9 +39,9 @@ pub fn can_activate_ability(
 #[derive(EntityEvent)]
 pub struct ActivateAbility {
     #[event_target]
-    pub target: Entity,
-    pub source: Entity,
     pub ability: Entity,
+    pub target: TargetData,
+    pub source: Entity,
 }
 
 /// Bypass [TryActivateAbility]'s checks. Usually triggered after a successful [TryActivateAbility].
@@ -57,8 +57,17 @@ pub(crate) fn activate_ability(
         .get(&ability.0.clone())
         .ok_or("No ability asset")?;
 
-    for plan in &ability_spec.on_execute {
-        let mut context = if trigger.source == trigger.target {
+    let mut context = match trigger.target {
+        TargetData::Target(target) => {
+            let [caster_mut, target_mut, ability_mut] =
+                actors.get_many_mut([trigger.source, target, trigger.ability])?;
+            AbilityExprContextMut {
+                caster_mut,
+                ability_mut,
+                target_mut: Some(target_mut),
+            }
+        }
+        TargetData::Location(_) | TargetData::SelfCast => {
             let [caster_mut, ability_mut] =
                 actors.get_many_mut([trigger.source, trigger.ability])?;
             AbilityExprContextMut {
@@ -66,35 +75,13 @@ pub(crate) fn activate_ability(
                 ability_mut,
                 target_mut: None,
             }
-        } else {
-            let [caster_mut, target_mut, ability_mut] =
-                actors.get_many_mut([trigger.source, trigger.target, trigger.ability])?;
-            AbilityExprContextMut {
-                caster_mut,
-                ability_mut,
-                target_mut: Some(target_mut),
-            }
-        };
+        }
+    };
 
+    for plan in &ability_spec.on_execute {
         plan.run(&mut context);
     }
 
-    let mut context = if trigger.source == trigger.target {
-        let [caster_mut, ability_mut] = actors.get_many_mut([trigger.source, trigger.ability])?;
-        AbilityExprContextMut {
-            caster_mut,
-            ability_mut,
-            target_mut: None,
-        }
-    } else {
-        let [caster_mut, target_mut, ability_mut] =
-            actors.get_many_mut([trigger.source, trigger.target, trigger.ability])?;
-        AbilityExprContextMut {
-            caster_mut,
-            ability_mut,
-            target_mut: Some(target_mut),
-        }
-    };
     // Calculates the costs of the ability and applies them
     ability_spec.cost_modifiers.run(&mut context);
     Ok(())

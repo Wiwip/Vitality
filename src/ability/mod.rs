@@ -68,6 +68,7 @@ pub struct Ability(pub(crate) Handle<AbilityDef>);
 pub enum TargetData {
     SelfCast,
     Target(Entity),
+    Location(Vec3),
 }
 
 #[derive(EntityEvent)]
@@ -81,7 +82,7 @@ pub struct BeginAbility {
 pub struct ExecuteAbility {
     #[event_target]
     pub ability: Entity,
-    pub target: Entity,
+    pub target: TargetData,
     pub source: Entity,
 }
 

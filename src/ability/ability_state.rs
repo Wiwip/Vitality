@@ -114,14 +114,15 @@ pub fn setup_ability_machine_definition(mut commands: Commands) {
 
 struct ReadyState;
 impl MachineState<AbilityMachine> for ReadyState {
-    fn on_enter(&self, _ctx: &mut Access<AbilityMachine>) {
-        println!("on_enter: ReadyState");
-    }
+    fn on_enter(&self, _ctx: &mut Access<AbilityMachine>) {}
 
     fn on_event(&self, ctx: &mut Access<AbilityMachine>, event: &AbilityEvent) -> EventResult {
         debug!("on_event: {:?}", event);
         match event {
-            AbilityEvent::TryActivate { source, target } => {
+            AbilityEvent::TryActivate {
+                source,
+                target: target_data,
+            } => {
                 let Ok((ability, ability_ref)) = ctx.view.abilities.get(ctx.ability_id) else {
                     return EventResult::Ignored;
                 };
@@ -135,14 +136,15 @@ impl MachineState<AbilityMachine> for ReadyState {
                     return EventResult::Ignored;
                 };
 
-                let target_entity_ref = match target {
-                    TargetData::SelfCast => source_entity_ref,
+                let target_entity_ref = match target_data {
+                    TargetData::SelfCast => Some(source_entity_ref),
                     TargetData::Target(target) => {
                         let Ok((_, entity, _)) = ctx.view.actors.get(*target) else {
                             return EventResult::Ignored;
                         };
-                        entity
+                        Some(entity)
                     }
+                    _ => None,
                 };
 
                 let ability_spec = ctx
@@ -156,7 +158,7 @@ impl MachineState<AbilityMachine> for ReadyState {
                 let context = AbilityExprContext {
                     caster_ref: source_entity_ref,
                     ability_ref,
-                    target_ref: Some(target_entity_ref),
+                    target_ref: target_entity_ref,
                 };
 
                 let can_activate =
@@ -167,21 +169,17 @@ impl MachineState<AbilityMachine> for ReadyState {
                 if can_activate {
                     ctx.internal_events.push_back(AbilityEvent::Activate);
 
-                    let target_id = match target {
-                        TargetData::SelfCast => *source,
-                        TargetData::Target(target) => *target,
-                    };
                     ctx.view.commands.trigger(BeginAbility {
                         source: *source,
                         ability: ctx.ability_id,
                     });
                     ctx.view.commands.trigger(ActivateAbility {
-                        target: target_id,
+                        target: target_data.clone(),
                         source: *source,
                         ability: ctx.ability_id,
                     });
                     ctx.view.commands.trigger(ExecuteAbility {
-                        target: target_id,
+                        target: target_data.clone(),
                         source: *source,
                         ability: ctx.ability_id,
                     });
