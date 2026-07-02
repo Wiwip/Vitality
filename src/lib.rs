@@ -99,7 +99,7 @@ impl Plugin for AttributesPlugin {
             .register_type::<NodeType>();
 
         app.configure_sets(
-            Update,
+            FixedUpdate,
             (
                 EffectsSet::First,
                 EffectsSet::Prepare,

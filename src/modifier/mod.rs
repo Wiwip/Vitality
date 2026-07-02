@@ -52,19 +52,6 @@ impl Display for EffectSubject {
     }
 }
 
-/*impl TryFrom<&Path> for EffectSubject {
-    type Error = String;
-    fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        let root = path.0.split('.').next().unwrap_or("");
-        match root.to_lowercase().as_str() {
-            "target" => Ok(EffectSubject::Target),
-            "src" | "source" => Ok(EffectSubject::Source),
-            "effect" => Ok(EffectSubject::Effect),
-            _ => Err(format!("'{}' is not a valid EffectSubject", root)),
-        }
-    }
-}*/
-
 impl From<EffectSubject> for SmolStr {
     fn from(value: EffectSubject) -> Self {
         SmolStr::from(value.to_string())
@@ -77,25 +64,6 @@ pub enum AbilitySubject {
     Ability,
     Target,
 }
-
-/*impl TryFrom<&Path> for AbilitySubject {
-    type Error = String;
-
-    fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        let root = path
-            .0
-            .split('.')
-            .next()
-            .ok_or_else(|| format!("Invalid path format: {}", path.0))?;
-
-        match root.to_lowercase().as_str() {
-            "source" | "src" | "caster" => Ok(AbilitySubject::Caster),
-            "ability" => Ok(AbilitySubject::Ability),
-            "dst" | "target" => Ok(AbilitySubject::Target),
-            _ => Err(format!("Unknown subject alias: {}", root)),
-        }
-    }
-}*/
 
 impl Display for AbilitySubject {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -117,17 +85,6 @@ impl From<AbilitySubject> for SmolStr {
 pub enum ActorSubject {
     Actor,
 }
-
-/*impl TryFrom<&Path> for ActorSubject {
-    type Error = String;
-    fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        let root = path.0.split('.').next().unwrap_or("");
-        match root.to_lowercase().as_str() {
-            "actor" => Ok(ActorSubject::Actor),
-            _ => Err(format!("'{}' is not a valid ActorSubject", root)),
-        }
-    }
-}*/
 
 impl Display for ActorSubject {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

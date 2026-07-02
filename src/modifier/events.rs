@@ -1,10 +1,10 @@
+use crate::AttributesMut;
 use crate::context::EffectExprContext;
 use crate::inspector::pretty_type_name;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::AttributeCalculator;
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
-use crate::AttributesMut;
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
 
@@ -22,14 +22,13 @@ pub fn apply_modifier_events<T: Attribute>(
     mut commands: Commands,
 ) {
     for ev in event_reader.read() {
-        let has_changed =
-            apply_modifier(&ev, &mut attributes).unwrap_or(false);
-
-        if has_changed {
-            commands.trigger(MarkNodeDirty::<T> {
+        match apply_modifier(&ev, &mut attributes) {
+            Ok(true) => commands.trigger(MarkNodeDirty::<T> {
                 entity: ev.target_entity,
                 phantom_data: Default::default(),
-            });
+            }),
+            Err(err) => debug!("Failed to apply modifier {}. {}", ev.modifier, err),
+            _ => {}
         }
     }
 }

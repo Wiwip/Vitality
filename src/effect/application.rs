@@ -162,6 +162,7 @@ impl ApplyEffectEvent {
             .all(|condition| condition.eval(&context));
 
         if !should_apply {
+            debug!("Effect not applied.");
             return Ok(());
         }
 

@@ -9,7 +9,7 @@ use crate::modifier::AttributeCalculatorCached;
 use crate::mutator::EntityActions;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
-use express_it::expr::{AsExpression, BoolExpr, Expr, StoredExpr};
+use express_it::expr::{AsExpression, BoolExpr, StoredExpr};
 use express_it::logic::ExprCmpLe;
 use express_it::plan::{AssignmentStep, Plan};
 use num_traits::{AsPrimitive, Num};
@@ -102,10 +102,7 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn with_activation_condition(
-        mut self,
-        expr: StoredExpr<bool, ActorExprSchema>,
-    ) -> Self {
+    pub fn with_activation_condition(mut self, expr: StoredExpr<bool, ActorExprSchema>) -> Self {
         self.execution_condition.push(expr);
         self
     }
