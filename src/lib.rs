@@ -132,15 +132,8 @@ pub struct AttributeBindings {
 
 impl AttributeBindings {
     fn add<T: Attribute>(&mut self) {
-        let name = pretty_type_name::<T>();
-
         self.bind_type_id::<T>();
 
-        println!(
-            "Registered attribute: {} with [{:?}]",
-            name,
-            TypeId::of::<T>()
-        );
         self.insert_dependency_functions
             .insert(TypeId::of::<T>(), Self::dependency_fn::<T>);
     }

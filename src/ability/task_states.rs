@@ -108,7 +108,7 @@ impl MachineState<TaskMachine> for RunningState {
         debug!("[{}] on_enter: Running Task", ctx.task_id);
 
         // Tells this task to begin
-        ctx.view.commands.trigger(ExecuteTask {
+        ctx.external.commands.trigger(ExecuteTask {
             task_id: ctx.task_id,
         });
     }
@@ -124,14 +124,14 @@ impl MachineState<TaskMachine> for CompleteState {
         debug!("[{}] on_enter: Complete Task", ctx.task_id);
 
         // Complete this task
-        ctx.view.commands.trigger(TaskCompleted {
+        ctx.external.commands.trigger(TaskCompleted {
             task_id: ctx.task_id,
         });
 
         // Tells subtasks to activate
-        if let Ok(sub_tasks) = ctx.view.tasks.get(ctx.task_id) {
+        if let Ok(sub_tasks) = ctx.external.tasks.get(ctx.task_id) {
             for task_id in sub_tasks.iter() {
-                ctx.view.commands.trigger(MachineEvent {
+                ctx.external.commands.trigger(MachineEvent {
                     entity: task_id,
                     event: TaskEvent::Activate,
                 });
@@ -139,7 +139,7 @@ impl MachineState<TaskMachine> for CompleteState {
         };
 
         // Notify parents of completion
-        ctx.view.commands.trigger(NotifyTaskCompletion {
+        ctx.external.commands.trigger(NotifyTaskCompletion {
             entity: ctx.task_id,
         });
     }
@@ -153,7 +153,7 @@ struct StoppedState;
 impl MachineState<TaskMachine> for StoppedState {
     fn on_enter(&self, ctx: &mut Access<TaskMachine>) {
         debug!("[{}] on_enter: Cancelled Task", ctx.task_id);
-        ctx.view.commands.trigger(TaskStopped {
+        ctx.external.commands.trigger(TaskStopped {
             task_id: ctx.task_id,
         });
     }

@@ -123,11 +123,11 @@ impl MachineState<AbilityMachine> for ReadyState {
                 source,
                 target: target_data,
             } => {
-                let Ok((ability, ability_ref)) = ctx.view.abilities.get(ctx.ability_id) else {
+                let Ok((ability, ability_ref)) = ctx.external.abilities.get(ctx.ability_id) else {
                     return EventResult::Ignored;
                 };
 
-                let Ok((_, source_entity_ref, _actor_abilities)) = ctx.view.actors.get(*source)
+                let Ok((_, source_entity_ref, _actor_abilities)) = ctx.external.actors.get(*source)
                 else {
                     warn!(
                         "[{}] The Actor({}) has no GrantedAbilities",
@@ -139,7 +139,7 @@ impl MachineState<AbilityMachine> for ReadyState {
                 let target_entity_ref = match target_data {
                     TargetData::SelfCast => Some(source_entity_ref),
                     TargetData::Target(target) => {
-                        let Ok((_, entity, _)) = ctx.view.actors.get(*target) else {
+                        let Ok((_, entity, _)) = ctx.external.actors.get(*target) else {
                             return EventResult::Ignored;
                         };
                         Some(entity)
@@ -148,7 +148,7 @@ impl MachineState<AbilityMachine> for ReadyState {
                 };
 
                 let ability_spec = ctx
-                    .view
+                    .external
                     .registry
                     .ability_assets
                     .get(&ability.0.clone())
@@ -182,16 +182,16 @@ impl MachineState<AbilityMachine> for ReadyState {
                 if can_activate {
                     ctx.internal_events.push_back(AbilityEvent::Activate);
 
-                    ctx.view.commands.trigger(BeginAbility {
+                    ctx.external.commands.trigger(BeginAbility {
                         source: *source,
                         ability: ctx.ability_id,
                     });
-                    ctx.view.commands.trigger(ActivateAbility {
+                    ctx.external.commands.trigger(ActivateAbility {
                         target: target_data.clone(),
                         source: *source,
                         ability: ctx.ability_id,
                     });
-                    ctx.view.commands.trigger(ExecuteAbility {
+                    ctx.external.commands.trigger(ExecuteAbility {
                         target: target_data.clone(),
                         source: *source,
                         ability: ctx.ability_id,
@@ -209,7 +209,7 @@ struct ActiveState;
 impl MachineState<AbilityMachine> for ActiveState {
     fn on_enter(&self, ctx: &mut Access<AbilityMachine>) {
         debug!("[{}] Ability enter ActiveState", ctx.ability_id);
-        let Ok(tasks) = ctx.view.tasks.get(ctx.ability_id) else {
+        let Ok(tasks) = ctx.external.tasks.get(ctx.ability_id) else {
             error!("Activated an unavailable ability.");
             return;
         };
@@ -223,7 +223,7 @@ impl MachineState<AbilityMachine> for ActiveState {
         // Signal tasks to begin
         for task_entity in tasks.iter() {
             let _ = ctx
-                .view
+                .external
                 .task_machines
                 .dispatch_event(task_entity, TaskEvent::Activate);
         }
@@ -240,22 +240,22 @@ impl MachineState<AbilityMachine> for RecoveryState {
         debug!("on_enter: CooldownState");
 
         // Reset recovery elapsed timer
-        ctx.data.recovery_timer.set_base_value(0.0);
+        ctx.local.recovery_timer.set_base_value(0.0);
 
         // Sets the recovery timer cooldown. Uses a snapshotting model.
-        ctx.data.timers.set_timer(
-            ctx.data.cooldown.val(),
+        ctx.local.timers.set_timer(
+            ctx.local.cooldown.val(),
             AbilityEvent::Recovered,
             AbilityState::Recovery,
         );
 
-        for task_id in ctx.view.tasks.iter_descendants(ctx.ability_id) {
+        for task_id in ctx.external.tasks.iter_descendants(ctx.ability_id) {
             if ctx
-                .view
+                .external
                 .task_machines
                 .is_in_state(task_id, TaskState::Running)
             {
-                ctx.view
+                ctx.external
                     .task_machines
                     .dispatch_event(task_id, TaskEvent::Stop)
                     .unwrap();
@@ -264,8 +264,8 @@ impl MachineState<AbilityMachine> for RecoveryState {
     }
 
     fn on_exit(&self, ctx: &mut Access<AbilityMachine>) {
-        for task_id in ctx.view.tasks.iter_descendants(ctx.ability_id) {
-            ctx.view
+        for task_id in ctx.external.tasks.iter_descendants(ctx.ability_id) {
+            ctx.external
                 .task_machines
                 .dispatch_event(task_id, TaskEvent::Reset)
                 .unwrap();
