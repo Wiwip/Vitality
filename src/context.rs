@@ -1,6 +1,4 @@
-use crate::ability::{
-    Ability, AbilityError, AbilityOf, AbilityRecovery, GrantAbilityCommand, GrantedAbilities,
-};
+use crate::ability::{Ability, AbilityError, AbilityOf, AbilityRecovery, GrantAbilityCommand, GrantedAbilities, TargetData};
 use crate::actors::SpawnActorCommand;
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::effect::global_effect::{GlobalActor, GlobalEffects};
@@ -13,17 +11,22 @@ use bevy::ecs::system::lifetimeless::Read;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use express_it::expr::{Context, ContextMut};
+use hfsm_bevy::{MachineEvent};
+use crate::ability::ability_state::{AbilityEvent};
 
 #[derive(SystemParam)]
 pub struct Vitality<'w, 's> {
-    commands: Commands<'w, 's>,
-    global_actor: Query<'w, 's, Entity, With<GlobalActor>>,
-    global_effects: ResMut<'w, GlobalEffects>,
-    registry: Registry<'w>,
-    effects: ResMut<'w, Assets<EffectDef>>,
-    actors: ResMut<'w, Assets<ActorDef>>,
-    granted_abilities: Query<'w, 's, Read<GrantedAbilities>>,
-    ability_entities: Query<'w, 's, (Read<Ability>, Read<AbilityRecovery>)>,
+    pub global_actor: Query<'w, 's, Entity, With<GlobalActor>>,
+    pub granted_abilities: Query<'w, 's, Read<GrantedAbilities>>,
+    pub ability_entities: Query<'w, 's, (Read<Ability>, Read<AbilityRecovery>)>,
+
+    pub registry: Registry<'w>,
+
+    pub actors: ResMut<'w, Assets<ActorDef>>,
+    pub effects: ResMut<'w, Assets<EffectDef>>,
+    pub global_effects: ResMut<'w, GlobalEffects>,
+
+    pub commands: Commands<'w, 's>,
 }
 
 impl<'s, 'w> Vitality<'w, 's> {
@@ -90,6 +93,28 @@ impl<'s, 'w> Vitality<'w, 's> {
             }
         }
         None
+    }
+
+    pub fn try_activate_by_token(
+        &mut self,
+        entity: Entity,
+        token: &AbilityToken,
+        target_data: TargetData,
+    ) {
+        let handle = self.get_ability_from_token(token);
+
+        let Some(ability_entity) = self.get_ability_entity(entity, &handle) else {
+            warn_once!("Ability does not exist on entity.");
+            return;
+        };
+
+        self.commands.trigger(MachineEvent {
+            entity: ability_entity,
+            event: AbilityEvent::TryActivate {
+                source: entity,
+                target: target_data,
+            },
+        });
     }
 
     pub fn grant_ability_by_token_unchecked(

@@ -15,8 +15,7 @@ use hfsm_bevy::MachineQuery;
 
 #[derive(SystemParam)]
 pub struct Abilities<'w, 's> {
-    pub abilities:
-        Query<'w, 's, (Read<Ability>, AttributesRef<'static, 'static>), Without<IsResource>>,
+    pub abilities: Query<'w, 's, (Read<Ability>, AttributesRef<'static, 'static>), Without<IsResource>>,
     pub actors: Query<
         'w,
         's,
