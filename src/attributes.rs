@@ -9,10 +9,7 @@ use crate::{AttributesMut, AttributesRef};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::log::error;
-use bevy::prelude::{
-    Changed, Commands, Component, Entity, EntityEvent, Insert, On, Query, Reflect,
-    RelationshipTarget, TypePath,
-};
+use bevy::prelude::{Changed, Commands, Component, Entity, EntityEvent, Insert, On, Query, Reflect, RelationshipTarget, TypePath};
 use bevy::reflect::{GetTypeRegistration, Typed, reflect_trait};
 use express_it::expr::{AsExpression, Context, ContextMut, Expr};
 use express_it::nodes::Node;
@@ -107,7 +104,10 @@ where
         Node {
             expr: AttributeVar {
                 fetch_fn: |ctx: &C::ContextItem<'_, '_>| {
-                    ctx.get_actor().get::<Self>().unwrap().current_value()
+                    ctx.get_actor()
+                        .get::<Self>()
+                        .expect(&format!("{} not found", pretty_type_name::<Self>()))
+                        .current_value()
                 },
                 _marker: Default::default(),
             },
@@ -304,14 +304,7 @@ macro_rules! attribute {
 #[macro_export]
 macro_rules! tag {
     ( $StructName:ident ) => {
-        #[derive(
-            bevy::prelude::Component,
-            bevy::prelude::Reflect,
-            Default,
-            Copy,
-            Clone,
-            Debug,
-        )]
+        #[derive(bevy::prelude::Component, bevy::prelude::Reflect, Default, Copy, Clone, Debug, bevy::prelude::FromTemplate)]
         #[reflect(Component)]
         pub struct $StructName;
     };

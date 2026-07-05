@@ -1,6 +1,5 @@
 use crate::ability::Ability;
 use crate::assets::AbilityDef;
-use crate::modifier::modifier::RecalculateExpression;
 use bevy::asset::{Assets, Handle};
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
@@ -41,16 +40,17 @@ impl EntityCommand for GrantAbilityCommand {
 
         let scene = (ability_def.task_scene)();
 
-        let recovery_observer = |_trigger: On<RecalculateExpression>| {
+
+        /*let recovery_observer = |_trigger: On<RecalculateExpression>| {
             println!("recalculate expression");
-        };
+        };*/
 
         let _ = ability_id
             .insert((
                 Ability(self.handle),
                 Name::new(ability_def.name.clone()),
             ))
-            .observe(recovery_observer)
+            //.observe(recovery_observer)
             .apply_scene(scene);
 
         // Apply the commands

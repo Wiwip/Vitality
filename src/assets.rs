@@ -51,6 +51,7 @@ pub struct AbilityDef {
 
     pub cost_condition: Vec<StoredExpr<bool, AbilityExprSchema>>,
     pub cost_modifiers: Plan<AbilityExprSchema>,
+    pub cooldown: StoredExpr<f32, ActorExprSchema>,
 
     pub task_scene: Box<dyn Fn() -> Box<dyn Scene> + Send + Sync>,
 

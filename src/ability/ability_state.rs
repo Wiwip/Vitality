@@ -3,8 +3,7 @@ use crate::ability::systems::{ActivateAbility, can_activate_ability};
 use crate::ability::task_states::{TaskEvent, TaskMachine, TaskState};
 use crate::ability::tasks::Tasks;
 use crate::ability::{
-    Ability, AbilityCooldown, AbilityRecovery, BeginAbility, ExecuteAbility, GrantedAbilities,
-    TargetData,
+    Ability, AbilityRecovery, BeginAbility, ExecuteAbility, GrantedAbilities, TargetData,
 };
 use crate::actors::Actor;
 use crate::assets::AbilityDef;
@@ -50,7 +49,7 @@ impl From<AbilityState> for StateId {
 pub struct AbilityContext {
     ability_id: Entity,
     recovery_timer: Write<AbilityRecovery>,
-    cooldown: Read<AbilityCooldown>,
+    //cooldown: Read<AbilityCooldown>,
     timers: Write<StateTimer<AbilityMachine>>,
 }
 impl LocalContext for AbilityContext {
@@ -242,9 +241,17 @@ impl MachineState<AbilityMachine> for RecoveryState {
         // Reset recovery elapsed timer
         ctx.local.recovery_timer.set_base_value(0.0);
 
+        let (ability, ability_ref) = ctx.external.abilities.get(ctx.ability_id).unwrap();
+        let ability_def = ctx.external.ability_assets.get(&ability.0).unwrap();
+
+        let actor_context = ActorExprContext {
+            actor_context: ability_ref,
+        };
+        let new_cooldown = ability_def.cooldown.eval(&actor_context);
+
         // Sets the recovery timer cooldown. Uses a snapshotting model.
         ctx.local.timers.set_timer(
-            ctx.local.cooldown.val(),
+            new_cooldown,
             AbilityEvent::Recovered,
             AbilityState::Recovery,
         );
@@ -257,8 +264,7 @@ impl MachineState<AbilityMachine> for RecoveryState {
             {
                 ctx.external
                     .task_machines
-                    .dispatch_event(task_id, TaskEvent::Stop)
-                    .unwrap();
+                    .dispatch_event(task_id, TaskEvent::Stop);
             }
         }
     }
@@ -267,8 +273,7 @@ impl MachineState<AbilityMachine> for RecoveryState {
         for task_id in ctx.external.tasks.iter_descendants(ctx.ability_id) {
             ctx.external
                 .task_machines
-                .dispatch_event(task_id, TaskEvent::Reset)
-                .unwrap();
+                .dispatch_event(task_id, TaskEvent::Reset);
         }
     }
 }

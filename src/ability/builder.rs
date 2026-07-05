@@ -1,4 +1,3 @@
-use crate::ability::AbilityCooldown;
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::context::{
@@ -11,6 +10,7 @@ use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
 use express_it::expr::{AsExpression, BoolExpr, StoredExpr};
 use express_it::logic::ExprCmpLe;
+use express_it::nodes::LiteralNode;
 use express_it::plan::{AssignmentStep, Plan};
 use num_traits::{AsPrimitive, Num};
 
@@ -20,6 +20,7 @@ pub struct AbilityBuilder {
     triggers: Vec<EntityActions>,
     cost_condition: Vec<StoredExpr<bool, AbilityExprSchema>>,
     execution_condition: Vec<StoredExpr<bool, ActorExprSchema>>,
+    cooldown: StoredExpr<f32, ActorExprSchema>,
     cost_modifiers: Plan<AbilityExprSchema>,
     on_execute: Vec<Plan<AbilityExprSchema>>,
     recovery_condition: Vec<BoolExpr<ActorExprSchema>>,
@@ -34,6 +35,7 @@ impl AbilityBuilder {
             triggers: vec![],
             cost_condition: vec![],
             execution_condition: vec![],
+            cooldown: Box::new(LiteralNode::<f32> { value: f32::MAX }),
             cost_modifiers: Plan::new(),
             on_execute: vec![],
             recovery_condition: vec![],
@@ -107,12 +109,19 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn with_cooldown(mut self, value: f32) -> Self {
-        self.mutators.push(EntityActions::new(
-            move |entity_commands: &mut EntityCommands| {
-                entity_commands.try_insert(AbilityCooldown::new(value));
-            },
-        ));
+    pub fn with_cooldown<E: AsExpression<f32, ActorExprSchema, Target: Copy + 'static>>(
+        mut self,
+        cost: E,
+    ) -> Self
+    where
+        <E as AsExpression<f32, ActorExprSchema>>::Target:
+            express_it::expr::Expr<f32, ActorExprSchema>,
+    {
+        let node_expr = express_it::nodes::Node {
+            expr: cost.as_expr(),
+            _marker: Default::default(),
+        };
+        self.cooldown = Box::new(node_expr);
         self
     }
 
@@ -184,6 +193,7 @@ impl AbilityBuilder {
             execution_conditions: self.execution_condition,
             cost_modifiers: self.cost_modifiers,
 
+            cooldown: self.cooldown,
             task_scene: self.scene,
             recovery_condition: self.recovery_condition,
             on_execute: self.on_execute,

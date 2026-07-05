@@ -6,20 +6,20 @@ mod systems;
 pub mod task_states;
 pub mod tasks;
 
-use crate::ReflectAccessAttribute;
-use crate::ability::ability_state::{AbilityMachine, setup_ability_machine_definition};
+use crate::ability::ability_state::{setup_ability_machine_definition, AbilityMachine};
 use crate::ability::systems::{activate_ability, tick_ability_cooldown};
-use crate::ability::task_states::{TaskMachine, setup_task_machine_definition};
-use crate::ability::tasks::{Tasks, handles_wait_task_timers, on_task_completion_notification};
+use crate::ability::task_states::{setup_task_machine_definition, TaskMachine};
+use crate::ability::tasks::{handles_wait_task_timers, on_task_completion_notification, Tasks};
 use crate::assets::AbilityDef;
 use crate::prelude::Attribute;
 use crate::schedule::EffectsSet;
-use crate::{AttributeCalculatorCached, attribute};
+use crate::AttributeCalculatorCached;
+use crate::ReflectAccessAttribute;
 use bevy::prelude::*;
 pub use builder::AbilityBuilder;
 pub use command::GrantAbilityCommand;
-use hfsm_bevy::StateMachinePlugin;
 use hfsm_bevy::MachineInstance;
+use hfsm_bevy::StateMachinePlugin;
 use num_traits::{AsPrimitive, Num};
 use std::error::Error;
 use std::fmt::Formatter;
@@ -61,7 +61,7 @@ impl GrantedAbilities {
 
 #[derive(Component, Reflect)]
 #[reflect(Component)]
-#[require(Tasks, AbilityRecovery, AbilityCooldown, MachineInstance<AbilityMachine>)]
+#[require(Tasks, AbilityRecovery, MachineInstance<AbilityMachine>)]
 pub struct Ability(pub(crate) Handle<AbilityDef>);
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -129,13 +129,13 @@ impl std::fmt::Display for AbilityError {
 
 impl Error for AbilityError {}
 
-attribute!(AbilityCooldown, f32);
+/*attribute!(AbilityCooldown, f32);
 
 impl Default for AbilityCooldown {
     fn default() -> Self {
         Self::new(1.0)
     }
-}
+}*/
 
 #[derive(Component, Debug, Copy, Clone, Reflect, Default)]
 #[require(AttributeCalculatorCached<AbilityRecovery>)]

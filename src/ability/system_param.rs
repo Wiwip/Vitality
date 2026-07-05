@@ -154,7 +154,7 @@ impl<'w, 's> Abilities<'w, 's> {
                     target: target_data,
                 },
             )
-            .expect("Failed to dispatch abilities");
+            ;
     }
 
     pub fn try_activate_by_tag<T: Component + Reflect>(
@@ -173,7 +173,7 @@ impl<'w, 's> Abilities<'w, 's> {
                         target: target_data,
                     },
                 )
-                .expect("Failed to dispatch abilities");
+                ;
         }
     }
 
