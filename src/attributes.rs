@@ -310,6 +310,9 @@ macro_rules! tag {
     };
 }
 
+#[derive(Component, Default, Debug, Copy, Clone)]
+pub struct ManageAttributes;
+
 #[derive(QueryData, Debug)]
 #[query_data(mutable, derive(Debug))]
 pub struct AttributeQueryData<T: Attribute + 'static> {

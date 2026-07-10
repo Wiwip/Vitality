@@ -1,22 +1,23 @@
-use std::any::{Any, TypeId};
-use crate::GrantedAbilities;
 use crate::ability::{AbilityOf, GrantAbilityCommand};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attribute::clamps::Clamp;
+use crate::attributes::ManageAttributes;
 use crate::effect::{ApplyEffectEvent, EffectTargeting};
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
 use crate::modifier::AttributeCalculatorCached;
 use crate::mutator::EntityActions;
 use crate::prelude::*;
+use crate::GrantedAbilities;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use express_it::expr::{AsExpression, Expr};
 use num_traits::{AsPrimitive, Num};
+use std::any::{Any, TypeId};
 use std::collections::HashSet;
 
 #[derive(Component, Clone, Debug, Deref)]
-#[require(GrantedAbilities)]
+#[require(ManageAttributes, GrantedAbilities)]
 pub struct Actor(pub Handle<ActorDef>);
 
 pub struct SpawnActorCommand {

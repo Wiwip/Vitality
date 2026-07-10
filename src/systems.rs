@@ -1,6 +1,6 @@
 use crate::actors::Actor;
 use crate::assets::EffectDef;
-use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly};
+use crate::attributes::{Attribute, AttributeQueryData, AttributeQueryDataReadOnly, ManageAttributes};
 use crate::context::EffectExprContext;
 use crate::effect::{
     AttributeDependents, Effect, EffectSource, EffectStatusParam, EffectTarget, EffectTicker,
@@ -47,7 +47,7 @@ pub fn mark_node_dirty_observer<T: Attribute>(
 pub fn update_current_value_system<T: Attribute>(
     graph: DependencyGraph,
     nodes: Query<&NodeType>,
-    actors: Query<Entity, With<Actor>>,
+    actors: Query<Entity, With<ManageAttributes>>,
     dirty_nodes: Query<&Dirty<T>>,
     statuses: Query<EffectStatusParam>,
     attributes: Query<AttributeQueryDataReadOnly<T>>,
