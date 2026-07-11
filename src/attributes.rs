@@ -263,18 +263,22 @@ macro_rules! attribute_impl {
                     current_value: value.as_(),
                 }
             }
+            #[inline(always)]
             fn base_value(&self) -> $ValueType {
                 self.base_value
             }
+            #[inline(always)]
             fn base(&self) -> $ValueType {
                 self.base_value
             }
             fn set_base_value(&mut self, value: $ValueType) {
                 self.base_value = value;
             }
+            #[inline(always)]
             fn current_value(&self) -> $ValueType {
                 self.current_value
             }
+            #[inline(always)]
             fn val(&self) -> $ValueType {
                 self.current_value
             }

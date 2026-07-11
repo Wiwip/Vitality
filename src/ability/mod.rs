@@ -6,23 +6,26 @@ mod systems;
 pub mod task_states;
 pub mod tasks;
 
-use crate::ability::ability_state::{setup_ability_machine_definition, AbilityMachine};
-use crate::ability::systems::{activate_ability, tick_ability_cooldown};
-use crate::ability::task_states::{setup_task_machine_definition, TaskMachine};
-use crate::ability::tasks::{handles_wait_task_timers, on_task_completion_notification, Tasks};
-use crate::assets::AbilityDef;
-use crate::prelude::Attribute;
-use crate::schedule::EffectsSet;
 use crate::AttributeCalculatorCached;
 use crate::ReflectAccessAttribute;
+use crate::ability::ability_state::{AbilityMachine, setup_ability_machine_definition};
+use crate::ability::command::on_add_ability;
+use crate::ability::systems::{activate_ability, tick_ability_cooldown};
+use crate::ability::task_states::{TaskMachine, setup_task_machine_definition};
+use crate::ability::tasks::{Tasks, handles_wait_task_timers, on_task_completion_notification};
+use crate::assets::AbilityDef;
+use crate::prelude::Attribute;
+use crate::registry::ability_registry::{AbilityRegistry, AbilityToken};
+use crate::schedule::EffectsSet;
+use bevy::ecs::template::TemplateContext;
 use bevy::prelude::*;
 pub use builder::AbilityBuilder;
-pub use command::GrantAbilityCommand;
 use hfsm_bevy::MachineInstance;
 use hfsm_bevy::StateMachinePlugin;
 use num_traits::{AsPrimitive, Num};
 use std::error::Error;
 use std::fmt::Formatter;
+use std::marker::PhantomPinned;
 use std::time::Duration;
 pub use system_param::Abilities;
 
@@ -31,22 +34,29 @@ pub struct AbilityPlugin;
 impl Plugin for AbilityPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(StateMachinePlugin::<AbilityMachine>::default())
-            .add_plugins(StateMachinePlugin::<TaskMachine>::default())
-            .add_systems(PreStartup, setup_ability_machine_definition)
+            .add_plugins(StateMachinePlugin::<TaskMachine>::default());
+
+        app.add_systems(PreStartup, setup_ability_machine_definition)
             .add_systems(PreStartup, setup_task_machine_definition)
             .add_systems(Update, tick_ability_cooldown.in_set(EffectsSet::Prepare))
-            .add_systems(PreUpdate, handles_wait_task_timers)
-            .add_observer(activate_ability)
+            .add_systems(PreUpdate, handles_wait_task_timers);
+
+        app.add_observer(activate_ability)
             .add_observer(on_task_completion_notification)
-            .register_type::<AbilityOf>()
-            .register_type::<GrantedAbilities>();
+            .add_observer(on_add_ability);
     }
 }
 
 /// The entity that this effect is targeting.
-#[derive(Component, Reflect, Debug)]
+#[derive(Component, Clone, Reflect, Debug)]
 #[relationship(relationship_target = GrantedAbilities)]
 pub struct AbilityOf(pub Entity);
+
+impl Default for AbilityOf {
+    fn default() -> Self {
+        Self(Entity::PLACEHOLDER)
+    }
+}
 
 /// All abilities granted to this entity.
 #[derive(Component, Reflect, Debug, Default)]
@@ -59,10 +69,53 @@ impl GrantedAbilities {
     }
 }
 
-#[derive(Component, Reflect)]
+#[derive(Component, Clone, Reflect)]
 #[reflect(Component)]
 #[require(Tasks, AbilityRecovery, MachineInstance<AbilityMachine>)]
-pub struct Ability(pub(crate) Handle<AbilityDef>);
+pub struct Ability {
+    pub handle: Handle<AbilityDef>,
+}
+
+impl FromTemplate for Ability {
+    type Template = AbilityAssetTemplate;
+}
+
+pub struct AbilityAssetTemplate {
+    pub handle: AbilityToken,
+    _pin: PhantomPinned,
+}
+
+impl Template for AbilityAssetTemplate {
+    type Output = Ability;
+    fn build_template(&self, context: &mut TemplateContext) -> Result<Self::Output> {
+        let ability_registry = context
+            .entity
+            .world()
+            .get_resource::<AbilityRegistry>()
+            .expect("The AbilityRegistry must exist.");
+
+        let handle = ability_registry.get(&self.handle);
+        Ok(Ability {
+            handle: handle.clone(),
+        })
+    }
+
+    fn clone_template(&self) -> Self {
+        AbilityAssetTemplate {
+            handle: self.handle.clone_template(),
+            _pin: Default::default(),
+        }
+    }
+}
+
+impl Default for AbilityAssetTemplate {
+    fn default() -> Self {
+        Self {
+            handle: AbilityToken::new_static(""),
+            _pin: PhantomPinned,
+        }
+    }
+}
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum TargetData {
@@ -128,14 +181,6 @@ impl std::fmt::Display for AbilityError {
 }
 
 impl Error for AbilityError {}
-
-/*attribute!(AbilityCooldown, f32);
-
-impl Default for AbilityCooldown {
-    fn default() -> Self {
-        Self::new(1.0)
-    }
-}*/
 
 #[derive(Component, Debug, Copy, Clone, Reflect, Default)]
 #[require(AttributeCalculatorCached<AbilityRecovery>)]

@@ -4,7 +4,7 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use smol_str::SmolStr;
 
-#[derive(Clone, PartialEq, Eq, Hash, Reflect)]
+#[derive(Clone, PartialEq, Eq, Hash, Reflect, Default)]
 pub struct AbilityToken(SmolStr);
 
 impl AbilityToken {

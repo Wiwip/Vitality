@@ -54,7 +54,7 @@ pub(crate) fn activate_ability(
     let actor = actors.get(trigger.ability)?;
     let ability = actor.get::<Ability>().unwrap();
     let ability_spec = ability_assets
-        .get(&ability.0.clone())
+        .get(&ability.handle.clone())
         .ok_or("No ability asset")?;
 
     let mut context = match trigger.target {

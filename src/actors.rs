@@ -1,4 +1,4 @@
-use crate::ability::{AbilityOf, GrantAbilityCommand};
+use crate::ability::{Ability, AbilityOf};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attribute::clamps::Clamp;
 use crate::attributes::ManageAttributes;
@@ -54,12 +54,12 @@ impl EntityCommand for SpawnActorCommand {
 
                     // Spawn the granted ability entities
                     for ability in actor_def.abilities.iter() {
-                        commands
-                            .spawn(AbilityOf(actor_entity))
-                            .queue(GrantAbilityCommand {
-                                parent: actor_entity,
-                                handle: ability.clone(),
-                            });
+                        commands.spawn((
+                            Ability {
+                                handle: { ability.clone() },
+                            },
+                            AbilityOf(actor_entity),
+                        ));
                     }
 
                     queue

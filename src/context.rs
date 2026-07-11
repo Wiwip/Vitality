@@ -1,4 +1,4 @@
-use crate::ability::{Ability, AbilityError, AbilityOf, AbilityRecovery, GrantAbilityCommand, GrantedAbilities, TargetData};
+use crate::ability::{Ability, AbilityError, AbilityOf, AbilityRecovery, GrantedAbilities, TargetData};
 use crate::actors::SpawnActorCommand;
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::effect::global_effect::{GlobalActor, GlobalEffects};
@@ -87,7 +87,7 @@ impl<'s, 'w> Vitality<'w, 's> {
         let granted = self.granted_abilities.get(actor).ok()?;
         for &ability_entity in granted.iter() {
             if let Ok((ability, _)) = self.ability_entities.get(ability_entity) {
-                if ability.0 == *handle {
+                if ability.handle == *handle {
                     return Some(ability_entity);
                 }
             }
@@ -129,20 +129,18 @@ impl<'s, 'w> Vitality<'w, 's> {
     pub fn grant_ability_unchecked(
         &mut self,
         ability: &Handle<AbilityDef>,
-        grant_ability_target_entity: Entity,
+        ability_parent: Entity,
     ) -> Result<Entity, AbilityError> {
         let ability_id = self
             .commands
-            .spawn_empty()
-            .queue(GrantAbilityCommand {
-                parent: grant_ability_target_entity,
-                handle: ability.clone(),
-            })
+            .spawn((
+                Ability {
+                    handle: { ability.clone() },
+                },
+                AbilityOf(ability_parent),
+            ))
             .id();
-
-        self.commands
-            .entity(grant_ability_target_entity)
-            .add_one_related::<AbilityOf>(ability_id);
+        
         info!("[{:?}] Spawned ability.", ability_id);
 
         Ok(ability_id)

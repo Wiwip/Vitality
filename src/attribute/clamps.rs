@@ -35,7 +35,9 @@ pub fn update_clamps<T: Attribute>(
 ) -> Result<(), BevyError> {
     let (min_value, max_value) = {
         let p0 = set.p0();
-        let (actor_handle, attribute_ref) = p0.get(trigger.entity)?;
+        let Ok((actor_handle, attribute_ref)) = p0.get(trigger.entity) else {
+            return Ok(());
+        };
         let actor_def = actor_assets
             .get(&actor_handle.0)
             .ok_or("Missing actor asset")?;

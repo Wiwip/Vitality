@@ -181,24 +181,24 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
         .add::<T>();
 
     app.add_systems(
-        Update,
+        FixedUpdate,
         apply_periodic_effect::<T>.in_set(EffectsSet::Prepare),
     );
 
     app.add_systems(
-        Update,
+        FixedUpdate,
         apply_modifier_events::<T>.in_set(EffectsSet::UpdateBaseValues),
     );
 
     app.add_systems(
-        Update,
+        FixedUpdate,
         (update_current_value_system::<T>, apply_clamps::<T>)
             .chain()
             .in_set(EffectsSet::UpdateCurrentValues),
     );
 
     app.add_systems(
-        Update,
+        FixedUpdate,
         (
             on_change_notify_attribute_parents::<T>.in_set(EffectsSet::Notify),
             on_change_notify_attribute_dependencies::<T>.in_set(EffectsSet::Notify),

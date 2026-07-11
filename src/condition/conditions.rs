@@ -217,7 +217,7 @@ impl Expr<bool, AbilityExprSchema> for IsAbility {
             }
         };
 
-        ability.0.id() == self.asset
+        ability.handle.id() == self.asset
     }
     fn get_dependencies(&self, _deps: &mut HashSet<TypeId>) {}
 }

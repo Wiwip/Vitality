@@ -150,7 +150,7 @@ impl MachineState<AbilityMachine> for ReadyState {
                     .external
                     .registry
                     .ability_assets
-                    .get(&ability.0.clone())
+                    .get(&ability.handle.clone())
                     .ok_or("No ability asset.")
                     .unwrap();
 
@@ -242,7 +242,7 @@ impl MachineState<AbilityMachine> for RecoveryState {
         ctx.local.recovery_timer.set_base_value(0.0);
 
         let (ability, ability_ref) = ctx.external.abilities.get(ctx.ability_id).unwrap();
-        let ability_def = ctx.external.ability_assets.get(&ability.0).unwrap();
+        let ability_def = ctx.external.ability_assets.get(&ability.handle).unwrap();
 
         let actor_context = ActorExprContext {
             actor_context: ability_ref,
