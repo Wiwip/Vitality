@@ -1,5 +1,5 @@
 use crate::ability::Ability;
-use crate::context::{ActorProvider, ActorProviderMut, Source, Target};
+use crate::context::{ActorProvider, ActorProviderMut, Caster, Source, Target};
 use crate::effect::{AttributeDependents, Effect};
 use crate::inspector::pretty_type_name;
 use crate::math::{AbsDiff, SaturatingAttributes};
@@ -86,6 +86,14 @@ where
             ActorProvider<'a, 'b, Ability, ActorRef = AttributesRef<'a, 'b>>,
     {
         Self::at::<Ability, C>()
+    }
+    fn caster<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
+    where
+        C: Context,
+        for<'a, 'b> C::ContextItem<'a, 'b>:
+        ActorProvider<'a, 'b, Caster, ActorRef = AttributesRef<'a, 'b>>,
+    {
+        Self::at::<Caster, C>()
     }
     fn effect<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
     where

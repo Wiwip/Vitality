@@ -243,7 +243,6 @@ impl MachineState<AbilityMachine> for RecoveryState {
         let owner_id = ctx.external.casters.get(ctx.ability_id).unwrap();
         let (caster_ref, _) = ctx.external.actors.get(owner_id.0).unwrap();
 
-
         let actor_context = AbilityExprContext {
             caster_ref,
             target_ref: None,
