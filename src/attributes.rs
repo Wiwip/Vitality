@@ -106,7 +106,7 @@ where
                 fetch_fn: |ctx: &C::ContextItem<'_, '_>| {
                     ctx.get_actor()
                         .get::<Self>()
-                        .expect(&format!("{} not found", pretty_type_name::<Self>()))
+                        .expect(&format!("{} not found on {}", pretty_type_name::<Self>(), pretty_type_name::<Role>()))
                         .current_value()
                 },
                 _marker: Default::default(),

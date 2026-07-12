@@ -20,7 +20,7 @@ pub struct AbilityBuilder {
     triggers: Vec<EntityActions>,
     cost_condition: Vec<StoredExpr<bool, AbilityExprSchema>>,
     execution_condition: Vec<StoredExpr<bool, ActorExprSchema>>,
-    cooldown: StoredExpr<f32, ActorExprSchema>,
+    cooldown: StoredExpr<f32, AbilityExprSchema>,
     cost_modifiers: Plan<AbilityExprSchema>,
     on_execute: Vec<Plan<AbilityExprSchema>>,
     recovery_condition: Vec<BoolExpr<ActorExprSchema>>,
@@ -109,13 +109,13 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn with_cooldown<E: AsExpression<f32, ActorExprSchema, Target: Copy + 'static>>(
+    pub fn with_cooldown<E: AsExpression<f32, AbilityExprSchema, Target: Copy + 'static>>(
         mut self,
         cost: E,
     ) -> Self
     where
-        <E as AsExpression<f32, ActorExprSchema>>::Target:
-            express_it::expr::Expr<f32, ActorExprSchema>,
+        <E as AsExpression<f32, AbilityExprSchema>>::Target:
+            express_it::expr::Expr<f32, AbilityExprSchema>,
     {
         let node_expr = express_it::nodes::Node {
             expr: cost.as_expr(),

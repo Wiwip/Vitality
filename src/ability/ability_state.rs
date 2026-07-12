@@ -2,10 +2,7 @@ use crate::AttributesRef;
 use crate::ability::systems::{ActivateAbility, can_activate_ability};
 use crate::ability::task_states::{TaskEvent, TaskMachine, TaskState};
 use crate::ability::tasks::Tasks;
-use crate::ability::{
-    Ability, AbilityRecovery, BeginAbility, ExecuteAbility, GrantedAbilities, TargetData,
-};
-use crate::actors::Actor;
+use crate::ability::{Ability, AbilityOf, AbilityRecovery, BeginAbility, ExecuteAbility, GrantedAbilities, TargetData};
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::context::{AbilityExprContext, ActorExprContext};
@@ -58,18 +55,17 @@ impl LocalContext for AbilityContext {
 
 #[derive(SystemParam)]
 pub struct AbilitySystemParam<'w, 's> {
-    pub abilities:
-        Query<'w, 's, (Read<Ability>, AttributesRef<'static, 'static>), Without<IsResource>>,
+    pub abilities: Query<'w, 's, (Read<Ability>, AttributesRef<'static, 'static>), Without<IsResource>>,
     pub actors: Query<
         'w,
         's,
         (
-            Read<Actor>,
             AttributesRef<'static, 'static>,
             Read<GrantedAbilities>,
         ),
         Without<IsResource>,
     >,
+    pub casters: Query<'w, 's, Read<AbilityOf>>,
     pub tasks: Query<'w, 's, Read<Tasks>>,
     pub task_machines: MachineQuery<'w, 's, TaskMachine>,
     pub registry: Registry<'w>,
@@ -126,7 +122,7 @@ impl MachineState<AbilityMachine> for ReadyState {
                     return EventResult::Ignored;
                 };
 
-                let Ok((_, source_entity_ref, _actor_abilities)) = ctx.external.actors.get(*source)
+                let Ok((source_entity_ref, _actor_abilities)) = ctx.external.actors.get(*source)
                 else {
                     warn!(
                         "[{}] The Actor({}) has no GrantedAbilities",
@@ -138,7 +134,7 @@ impl MachineState<AbilityMachine> for ReadyState {
                 let target_entity_ref = match target_data {
                     TargetData::SelfCast => Some(source_entity_ref),
                     TargetData::Target(target) => {
-                        let Ok((_, entity, _)) = ctx.external.actors.get(*target) else {
+                        let Ok((entity, _)) = ctx.external.actors.get(*target) else {
                             return EventResult::Ignored;
                         };
                         Some(entity)
@@ -244,8 +240,14 @@ impl MachineState<AbilityMachine> for RecoveryState {
         let (ability, ability_ref) = ctx.external.abilities.get(ctx.ability_id).unwrap();
         let ability_def = ctx.external.ability_assets.get(&ability.handle).unwrap();
 
-        let actor_context = ActorExprContext {
-            actor_context: ability_ref,
+        let owner_id = ctx.external.casters.get(ctx.ability_id).unwrap();
+        let (caster_ref, _) = ctx.external.actors.get(owner_id.0).unwrap();
+
+
+        let actor_context = AbilityExprContext {
+            caster_ref,
+            target_ref: None,
+            ability_ref,
         };
         let new_cooldown = ability_def.cooldown.eval(&actor_context);
 
