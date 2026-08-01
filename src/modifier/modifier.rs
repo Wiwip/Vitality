@@ -138,7 +138,10 @@ where
         let new_val = calc.eval(attribute.base_value());
 
         let attributes_mut = match self.who {
-            EffectSubject::Target => &mut context.target_actor.as_mut().unwrap_or(&mut context.source_actor),
+            EffectSubject::Target => &mut context
+                .target_actor
+                .as_mut()
+                .unwrap_or(&mut context.source_actor),
             EffectSubject::Source => &mut context.source_actor,
             EffectSubject::Effect => &mut context.effect_holder,
         };

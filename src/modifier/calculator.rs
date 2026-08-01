@@ -112,9 +112,7 @@ impl<T: Attribute> AttributeCalculator<T> {
         self.multiplier *= other.multiplier;
     }
 
-    pub fn convert(
-        modifier: &AttributeModifier<T>,
-    ) -> Self {
+    pub fn convert(modifier: &AttributeModifier<T>) -> Self {
         let value = modifier.value;
         let calculator = match modifier.operation {
             ModOp::Set => Self {

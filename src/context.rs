@@ -1,18 +1,21 @@
-use crate::ability::{Ability, AbilityError, AbilityOf, AbilityRecovery, GrantedAbilities, TargetData};
+use crate::ability::ability_state::AbilityEvent;
+use crate::ability::{
+    Ability, AbilityError, AbilityOf, AbilityRecovery, GrantedAbilities, TargetData,
+};
 use crate::actors::SpawnActorCommand;
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::effect::global_effect::{GlobalActor, GlobalEffects};
 use crate::effect::{ApplyEffectEvent, Effect, EffectTargeting};
+use crate::registry::Registry;
 use crate::registry::ability_registry::AbilityToken;
 use crate::registry::actor_registry::ActorToken;
-use crate::registry::Registry;
 use crate::{AttributesMut, AttributesRef};
-use bevy::ecs::system::lifetimeless::Read;
 use bevy::ecs::system::SystemParam;
+use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
 use express_it::expr::{Context, ContextMut};
-use hfsm_bevy::{MachineEvent};
-use crate::ability::ability_state::{AbilityEvent};
+use hfsm_bevy::MachineEvent;
+use crate::registry::effect_registry::EffectToken;
 
 #[derive(SystemParam)]
 pub struct Vitality<'w, 's> {
@@ -32,6 +35,10 @@ pub struct Vitality<'w, 's> {
 impl<'s, 'w> Vitality<'w, 's> {
     pub fn add_effect(&mut self, effect: EffectDef) -> Handle<EffectDef> {
         self.effects.add(effect)
+    }
+
+    pub fn get_effect_from_token(&self, token: &EffectToken) -> Handle<EffectDef> {
+        self.registry.effect(token)
     }
 
     pub fn apply_effect_to_target(
@@ -140,7 +147,7 @@ impl<'s, 'w> Vitality<'w, 's> {
                 AbilityOf(ability_parent),
             ))
             .id();
-        
+
         info!("[{:?}] Spawned ability.", ability_id);
 
         Ok(ability_id)

@@ -41,7 +41,9 @@ impl EffectRegistry {
         self.map.insert(token, handle);
     }
 
-    pub fn get(&self, token: &EffectToken) -> Option<&Handle<EffectDef>> {
-        self.map.get(token)
+    pub fn get(&self, token: &EffectToken) -> &Handle<EffectDef> {
+        self.map
+            .get(token)
+            .expect(format!("{:?} not registered", token).as_str())
     }
 }

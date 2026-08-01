@@ -9,7 +9,10 @@ use crate::{AttributesMut, AttributesRef};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::log::error;
-use bevy::prelude::{Changed, Commands, Component, Entity, EntityEvent, Insert, On, Query, Reflect, RelationshipTarget, TypePath};
+use bevy::prelude::{
+    Changed, Commands, Component, Entity, EntityEvent, Insert, On, Query, Reflect,
+    RelationshipTarget, TypePath,
+};
 use bevy::reflect::{GetTypeRegistration, Typed, reflect_trait};
 use express_it::expr::{AsExpression, Context, ContextMut, Expr};
 use express_it::nodes::Node;
@@ -91,7 +94,7 @@ where
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>:
-        ActorProvider<'a, 'b, Caster, ActorRef = AttributesRef<'a, 'b>>,
+            ActorProvider<'a, 'b, Caster, ActorRef = AttributesRef<'a, 'b>>,
     {
         Self::at::<Caster, C>()
     }
@@ -114,7 +117,11 @@ where
                 fetch_fn: |ctx: &C::ContextItem<'_, '_>| {
                     ctx.get_actor()
                         .get::<Self>()
-                        .expect(&format!("{} not found on {}", pretty_type_name::<Self>(), pretty_type_name::<Role>()))
+                        .expect(&format!(
+                            "{} not found on {}",
+                            pretty_type_name::<Self>(),
+                            pretty_type_name::<Role>()
+                        ))
                         .current_value()
                 },
                 _marker: Default::default(),
@@ -316,7 +323,15 @@ macro_rules! attribute {
 #[macro_export]
 macro_rules! tag {
     ( $StructName:ident ) => {
-        #[derive(bevy::prelude::Component, bevy::prelude::Reflect, Default, Copy, Clone, Debug, bevy::prelude::FromTemplate)]
+        #[derive(
+            bevy::prelude::Component,
+            bevy::prelude::Reflect,
+            Default,
+            Copy,
+            Clone,
+            Debug,
+            bevy::prelude::FromTemplate,
+        )]
         #[reflect(Component)]
         pub struct $StructName;
     };

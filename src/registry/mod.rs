@@ -34,8 +34,8 @@ impl Registry<'_> {
         &self.ability_assets
     }
 
-    pub fn effect(&self, name: &EffectToken) -> &Handle<EffectDef> {
-        self.effect_registry.get(name).expect("effect not found")
+    pub fn effect(&self, name: &EffectToken) -> Handle<EffectDef> {
+        self.effect_registry.get(name).clone()
     }
 
     pub fn ability(&self, name: &AbilityToken) -> Handle<AbilityDef> {
@@ -69,8 +69,8 @@ impl RegistryMut<'_> {
         self.effect_registry.add(name, handle);
     }
 
-    pub fn effect(&self, name: &EffectToken) -> &Handle<EffectDef> {
-        self.effect_registry.get(&name).expect("Effect must exist.")
+    pub fn effect(&self, name: &EffectToken) -> Handle<EffectDef> {
+        self.effect_registry.get(&name).clone()
     }
 
     pub fn add_ability(&mut self, name: AbilityToken, ability: AbilityDef) {

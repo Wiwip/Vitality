@@ -2,7 +2,9 @@ use crate::AttributesRef;
 use crate::ability::systems::{ActivateAbility, can_activate_ability};
 use crate::ability::task_states::{TaskEvent, TaskMachine, TaskState};
 use crate::ability::tasks::Tasks;
-use crate::ability::{Ability, AbilityOf, AbilityRecovery, BeginAbility, ExecuteAbility, GrantedAbilities, TargetData};
+use crate::ability::{
+    Ability, AbilityOf, AbilityRecovery, BeginAbility, ExecuteAbility, GrantedAbilities, TargetData,
+};
 use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
 use crate::context::{AbilityExprContext, ActorExprContext};
@@ -55,14 +57,12 @@ impl LocalContext for AbilityContext {
 
 #[derive(SystemParam)]
 pub struct AbilitySystemParam<'w, 's> {
-    pub abilities: Query<'w, 's, (Read<Ability>, AttributesRef<'static, 'static>), Without<IsResource>>,
+    pub abilities:
+        Query<'w, 's, (Read<Ability>, AttributesRef<'static, 'static>), Without<IsResource>>,
     pub actors: Query<
         'w,
         's,
-        (
-            AttributesRef<'static, 'static>,
-            Read<GrantedAbilities>,
-        ),
+        (AttributesRef<'static, 'static>, Read<GrantedAbilities>),
         Without<IsResource>,
     >,
     pub casters: Query<'w, 's, Read<AbilityOf>>,

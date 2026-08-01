@@ -28,8 +28,8 @@ mod systems;
 use crate::ability::{AbilityOf, AbilityPlugin, AbilityRecovery, GrantedAbilities};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attributes::{
-    on_add_attribute, on_change_notify_attribute_dependencies, on_change_notify_attribute_parents,
-    ReflectAccessAttribute,
+    ReflectAccessAttribute, on_add_attribute, on_change_notify_attribute_dependencies,
+    on_change_notify_attribute_parents,
 };
 use crate::condition::ConditionPlugin;
 use crate::effect::global_effect::GlobalEffectPlugin;
@@ -40,7 +40,7 @@ use crate::effect::{
 use crate::graph::NodeType;
 use crate::inspector::pretty_type_name;
 use crate::modifier::{
-    apply_modifier_events, ApplyAttributeModifierMessage, AttributeCalculatorCached, ModifierOf,
+    ApplyAttributeModifierMessage, AttributeCalculatorCached, ModifierOf, apply_modifier_events,
 };
 use crate::prelude::*;
 use crate::registry::RegistryPlugin;
@@ -49,8 +49,8 @@ use crate::systems::{
     apply_periodic_effect, mark_node_dirty_observer, update_attribute, update_current_value_system,
 };
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
-use bevy::platform::collections::hash_map::Entry;
 use bevy::platform::collections::HashMap;
+use bevy::platform::collections::hash_map::Entry;
 
 pub mod prelude {
     pub use crate::attribute;
@@ -65,7 +65,7 @@ pub mod prelude {
     pub use bevy::prelude::ReflectComponent;
 }
 
-use crate::attribute::clamps::{apply_clamps, update_clamps, Clamp};
+use crate::attribute::clamps::{Clamp, apply_clamps, update_clamps};
 use crate::modifier::modifier::update_modifier_when_dependencies_changed;
 
 use crate::ability::ability_state::AbilityMachine;

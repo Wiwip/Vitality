@@ -1,3 +1,4 @@
+use crate::GrantedAbilities;
 use crate::ability::{Ability, AbilityOf};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attribute::clamps::Clamp;
@@ -8,7 +9,6 @@ use crate::inspector::pretty_type_name;
 use crate::modifier::AttributeCalculatorCached;
 use crate::mutator::EntityActions;
 use crate::prelude::*;
-use crate::GrantedAbilities;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use express_it::expr::{AsExpression, Expr};

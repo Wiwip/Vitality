@@ -2,7 +2,10 @@ use bevy::ecs::query::QueryData;
 use bevy::ecs::system::SystemParam;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use vitality::ability::tasks::{AbilityTask, Complete, DebugInstantTask, DebugLongTask, AbilityItem, TaskParam, TaskStatus, Tasks, task, NoData, wait_task, CasterItem, TaskItem};
+use vitality::ability::tasks::{
+    AbilityItem, AbilityTask, CasterItem, Complete, DebugInstantTask, DebugLongTask, NoData,
+    TaskItem, TaskParam, TaskStatus, Tasks, task, wait_task,
+};
 use vitality::ability::{Abilities, AbilityBuilder, ExecuteAbility, TargetData};
 use vitality::actors::ActorBuilder;
 use vitality::context::Vitality;

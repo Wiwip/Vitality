@@ -3,13 +3,13 @@ use crate::effect::{EffectApplicationPolicy, EffectStackingPolicy};
 use crate::modifier::ModifierFn;
 use crate::modifier::modifier::Modifier;
 use crate::mutator::EntityActions;
+use crate::prelude::ActorExprSchema;
 use bevy::prelude::*;
+use express_it::expr::{BoolExpr, StoredExpr};
+use express_it::plan::Plan;
 use smol_str::SmolStr;
 use std::any::{Any, TypeId};
 use std::collections::{HashMap, VecDeque};
-use express_it::expr::{BoolExpr, StoredExpr};
-use express_it::plan::Plan;
-use crate::prelude::ActorExprSchema;
 
 #[derive(Asset, TypePath)]
 pub struct ActorDef {
@@ -56,6 +56,6 @@ pub struct AbilityDef {
     pub task_scene: Box<dyn Fn() -> Box<dyn Scene> + Send + Sync>,
 
     pub recovery_condition: Vec<BoolExpr<ActorExprSchema>>,
-    
+
     pub on_execute: Vec<Plan<AbilityExprSchema>>,
 }

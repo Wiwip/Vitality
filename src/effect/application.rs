@@ -15,7 +15,6 @@ use bevy::log::debug;
 use bevy::prelude::*;
 use std::cmp::PartialEq;
 
-
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
 pub enum EffectApplicationPolicy {
@@ -327,11 +326,7 @@ pub(crate) fn apply_effect_event_observer(
         .ok_or("No effect asset.")?;
 
     if effect.application_policy.should_apply_now() {
-        trigger.apply_instant_effect(
-            &mut actors,
-            &mut commands,
-            effect,
-        )?;
+        trigger.apply_instant_effect(&mut actors, &mut commands, effect)?;
     }
 
     if effect.application_policy != EffectApplicationPolicy::Instant {

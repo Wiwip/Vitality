@@ -5,9 +5,7 @@ use bevy::window::PresentMode;
 use express_it::plan::Plan;
 use std::fmt::Debug;
 use std::time::Duration;
-use vitality::ability::{
-    Abilities, AbilityBuilder, ExecuteAbility, TargetData,
-};
+use vitality::ability::{Abilities, AbilityBuilder, ExecuteAbility, TargetData};
 use vitality::actors::ActorBuilder;
 use vitality::assets::{AbilityDef, EffectDef};
 use vitality::attributes::ReflectAccessAttribute;
@@ -212,9 +210,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
                     }
                 },
             )
-            .on_execute(
-                Plan::new().step(MaxHealth::add::<Source, _>(5u32)),
-            )
+            .on_execute(Plan::new().step(MaxHealth::add::<Source, _>(5u32)))
             .build(),
     );
     commands.insert_resource(AbilityDatabase {

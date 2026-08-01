@@ -238,7 +238,7 @@ fn list_abilities(
         } else {
             "".to_string()
         };
-        
+
         builder.begin_child(format!("[{ability_entity}] {name}{cooldown_str}"));
 
         if let Ok(tasks) = task_query.get(*ability_entity) {
