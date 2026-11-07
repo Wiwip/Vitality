@@ -51,6 +51,7 @@ pub mod registry;
 pub mod schedule;
 pub mod systems;
 pub mod util;
+pub mod view;
 
 pub use express_it;
 pub use hfsm_bevy;
