@@ -320,6 +320,9 @@ fn complete_all_ends_the_ability_on_the_last_task_completion() {
 fn machine_definition_is_installed_before_the_first_update() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+    // Registered before the grant: the machine starts at the grant's command flush, not in the update.
+    app.insert_resource(Entered::default());
+    app.add_observer(record_entry);
 
     assert!(
         app.world()
@@ -358,6 +361,16 @@ fn machine_definition_is_installed_before_the_first_update() {
     assert!(
         in_state::<AbilityMachine>(&mut app, ability, AbilityState::Ready),
         "an ability granted before the first update must be Ready after it"
+    );
+    assert_eq!(
+        1,
+        sub_tasks(&app, ability).len(),
+        "that same first update is the grant that must have applied the Tasks scene, so the ability has its one subtask"
+    );
+    assert_eq!(
+        vec![StateId::from(AbilityState::Ready)],
+        app.world().resource::<Entered>().0,
+        "the pre-update grant must start the machine exactly once, in Ready"
     );
 }
 
