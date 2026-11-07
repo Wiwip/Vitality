@@ -169,22 +169,6 @@ where
         .unwrap()
 }
 
-/// Clock control: a headless update lasts microseconds, so the fixed timestep that ticks
-/// `StateTimer` would never run. Each update is handed exactly one fixed timestep as a manual
-/// delta, and their count comes from the ability's own cooldown.
-fn run_out_cooldown(app: &mut App) {
-    let timestep = app.world().resource::<Time<Fixed>>().timestep();
-    let updates = Duration::from_secs_f32(COOLDOWN)
-        .div_duration_f64(timestep)
-        .ceil() as usize
-        + 1;
-
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(timestep));
-    for _ in 0..updates {
-        app.update();
-    }
-}
-
 fn cooldown_armed(app: &App, ability: Entity) -> bool {
     app.world()
         .get::<StateTimer<AbilityMachine>>(ability)
@@ -262,7 +246,28 @@ fn ability_walks_ready_active_recovery_ready() {
         "entering Recovery arms the cooldown timer"
     );
 
-    run_out_cooldown(&mut app);
+    // Both bounds read the one timer this loop spends, so neither can loosen the other. A headless
+    // update lasts microseconds, so each is handed a fixed timestep as a manual delta or `StateTimer`
+    // would never tick, and their count comes from the ability's own cooldown.
+    let timestep = app.world().resource::<Time<Fixed>>().timestep();
+    let updates = Duration::from_secs_f32(COOLDOWN)
+        .div_duration_f64(timestep)
+        .floor() as usize;
+    assert!(
+        updates > 1,
+        "{COOLDOWN}s is under two fixed steps, so the loop below would assert nothing at all"
+    );
+
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(timestep));
+    for step in 1..=updates + 1 {
+        app.update();
+        if step == updates - 1 {
+            assert!(
+                in_state::<AbilityMachine>(&mut app, ability, AbilityState::Recovery),
+                "a cooldown of {COOLDOWN}s one fixed step short of expiring must not leave Recovery"
+            );
+        }
+    }
     assert!(
         in_state::<AbilityMachine>(&mut app, ability, AbilityState::Ready),
         "the cooldown of {COOLDOWN}s expires and the ability is Ready again"
