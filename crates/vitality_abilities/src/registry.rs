@@ -1,5 +1,6 @@
-use crate::assets::AbilityDef;
+use crate::definition::AbilityDef;
 use bevy::asset::Handle;
+use bevy::ecs::system::SystemParam;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use smol_str::SmolStr;
@@ -45,5 +46,38 @@ impl AbilityRegistry {
         self.map
             .get(token)
             .expect(format!("{:?} not registered", token).as_str())
+    }
+}
+
+#[derive(SystemParam)]
+pub struct Registry<'w> {
+    pub ability_registry: Res<'w, AbilityRegistry>,
+    pub ability_assets: Res<'w, Assets<AbilityDef>>,
+}
+
+impl Registry<'_> {
+    pub fn ability_definitions(&self) -> &Assets<AbilityDef> {
+        &self.ability_assets
+    }
+
+    pub fn ability(&self, name: &AbilityToken) -> Handle<AbilityDef> {
+        self.ability_registry.get(name).clone()
+    }
+}
+
+#[derive(SystemParam)]
+pub struct RegistryMut<'w> {
+    pub ability_registry: ResMut<'w, AbilityRegistry>,
+    pub ability_assets: ResMut<'w, Assets<AbilityDef>>,
+}
+
+impl RegistryMut<'_> {
+    pub fn add_ability(&mut self, name: AbilityToken, ability: AbilityDef) {
+        let handle = self.ability_assets.add(ability);
+        self.ability_registry.add(name, handle);
+    }
+
+    pub fn ability(&self, name: &AbilityToken) -> Handle<AbilityDef> {
+        self.ability_registry.get(name).clone()
     }
 }

@@ -1,7 +1,7 @@
+use crate::definition::AbilityDef;
+use crate::{Ability, AbilityOf};
 use bevy::asset::Assets;
 use bevy::prelude::*;
-use vitality_core::ability::{Ability, AbilityOf};
-use vitality_core::assets::AbilityDef;
 
 pub fn on_add_ability(
     trigger: On<Add<Ability>>,

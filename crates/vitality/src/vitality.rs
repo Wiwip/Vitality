@@ -1,17 +1,17 @@
 use crate::actors::{ActorDef, ActorToken, SpawnActorCommand};
+use crate::registry::Registry;
 use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
 use hfsm_bevy::MachineEvent;
-use vitality_core::ability::ability_state::{AbilityEvent, AbilityMachine};
-use vitality_core::ability::{
-    Ability, AbilityError, AbilityOf, AbilityRecovery, GrantedAbilities, TargetData,
+use vitality_abilities::ability_state::{AbilityEvent, AbilityMachine};
+use vitality_abilities::registry::AbilityToken;
+use vitality_abilities::{
+    Ability, AbilityDef, AbilityError, AbilityOf, AbilityRecovery, GrantedAbilities, TargetData,
 };
-use vitality_core::assets::{AbilityDef, EffectDef};
+use vitality_core::assets::EffectDef;
 use vitality_core::effect::global_effect::{GlobalActor, GlobalEffects};
 use vitality_core::effect::{ApplyEffectEvent, EffectTargeting};
-use vitality_core::registry::Registry;
-use vitality_core::registry::ability_registry::AbilityToken;
 use vitality_core::registry::effect_registry::EffectToken;
 
 #[derive(SystemParam)]
@@ -21,7 +21,6 @@ pub struct Vitality<'w, 's> {
     pub ability_entities: Query<'w, 's, (Read<Ability>, Read<AbilityRecovery>)>,
 
     pub registry: Registry<'w>,
-    pub actor_registry: Res<'w, crate::actors::ActorRegistry>,
 
     pub actors: ResMut<'w, Assets<ActorDef>>,
     pub effects: ResMut<'w, Assets<EffectDef>>,
@@ -152,7 +151,7 @@ impl<'s, 'w> Vitality<'w, 's> {
     }
 
     pub fn spawn_actor(&mut self, token: &ActorToken) -> EntityCommands<'_> {
-        let handle = self.actor_registry.get(token).clone();
+        let handle = self.registry.actor(token);
 
         let mut entity_commands = self.commands.spawn_empty();
         entity_commands.queue(SpawnActorCommand { handle });
@@ -179,7 +178,7 @@ impl<'s, 'w> Vitality<'w, 's> {
     }
 
     pub fn insert_actor_from_token(&mut self, entity: Entity, token: &ActorToken) {
-        let handle = self.actor_registry.get(token).clone();
+        let handle = self.registry.actor(token);
         self.insert_actor(entity, &handle);
     }
 

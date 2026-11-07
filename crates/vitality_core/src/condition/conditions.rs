@@ -1,13 +1,8 @@
-use crate::ability::Ability;
-use crate::assets::AbilityDef;
 use crate::attributes::Attribute;
-use crate::context::{
-    AbilityExprContext, AbilityExprSchema, ActorExprContext, EffectExprContext, EffectExprSchema,
-};
+use crate::context::{ActorExprContext, EffectExprContext, EffectExprSchema};
 use crate::modifier::EffectSubject;
 use crate::prelude::ActorExprSchema;
 use crate::util::pretty_type_name;
-use bevy::asset::AssetId;
 use bevy::prelude::{Component, TypePath};
 use bevy::reflect::Reflect;
 use express_it::expr::Expr;
@@ -119,7 +114,7 @@ impl std::fmt::Debug for ChanceCondition {
 
 #[derive(Serialize)]
 pub struct HasComponent<C: Component> {
-    who: EffectSubject,
+    pub who: EffectSubject,
     phantom_data: PhantomData<C>,
 }
 
@@ -161,23 +156,6 @@ impl<C: Component + Reflect> Expr<bool, EffectExprSchema> for HasComponent<C> {
     }
 }
 
-impl<C: Component + Reflect> Expr<bool, AbilityExprSchema> for HasComponent<C> {
-    fn eval(&self, ctx: &AbilityExprContext) -> bool {
-        match self.who {
-            EffectSubject::Target => match ctx.target_ref {
-                Some(target) => target.get::<C>().is_some(),
-                None => ctx.caster_ref.get::<C>().is_some(),
-            },
-            EffectSubject::Source => ctx.caster_ref.get::<C>().is_some(),
-            EffectSubject::Effect => ctx.ability_ref.get::<C>().is_some(),
-        }
-    }
-
-    fn get_dependencies(&self, deps: &mut HashSet<TypeId>) {
-        deps.insert(TypeId::of::<C>());
-    }
-}
-
 impl<C: Component> Expr<bool, ActorExprSchema> for HasComponent<C> {
     fn eval(&self, ctx: &ActorExprContext) -> bool {
         match self.who {
@@ -195,35 +173,5 @@ impl<C: Component> Expr<bool, ActorExprSchema> for HasComponent<C> {
 impl<C: Component> std::fmt::Debug for HasComponent<C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Has Tag {} on {}", pretty_type_name::<C>(), self.who)
-    }
-}
-
-pub struct IsAbility {
-    asset: AssetId<AbilityDef>,
-}
-
-impl IsAbility {
-    pub fn new(asset: AssetId<AbilityDef>) -> Self {
-        Self { asset }
-    }
-}
-
-impl Expr<bool, AbilityExprSchema> for IsAbility {
-    fn eval(&self, ctx: &AbilityExprContext) -> bool {
-        let ability = match ctx.ability_ref.get::<Ability>() {
-            Some(ability) => ability,
-            _ => {
-                return false;
-            }
-        };
-
-        ability.handle.id() == self.asset
-    }
-    fn get_dependencies(&self, _deps: &mut HashSet<TypeId>) {}
-}
-
-impl std::fmt::Debug for IsAbility {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Is Ability {}", self.asset)
     }
 }

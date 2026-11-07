@@ -1,16 +1,16 @@
+use crate::AbilityRef;
+use crate::ability_state::{AbilityEvent, AbilityMachine, AbilityState};
+use crate::definition::AbilityDef;
+use crate::registry::{AbilityToken, Registry};
 use crate::tasks::TaskScope;
+use crate::tasks::{Task, Tasks};
+use crate::{Ability, AbilityError, AbilityOf, GrantedAbilities, TargetData};
 use bevy::ecs::resource::IsResource;
 use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
 use hfsm_bevy::MachineQuery;
-use vitality_core::AbilityRef;
-use vitality_core::ability::ability_state::{AbilityEvent, AbilityMachine, AbilityState};
-use vitality_core::ability::tasks::{Task, Tasks};
-use vitality_core::ability::{Ability, AbilityError, AbilityOf, GrantedAbilities, TargetData};
 use vitality_core::attributes::ManageAttributes;
-use vitality_core::assets::AbilityDef;
-use vitality_core::registry::{Registry, ability_registry::AbilityToken};
 
 #[derive(SystemParam)]
 pub struct Abilities<'w, 's> {

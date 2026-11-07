@@ -1,11 +1,11 @@
+use crate::AbilityMut;
+use crate::context::{AbilityExprContext, AbilityExprContextMut, AbilityExprSchema};
+use crate::definition::AbilityDef;
+use crate::{Ability, AbilityRecovery, TargetData};
 use bevy::asset::Assets;
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
 use express_it::expr::{BoolExpr, Expr};
-use vitality_core::AbilityMut;
-use vitality_core::ability::{Ability, AbilityRecovery, TargetData};
-use vitality_core::assets::AbilityDef;
-use vitality_core::context::{AbilityExprContext, AbilityExprContextMut, AbilityExprSchema};
 
 pub fn tick_ability_cooldown(mut query: Query<&mut AbilityRecovery>, time: Res<Time>) {
     query.par_iter_mut().for_each(|mut recovery| {

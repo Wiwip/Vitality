@@ -22,7 +22,7 @@ use vitality::ability::tasks::{
 use vitality::ability::{Abilities, AbilityBuilder, TargetData};
 use vitality::actors::{Actor, ActorBuilder};
 use vitality::actors::ActorDef;
-use vitality::assets::AbilityDef;
+use vitality::ability::AbilityDef;
 use vitality::context::Vitality;
 use vitality::effect::global_effect::GlobalActor;
 use vitality::registry::RegistryMut;
