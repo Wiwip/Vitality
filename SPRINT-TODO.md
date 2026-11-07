@@ -84,3 +84,10 @@ Evidence for every line below was read from `../hfsm-rs` and from the pinned `be
 - after: T-3
 - origin: scout
 - status: done
+
+## T-7: close the `ScenePlugin` guard hole against the duplicate-add mutation
+- serves: "execute the implementation plan" — stage 7 gate "per-stage checks green"; verdict-2026-11-07-3.md finding 3 explicitly delegated this to the next scout pass.
+- change: `tests/test_ability_machine.rs:397` (inside `scene_plugin_is_installed_when_the_host_only_inited_the_asset`, before the closing `}`): append a second app that adds `ScenePlugin` **before** `AttributesPlugin`, then asserts `is_plugin_added::<ScenePlugin>()`. This pins the guard against the mutation that deletes the `if` while keeping `app.add_plugins(ScenePlugin)` unconditional (the variant verdict-3 measured as undetected by the current suite). Four lines, no library change.
+- test: the same `scene_plugin_is_installed_when_the_host_only_inited_the_asset`. Passes on tip (reproduced scout cycle 4, `/tmp/vitality-build`). Panics `plugin was already added in application` when `src/lib.rs:102-104` is replaced by unconditional `add_plugins` (same session, `cargo test --offline --lib --tests` prints `4 passed; 1 failed`; the other 4 tests are unaffected). Today's version passes under that mutation — that is the gap.
+- origin: scout
+- status: todo
