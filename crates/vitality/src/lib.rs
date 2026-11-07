@@ -11,9 +11,8 @@ use vitality_effects::{ConditionPlugin, EffectsPlugin, GlobalEffectPlugin, init_
 
 pub use vitality_core::prelude;
 pub use vitality_core::{
-    AbilityMut, AbilityRef, AppAttributeBindings, AttributeBindings, AttributeError,
-    BaseValueChanged, CurrentValueChanged, Dirty, EffectsMut, EffectsRef, attribute,
-    attribute_impl, express_it, num_traits, tag,
+    AppAttributeBindings, AttributeBindings, AttributeError, BaseValueChanged, CurrentValueChanged,
+    Dirty, EffectsMut, EffectsRef, attribute, attribute_impl, express_it, num_traits, tag,
 };
 pub use vitality_core::{assets, attributes, graph, math, modifier, mutator};
 
@@ -26,19 +25,10 @@ pub mod context {
     pub use vitality_core::context::*;
 }
 
-pub mod registry {
-    pub use crate::actors::{ActorRegistry, ActorToken};
-    pub use vitality_core::registry::*;
-}
+pub mod registry;
 
 pub mod ability {
-    pub use vitality_abilities::{Abilities, ActivateAbility};
-    pub use vitality_core::ability::*;
-
-    pub mod tasks {
-        pub use vitality_abilities::tasks::*;
-        pub use vitality_core::ability::tasks::*;
-    }
+    pub use vitality_abilities::*;
 }
 
 pub mod condition {

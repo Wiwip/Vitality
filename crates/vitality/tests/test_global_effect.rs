@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use vitality::ability::AbilityBuilder;
 use vitality::actors::{Actor, ActorBuilder};
-use vitality::assets::AbilityDef;
+use vitality::ability::AbilityDef;
 use vitality::condition::IsAttributeWithinBounds;
 use vitality::context::Vitality;
 use vitality::effect::{Effect, EffectInactive};

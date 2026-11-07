@@ -1,24 +1,18 @@
-pub mod ability_state;
-mod builder;
-pub mod task_states;
-pub mod tasks;
-
-use crate::ReflectAccessAttribute;
-use crate::ability::ability_state::AbilityMachine;
-use crate::ability::tasks::Tasks;
-use crate::assets::AbilityDef;
-use crate::modifier::AttributeCalculatorCached;
-use crate::prelude::Attribute;
-use crate::registry::ability_registry::{AbilityRegistry, AbilityToken};
+use crate::ability_state::AbilityMachine;
+use crate::definition::AbilityDef;
+use crate::registry::{AbilityRegistry, AbilityToken};
+use crate::tasks::Tasks;
 use bevy::ecs::template::TemplateContext;
 use bevy::prelude::*;
-pub use builder::AbilityBuilder;
 use hfsm_bevy::MachineInstance;
 use num_traits::{AsPrimitive, Num};
 use std::error::Error;
 use std::fmt::Formatter;
 use std::marker::PhantomPinned;
 use std::time::Duration;
+use vitality_core::attributes::ReflectAccessAttribute;
+use vitality_core::modifier::AttributeCalculatorCached;
+use vitality_core::prelude::Attribute;
 
 /// The entity that this effect is targeting.
 #[derive(Component, Clone, Reflect, Debug)]

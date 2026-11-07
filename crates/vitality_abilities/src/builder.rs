@@ -1,11 +1,5 @@
-use crate::assets::AbilityDef;
-use crate::attributes::Attribute;
-use crate::context::{
-    AbilityExprContext, AbilityExprContextMut, AbilityExprSchema, ActorExprSchema,
-};
-use crate::modifier::AttributeCalculatorCached;
-use crate::mutator::EntityActions;
-use crate::util::pretty_type_name;
+use crate::context::{AbilityExprContext, AbilityExprContextMut, AbilityExprSchema};
+use crate::definition::AbilityDef;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
 use express_it::expr::{AsExpression, BoolExpr, StoredExpr};
@@ -13,6 +7,11 @@ use express_it::logic::ExprCmpLe;
 use express_it::nodes::LiteralNode;
 use express_it::plan::{AssignmentStep, Plan};
 use num_traits::{AsPrimitive, Num};
+use vitality_core::attributes::Attribute;
+use vitality_core::context::ActorExprSchema;
+use vitality_core::modifier::AttributeCalculatorCached;
+use vitality_core::mutator::EntityActions;
+use vitality_core::util::pretty_type_name;
 
 pub struct AbilityBuilder {
     name: String,

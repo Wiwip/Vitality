@@ -1,8 +1,4 @@
-use crate::ability::ability_state::AbilityMachine;
-use crate::ability::task_states::TaskMachine;
-use crate::ability::tasks::{Tasks, WaitTask};
-use crate::ability::{AbilityOf, AbilityRecovery, GrantedAbilities};
-use crate::assets::{AbilityDef, EffectDef};
+use crate::assets::EffectDef;
 use crate::attributes::{
     Attribute, AttributeDependency, ReflectAccessAttribute, on_add_attribute,
     on_change_notify_attribute_dependencies, on_change_notify_attribute_parents,
@@ -25,7 +21,6 @@ use bevy::platform::collections::HashMap;
 use bevy::platform::collections::hash_map::Entry;
 use bevy::prelude::*;
 use bevy::scene::ScenePlugin;
-use hfsm_bevy::{MachineInstance, StateTimer};
 use smol_str::SmolStr;
 use std::any::TypeId;
 use std::error::Error;
@@ -33,7 +28,6 @@ use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 
-pub mod ability;
 pub mod assets;
 pub mod attributes;
 pub mod condition;
@@ -50,13 +44,12 @@ pub mod util;
 pub mod view;
 
 pub use express_it;
-pub use hfsm_bevy;
 pub use num_traits;
 
 pub mod prelude {
     pub use crate::attribute;
     pub use crate::attributes::{AccessAttribute, Attribute, ReflectAccessAttribute};
-    pub use crate::context::{AbilityExprSchema, ActorExprSchema, EffectExprSchema};
+    pub use crate::context::{ActorExprSchema, EffectExprSchema};
     pub use crate::effect::{EffectApplicationPolicy, EffectBuilder};
     pub use crate::modifier::{AccessModifier, AttributeModifier, EffectSubject, ModOp};
 
@@ -76,7 +69,6 @@ impl Plugin for CorePlugin {
             .init_schedule(PreUpdate)
             .init_schedule(PostUpdate)
             .init_asset::<EffectDef>()
-            .init_asset::<AbilityDef>()
             .register_type::<AppliedEffects>()
             .register_type::<EffectTarget>()
             .register_type::<NodeType>();
@@ -223,45 +215,6 @@ pub type EffectsRef<'w, 's> = EntityRefExcept<
             EffectTarget,
             AppliedEffects,
             EffectSources,
-        ),
-    ),
->;
-
-/// Attribute view for code that also touches ability, task or state machine components.
-pub type AbilityMut<'w, 's> = EntityMutExcept<
-    'w,
-    's,
-    (
-        ChildOf,
-        GrantedAbilities,
-        Tasks,
-        AbilityOf,
-        AbilityRecovery,
-        (
-            MachineInstance<AbilityMachine>,
-            MachineInstance<TaskMachine>,
-            StateTimer<AbilityMachine>,
-            StateTimer<TaskMachine>,
-            WaitTask,
-        ),
-    ),
->;
-
-pub type AbilityRef<'w, 's> = EntityRefExcept<
-    'w,
-    's,
-    (
-        ChildOf,
-        GrantedAbilities,
-        Tasks,
-        AbilityOf,
-        AbilityRecovery,
-        (
-            MachineInstance<AbilityMachine>,
-            MachineInstance<TaskMachine>,
-            StateTimer<AbilityMachine>,
-            StateTimer<TaskMachine>,
-            WaitTask,
         ),
     ),
 >;

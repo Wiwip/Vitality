@@ -1,14 +1,86 @@
+use crate::AbilityRef;
+use crate::context::AbilityExprContext;
+use crate::definition::AbilityDef;
+use crate::registry::Registry;
 use crate::systems::{ActivateAbility, can_activate_ability};
+use crate::task_states::TaskMachine;
+use crate::task_states::{TaskEvent, TaskState};
+use crate::tasks::Tasks;
+use crate::{Ability, AbilityOf, AbilityRecovery, GrantedAbilities, TargetData};
+use crate::{BeginAbility, ExecuteAbility};
+use bevy::asset::Assets;
+use bevy::ecs::query::QueryData;
+use bevy::ecs::resource::IsResource;
+use bevy::ecs::system::SystemParam;
+use bevy::ecs::system::lifetimeless::{Read, Write};
 use bevy::log::{error, warn};
+use bevy::prelude::{Commands, Entity, Query, Res, Without};
 use bevy::prelude::{RelationshipTarget, debug};
 use express_it::expr::BoolExpr;
 use hfsm_bevy::{Access, EventResult, MachineDefinition, MachineState};
+use hfsm_bevy::{ExternalContext, LocalContext, Machine, MachineQuery, StateId, StateTimer};
 use std::time::Duration;
-use vitality_core::ability::ability_state::{AbilityEvent, AbilityMachine, AbilityState};
-use vitality_core::ability::task_states::{TaskEvent, TaskState};
-use vitality_core::ability::{BeginAbility, ExecuteAbility, TargetData};
 use vitality_core::attributes::Attribute;
-use vitality_core::context::{AbilityExprContext, ActorExprContext};
+use vitality_core::context::ActorExprContext;
+
+pub struct AbilityMachine;
+impl Machine for AbilityMachine {
+    type Local = AbilityContext;
+    type External = AbilitySystemParam<'static, 'static>;
+    type Event = AbilityEvent;
+}
+
+#[repr(u16)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AbilityState {
+    _Root,
+    Ready,
+    Active,
+    Recovery,
+}
+impl From<AbilityState> for StateId {
+    fn from(value: AbilityState) -> Self {
+        Self::try_from(value as u16).unwrap()
+    }
+}
+
+#[derive(QueryData)]
+#[query_data(mutable)]
+pub struct AbilityContext {
+    pub ability_id: Entity,
+    pub recovery_timer: Write<AbilityRecovery>,
+    pub timers: Write<StateTimer<AbilityMachine>>,
+}
+impl LocalContext for AbilityContext {
+    type Item<'w, 's> = <Self as QueryData>::Item<'w, 's>;
+}
+
+#[derive(SystemParam)]
+pub struct AbilitySystemParam<'w, 's> {
+    pub abilities:
+        Query<'w, 's, (Read<Ability>, AbilityRef<'static, 'static>), Without<IsResource>>,
+    pub actors:
+        Query<'w, 's, (AbilityRef<'static, 'static>, Read<GrantedAbilities>), Without<IsResource>>,
+    pub casters: Query<'w, 's, Read<AbilityOf>>,
+    pub tasks: Query<'w, 's, Read<Tasks>>,
+    pub task_machines: MachineQuery<'w, 's, TaskMachine>,
+    pub registry: Registry<'w>,
+    pub ability_assets: Res<'w, Assets<AbilityDef>>,
+    pub commands: Commands<'w, 's>,
+}
+impl ExternalContext for AbilitySystemParam<'static, 'static> {
+    type Item<'w, 's> = AbilitySystemParam<'w, 's>;
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum AbilityEvent {
+    TryActivate { source: Entity, target: TargetData },
+    Activate,
+    CancelAbility,
+    EndAbility,
+    TimerExpired,
+    Recovered,
+}
 
 pub(crate) fn build_machine() -> MachineDefinition<AbilityMachine> {
     MachineDefinition::<AbilityMachine>::builder(AbilityState::Ready, |root| {
