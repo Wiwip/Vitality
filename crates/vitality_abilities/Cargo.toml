@@ -1,0 +1,13 @@
+[package]
+name = "vitality_abilities"
+version = "0.2.0"
+edition = "2024"
+
+[dependencies]
+express-it = { workspace = true }
+hfsm_bevy = { workspace = true }
+vitality_core = { workspace = true }
+
+[dependencies.bevy]
+workspace = true
+features = ["bevy_log", "bevy_asset", "bevy_scene"]
