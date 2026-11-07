@@ -22,11 +22,14 @@ done
 mkdir -p "$mirror"
 # The path deps live outside the repo, so the mirror needs the same siblings next to it.
 parent=$(dirname "$mirror")
+# Link the sibling checkout each path dep starts in, so ../<name>/... resolves the same way here.
 while read -r dep; do
-  target=$src/${dep#./}
-  [ -d "$target" ] || continue
-  link=$parent/$(basename "$dep")
-  { [ -e "$link" ] || [ -L "$link" ]; } || ln -s "$target" "$link"
+  case $dep in
+    ../*) name=$(printf '%s\n' "$dep" | cut -d/ -f2) ;;
+    *) continue ;;
+  esac
+  link=$parent/$name
+  { [ -e "$link" ] || [ -L "$link" ]; } || ln -s "$src/../$name" "$link"
 done < <(sed -n 's/.*path[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$src/Cargo.toml")
 
 # Copy everything but build output and the lockfile: the mirror resolves its own offline graph.
