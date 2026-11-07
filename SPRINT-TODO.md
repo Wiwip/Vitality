@@ -41,4 +41,4 @@ Evidence for every line below was read from `../hfsm-rs` and from the pinned `be
 - after: G-1
 - test: `cd /tmp/vitality-build && cargo test --offline --test test_ability_machine` — each assertion above fails when the route or the cooldown it pins regresses; today the file does not exist, so there is no coverage at all.
 - origin: owner
-- status: todo
+- status: done
