@@ -1,12 +1,10 @@
-use crate::assets::{AbilityDef, ActorDef, EffectDef};
+use crate::assets::{AbilityDef, EffectDef};
 use crate::registry::ability_registry::{AbilityRegistry, AbilityToken};
-use crate::registry::actor_registry::{ActorRegistry, ActorToken};
 use crate::registry::effect_registry::{EffectRegistry, EffectToken};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
 pub mod ability_registry;
-pub mod actor_registry;
 pub mod effect_registry;
 
 pub struct RegistryPlugin;
@@ -15,7 +13,6 @@ impl Plugin for RegistryPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(EffectRegistry::default());
         app.insert_resource(AbilityRegistry::default());
-        app.insert_resource(ActorRegistry::default());
     }
 }
 
@@ -25,8 +22,6 @@ pub struct Registry<'w> {
     pub ability_assets: Res<'w, Assets<AbilityDef>>,
 
     pub effect_registry: Res<'w, EffectRegistry>,
-
-    pub actor_registry: Res<'w, ActorRegistry>,
 }
 
 impl Registry<'_> {
@@ -41,10 +36,6 @@ impl Registry<'_> {
     pub fn ability(&self, name: &AbilityToken) -> Handle<AbilityDef> {
         self.ability_registry.get(name).clone()
     }
-
-    pub fn actor(&self, name: &ActorToken) -> Handle<ActorDef> {
-        self.actor_registry.get(name).clone()
-    }
 }
 
 #[derive(SystemParam)]
@@ -54,9 +45,6 @@ pub struct RegistryMut<'w> {
 
     pub effect_registry: ResMut<'w, EffectRegistry>,
     pub effect_assets: ResMut<'w, Assets<EffectDef>>,
-
-    pub actor_registry: ResMut<'w, ActorRegistry>,
-    pub actor_assets: ResMut<'w, Assets<ActorDef>>,
 }
 
 impl RegistryMut<'_> {
@@ -80,14 +68,5 @@ impl RegistryMut<'_> {
 
     pub fn ability(&self, name: &AbilityToken) -> Handle<AbilityDef> {
         self.ability_registry.get(name).clone()
-    }
-
-    pub fn add_actor(&mut self, name: ActorToken, actor: ActorDef) {
-        let handle = self.actor_assets.add(actor);
-        self.actor_registry.add(name, handle);
-    }
-
-    pub fn actor(&self, name: &ActorToken) -> Handle<ActorDef> {
-        self.actor_registry.get(name).clone()
     }
 }

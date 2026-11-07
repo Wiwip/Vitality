@@ -48,12 +48,8 @@ impl LocalContext for AbilityContext {
 pub struct AbilitySystemParam<'w, 's> {
     pub abilities:
         Query<'w, 's, (Read<Ability>, AbilityRef<'static, 'static>), Without<IsResource>>,
-    pub actors: Query<
-        'w,
-        's,
-        (AbilityRef<'static, 'static>, Read<GrantedAbilities>),
-        Without<IsResource>,
-    >,
+    pub actors:
+        Query<'w, 's, (AbilityRef<'static, 'static>, Read<GrantedAbilities>), Without<IsResource>>,
     pub casters: Query<'w, 's, Read<AbilityOf>>,
     pub tasks: Query<'w, 's, Read<Tasks>>,
     pub task_machines: MachineQuery<'w, 's, TaskMachine>,

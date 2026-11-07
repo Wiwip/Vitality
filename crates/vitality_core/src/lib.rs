@@ -2,15 +2,13 @@ use crate::ability::ability_state::AbilityMachine;
 use crate::ability::task_states::TaskMachine;
 use crate::ability::tasks::{Tasks, WaitTask};
 use crate::ability::{AbilityOf, AbilityRecovery, GrantedAbilities};
-use crate::assets::{AbilityDef, ActorDef, EffectDef};
-use crate::attribute::clamps::{Clamp, apply_clamps, update_clamps};
+use crate::assets::{AbilityDef, EffectDef};
 use crate::attributes::{
-    Attribute, AttributeDependency, ReflectAccessAttribute, on_add_attribute, on_change_notify_attribute_dependencies,
-    on_change_notify_attribute_parents,
+    Attribute, AttributeDependency, ReflectAccessAttribute, on_add_attribute,
+    on_change_notify_attribute_dependencies, on_change_notify_attribute_parents,
 };
 use crate::effect::{
-    AppliedEffects, Effect, EffectDuration, EffectSource, EffectSources,
-    EffectTarget, EffectTicker,
+    AppliedEffects, Effect, EffectDuration, EffectSource, EffectSources, EffectTarget, EffectTicker,
 };
 use crate::graph::NodeType;
 use crate::modifier::modifier::update_modifier_when_dependencies_changed;
@@ -36,9 +34,7 @@ use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 
 pub mod ability;
-pub mod actors;
 pub mod assets;
-mod attribute;
 pub mod attributes;
 pub mod condition;
 pub mod context;
@@ -79,7 +75,6 @@ impl Plugin for CorePlugin {
             .add_plugins(RegistryPlugin)
             .init_schedule(PreUpdate)
             .init_schedule(PostUpdate)
-            .init_asset::<ActorDef>()
             .init_asset::<EffectDef>()
             .init_asset::<AbilityDef>()
             .register_type::<AppliedEffects>()
@@ -154,7 +149,6 @@ impl AttributeBindings {
 pub fn init_core_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<T>();
     app.register_type::<AttributeModifier<T>>();
-    app.register_type::<Clamp<T>>();
     app.register_type::<AttributeCalculatorCached<T>>();
     app.register_type_data::<T, ReflectAccessAttribute>();
     app.add_message::<ApplyAttributeModifierMessage<T>>();
@@ -174,9 +168,7 @@ pub fn init_core_attribute<T: Attribute>(app: &mut App) {
 
     app.add_systems(
         FixedUpdate,
-        (update_current_value_system::<T>, apply_clamps::<T>)
-            .chain()
-            .in_set(EffectsSet::UpdateCurrentValues),
+        update_current_value_system::<T>.in_set(EffectsSet::UpdateCurrentValues),
     );
 
     app.add_systems(
@@ -191,7 +183,6 @@ pub fn init_core_attribute<T: Attribute>(app: &mut App) {
     app.add_observer(on_add_attribute::<T>);
     app.add_observer(update_attribute::<T>);
     app.add_observer(update_modifier_when_dependencies_changed::<T>);
-    app.add_observer(update_clamps::<T>);
 
     debug!(
         "Registered Systems for attribute: {}.",
