@@ -1,7 +1,8 @@
 use crate::attributes::{
     Attribute, AttributeQueryData, AttributeQueryDataReadOnly, ManageAttributes,
 };
-use crate::effect::{AttributeDependents, EffectSource, EffectStatusParam, EffectTarget};
+use crate::attributes::AttributeDependents;
+use crate::effect::{EffectSource, EffectStatusParam, EffectTarget};
 use crate::graph::{DependencyGraph, NodeType};
 use crate::modifier::modifier::RecalculateExpression;
 use crate::modifier::{AttributeCalculator, OwnedModifiers};

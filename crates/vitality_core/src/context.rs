@@ -210,6 +210,8 @@ impl<'s, 'w> Vitality<'w, 's> {
 pub struct Source;
 pub struct Target;
 pub struct Caster;
+pub struct EffectRole;
+pub struct AbilityRole;
 
 // A trait for contexts that have a "Source" or primary actor
 pub trait ActorProvider<'a, 'b, Role> {
@@ -325,13 +327,13 @@ impl<'w, 's> ActorProviderMut<'w, 's, Target> for EffectExprContextMut<'w, 's> {
         }
     }
 }
-impl<'w, 's> ActorProvider<'w, 's, Effect> for EffectExprContext<'w, 's> {
+impl<'w, 's> ActorProvider<'w, 's, EffectRole> for EffectExprContext<'w, 's> {
     type ActorRef = AttributesRef<'w, 's>;
     fn get_actor(&self) -> &Self::ActorRef {
         &self.effect_holder
     }
 }
-impl<'w, 's> ActorProviderMut<'w, 's, Effect> for EffectExprContextMut<'w, 's> {
+impl<'w, 's> ActorProviderMut<'w, 's, EffectRole> for EffectExprContextMut<'w, 's> {
     type ActorMut = AttributesMut<'w, 's>;
     fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
         &mut self.effect_holder
@@ -417,13 +419,13 @@ impl<'w, 's> ActorProviderMut<'w, 's, Target> for AbilityExprContextMut<'w, 's> 
     }
 }
 
-impl<'w, 's> ActorProvider<'w, 's, Ability> for AbilityExprContext<'w, 's> {
+impl<'w, 's> ActorProvider<'w, 's, AbilityRole> for AbilityExprContext<'w, 's> {
     type ActorRef = AttributesRef<'w, 's>;
     fn get_actor(&self) -> &Self::ActorRef {
         &self.ability_ref
     }
 }
-impl<'w, 's> ActorProviderMut<'w, 's, Ability> for AbilityExprContextMut<'w, 's> {
+impl<'w, 's> ActorProviderMut<'w, 's, AbilityRole> for AbilityExprContextMut<'w, 's> {
     type ActorMut = AttributesMut<'w, 's>;
     fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
         &mut self.ability_mut
