@@ -93,8 +93,10 @@ fabric.properties
 /.idea/modules.xml
 /.idea/root_attribute.iml
 /.idea/vcs.xml
-# sprint-protected paths: sandbox config the gate mounts read-only
+
+# sprint-protected paths: sandbox config the gate mounts read-only: sandbox config the gate mounts read-only
 /.agent-sandbox
 /.cargo/
 /rust-toolchain.toml
 /.idea/
+/.env
