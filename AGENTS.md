@@ -6,7 +6,8 @@ Vitality: Bevy gameplay-attribute framework (attributes, effects, abilities).
 - `cargo check --offline`
 - `cargo test --offline`
 - Path deps: `../express-it`, `../hfsm-rs`, declared once in the root `[workspace.dependencies]`. Don't edit them.
-- Workspace: `vitality_core` (data model, attributes, modifiers, builders), `vitality_effects` and `vitality_abilities` (runtime systems/plugins), `vitality_debug` (bevy_ui overlay), `vitality` (facade, examples, benches, integration tests).
+- Workspace (dependencies point down only): `vitality_core` (attribute trait, macros, calculator, view traits, roles) <- `vitality_effects` (effect and modifier model + runtime, conditions, effect registry) <- `vitality_abilities` (ability model + runtime, state machines, tasks) <- `vitality_debug` (bevy_ui overlay) <- `vitality` (facade: actors, `Vitality` param, combined registry, plugin, examples, benches, integration tests).
+- Each crate defines its own attribute view (`EffectsRef`/`AbilityRef`) that excludes only the components it owns; core code stays generic over `ActorRead`/`ActorWrite`.
 - Don't touch `rust-toolchain.toml` or `.cargo/`.
 
 ## Comments
