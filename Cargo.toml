@@ -12,10 +12,10 @@ serde = "1.0"
 num-traits = "0.2"
 smol_str = "0.2.2"
 express-it = { path = "../express-it" }
-hfsm_bevy = { path = "../hfsm_bevy" }
+hfsm_bevy = { path = "../hfsm-rs/crates/hfsm_bevy" }
 
 [dependencies.bevy]
-version = "0.19"
+version = "0.20"
 default-features = false
 features = [
     "bevy_log",
@@ -28,7 +28,7 @@ features = [
 criterion = { version = "0.8", features = ["html_reports"] }
 
 [dev-dependencies.bevy]
-version = "0.19"
+version = "0.20"
 default-features = false
 features = [
     "ui",
