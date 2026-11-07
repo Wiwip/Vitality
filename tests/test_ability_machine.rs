@@ -395,6 +395,16 @@ fn scene_plugin_is_installed_when_the_host_only_inited_the_asset() {
         app.world().contains_resource::<Assets<ScenePatch>>(),
         "the host's own Assets<ScenePatch> must still be there"
     );
+
+    // A host that already added ScenePlugin (DefaultPlugins does) must not be handed a second one.
+    let mut app2 = App::new();
+    app2.add_plugins((MinimalPlugins, AssetPlugin::default(), ScenePlugin));
+    app2.add_plugins(AttributesPlugin);
+
+    assert!(
+        app2.is_plugin_added::<ScenePlugin>(),
+        "AttributesPlugin must respect the duplicate-add guard at src/lib.rs:102, not add ScenePlugin twice"
+    );
 }
 
 fn recovery_entries(app: &App) -> usize {
