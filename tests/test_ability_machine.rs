@@ -8,8 +8,8 @@ use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use hfsm_bevy::{
-    Machine, MachineEvent, MachineExternalContext, MachineLocalContext, MachineQuery, StateEntered,
-    StateId, StateTimer,
+    Machine, MachineDefinition, MachineEvent, MachineExternalContext, MachineLocalContext,
+    MachineQuery, StateEntered, StateId, StateTimer,
 };
 use vitality::AttributesPlugin;
 use vitality::ability::ability_state::{AbilityEvent, AbilityMachine, AbilityState};
@@ -19,9 +19,10 @@ use vitality::ability::tasks::{
     TaskParam, TaskStatus, Tasks, task,
 };
 use vitality::ability::{Abilities, AbilityBuilder, TargetData};
-use vitality::actors::ActorBuilder;
-use vitality::assets::AbilityDef;
+use vitality::actors::{Actor, ActorBuilder};
+use vitality::assets::{AbilityDef, ActorDef};
 use vitality::context::Vitality;
+use vitality::effect::global_effect::GlobalActor;
 use vitality::registry::RegistryMut;
 use vitality::registry::ability_registry::AbilityToken;
 
@@ -308,6 +309,55 @@ fn complete_all_ends_the_ability_on_the_last_task_completion() {
         "the last subtask completion ends the ability"
     );
     assert!(cooldown_armed(&app, ability));
+}
+
+/// C-2's bug, pinned: the split install inserted `MachineDefinition<T>` from a `PreStartup` system,
+/// so the `MachineInstance<AbilityMachine>` that `Ability` requires arrived while the resource was
+/// still missing and hfsm's on-insert observer died with `Resource does not exist`. No schedule runs
+/// here until the grant is already in flight, which is why the app is built bare.
+#[test]
+fn machine_definition_is_installed_before_the_first_update() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+
+    assert!(
+        app.world()
+            .contains_resource::<MachineDefinition<AbilityMachine>>(),
+        "the AbilityMachine definition must come from the plugin, not from a system"
+    );
+    assert!(
+        app.world()
+            .contains_resource::<MachineDefinition<TaskMachine>>(),
+        "the TaskMachine definition must come from the plugin, not from a system"
+    );
+
+    app.insert_resource(HeldAbility(Some(
+        AbilityBuilder::new()
+            .set_tasks(|| bsn! { Tasks [ @task::<LongTask>(NoData) ] })
+            .build(),
+    )));
+    app.world_mut()
+        .run_system_once(register_ability)
+        .expect("the registry is a resource, so registering needs no update");
+
+    // `Actor` brings the `ManageAttributes` and `GrantedAbilities` that `grant_ability` reads, so the
+    // owner needs no `Startup` system. A stand-in `GlobalActor` covers the `Add<Actor>` observer,
+    // which unwraps a global actor that only `PreStartup` creates, and goes away before the update.
+    let global_actor = app.world_mut().spawn(GlobalActor).id();
+    let handle = app
+        .world_mut()
+        .resource_mut::<Assets<ActorDef>>()
+        .add(ActorBuilder::new().name("Pre-update").build());
+    app.world_mut().spawn((TestActor, Actor(handle)));
+    app.world_mut().despawn(global_actor);
+
+    let ability = grant(&mut app);
+    app.update();
+
+    assert!(
+        in_state::<AbilityMachine>(&mut app, ability, AbilityState::Ready),
+        "an ability granted before the first update must be Ready after it"
+    );
 }
 
 fn recovery_entries(app: &App) -> usize {
