@@ -20,6 +20,15 @@ for dir in cache index; do
 done
 
 mkdir -p "$mirror"
+# The path deps live outside the repo, so the mirror needs the same siblings next to it.
+parent=$(dirname "$mirror")
+while read -r dep; do
+  target=$src/${dep#./}
+  [ -d "$target" ] || continue
+  link=$parent/$(basename "$dep")
+  { [ -e "$link" ] || [ -L "$link" ]; } || ln -s "$target" "$link"
+done < <(sed -n 's/.*path[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$src/Cargo.toml")
+
 # Copy everything but build output and the lockfile: the mirror resolves its own offline graph.
 tar -C "$src" \
   --exclude=./target \
