@@ -9,7 +9,7 @@ use crate::modifier::{EffectSubject, ReflectAccessModifier};
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
 use crate::util::pretty_type_name;
-use crate::{AttributeBindings, AttributesRef};
+use crate::{AttributeBindings, EffectsRef};
 use bevy::prelude::*;
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -201,7 +201,7 @@ pub fn update_modifier_when_dependencies_changed<T: Attribute>(
     trigger: On<RecalculateExpression>,
     mut modifiers: Query<(&mut AttributeModifier<T>, &ModifierOf)>,
     effects: Query<(&EffectSource, &EffectTarget)>,
-    actors: Query<AttributesRef, Without<AttributeModifier<T>>>,
+    actors: Query<EffectsRef, Without<AttributeModifier<T>>>,
     mut commands: Commands,
 ) {
     let Ok((mut modifier, effect_id)) = modifiers.get_mut(trigger.modifier_entity) else {

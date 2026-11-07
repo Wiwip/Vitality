@@ -2,7 +2,7 @@ use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
 use bevy::prelude::*;
-use vitality_core::AttributesRef;
+use vitality_core::EffectsRef;
 use vitality_core::assets::EffectDef;
 use vitality_core::context::EffectExprContext;
 use vitality_core::effect::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
@@ -23,7 +23,7 @@ impl Plugin for ConditionPlugin {
 pub fn evaluate_effect_conditions(
     mut query: Query<
         (
-            AttributesRef,
+            EffectsRef,
             &Effect,
             &EffectSource,
             &EffectTarget,
@@ -31,7 +31,7 @@ pub fn evaluate_effect_conditions(
         ),
         Without<EffectTicker>,
     >,
-    parents: Query<AttributesRef>,
+    parents: Query<EffectsRef>,
     effects: Res<Assets<EffectDef>>,
     mut commands: Commands,
 ) {

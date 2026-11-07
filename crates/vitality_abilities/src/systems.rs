@@ -2,7 +2,7 @@ use bevy::asset::Assets;
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
 use express_it::expr::{BoolExpr, Expr};
-use vitality_core::AttributesMut;
+use vitality_core::AbilityMut;
 use vitality_core::ability::{Ability, AbilityRecovery, TargetData};
 use vitality_core::assets::AbilityDef;
 use vitality_core::context::{AbilityExprContext, AbilityExprContextMut, AbilityExprSchema};
@@ -47,7 +47,7 @@ pub struct ActivateAbility {
 /// Bypass [TryActivateAbility]'s checks. Usually triggered after a successful [TryActivateAbility].
 pub(crate) fn activate_ability(
     trigger: On<ActivateAbility>,
-    mut actors: Query<AttributesMut, Without<IsResource>>,
+    mut actors: Query<AbilityMut, Without<IsResource>>,
     ability_assets: Res<Assets<AbilityDef>>,
 ) -> Result<(), BevyError> {
     debug!("{}: Commit ability cost.", trigger.ability);

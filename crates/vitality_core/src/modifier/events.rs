@@ -1,4 +1,4 @@
-use crate::AttributesMut;
+use crate::EffectsMut;
 use crate::context::EffectExprContext;
 use crate::math::AbsDiff;
 use crate::modifier::calculator::AttributeCalculator;
@@ -18,7 +18,7 @@ pub struct ApplyAttributeModifierMessage<T: Attribute> {
 
 pub fn apply_modifier_events<T: Attribute>(
     mut event_reader: MessageReader<ApplyAttributeModifierMessage<T>>,
-    mut attributes: Query<AttributesMut, Without<IsResource>>,
+    mut attributes: Query<EffectsMut, Without<IsResource>>,
     mut commands: Commands,
 ) {
     for ev in event_reader.read() {
@@ -35,7 +35,7 @@ pub fn apply_modifier_events<T: Attribute>(
 
 pub fn apply_modifier<T: Attribute>(
     trigger: &ApplyAttributeModifierMessage<T>,
-    attributes: &mut Query<AttributesMut, Without<IsResource>>,
+    attributes: &mut Query<EffectsMut, Without<IsResource>>,
 ) -> Result<bool, BevyError> {
     let query = [trigger.source_entity, trigger.target_entity];
     let [source, target] = attributes.get_many(query)?;

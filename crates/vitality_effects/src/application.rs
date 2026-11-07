@@ -11,12 +11,12 @@ use vitality_core::effect::{
 use vitality_core::graph::NodeType;
 use vitality_core::modifier::ModifierOf;
 use vitality_core::modifier::modifier::Modifier;
-use vitality_core::{AppAttributeBindings, AttributesMut};
+use vitality_core::{AppAttributeBindings, EffectsMut};
 
 fn apply_instant_effect(
     event: &ApplyEffectEvent,
     actors: &mut Query<
-        (Option<&AppliedEffects>, AttributesMut),
+        (Option<&AppliedEffects>, EffectsMut),
         (Without<Effect>, Without<IsResource>),
     >,
     commands: &mut Commands,
@@ -57,7 +57,7 @@ fn apply_instant_effect(
 fn apply_modifiers<'a, I>(
     event: &ApplyEffectEvent,
     _actors: &'a mut Query<
-        (Option<&AppliedEffects>, AttributesMut),
+        (Option<&AppliedEffects>, EffectsMut),
         (Without<Effect>, Without<IsResource>),
     >,
     modifiers: &mut I,
@@ -80,7 +80,7 @@ fn spawn_persistent_effect(
     commands: &mut Commands,
     effect: &EffectDef,
     actors: &mut Query<
-        (Option<&AppliedEffects>, AttributesMut),
+        (Option<&AppliedEffects>, EffectsMut),
         (Without<Effect>, Without<IsResource>),
     >,
     effects: &mut Query<&Effect>,
@@ -196,7 +196,7 @@ fn spawn_persistent_effect(
 pub(crate) fn apply_effect_event_observer(
     trigger: On<ApplyEffectEvent>,
     mut actors: Query<
-        (Option<&AppliedEffects>, AttributesMut),
+        (Option<&AppliedEffects>, EffectsMut),
         (Without<Effect>, Without<IsResource>),
     >,
     mut effects: Query<&Effect>,
