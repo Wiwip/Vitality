@@ -131,10 +131,12 @@ impl MachineState<TaskMachine> for CompleteState {
         // Tells subtasks to activate
         if let Ok(sub_tasks) = ctx.external.tasks.get(ctx.task_id) {
             for task_id in sub_tasks.iter() {
-                ctx.external.commands.trigger(MachineEvent {
-                    entity: task_id,
-                    event: TaskEvent::Activate,
-                });
+                ctx.external
+                    .commands
+                    .trigger(MachineEvent::<TaskMachine>::new(
+                        task_id,
+                        TaskEvent::Activate,
+                    ));
             }
         };
 

@@ -80,6 +80,7 @@ impl<'w, 's> Abilities<'w, 's> {
     pub fn is_ability_ready(&self, ability_entity: Entity) -> bool {
         self.machines
             .is_in_state(ability_entity, AbilityState::Ready)
+            .unwrap_or(false)
     }
 
     pub fn get_ability_from_token(&self, token: &AbilityToken) -> Handle<AbilityDef> {
@@ -144,13 +145,15 @@ impl<'w, 's> Abilities<'w, 's> {
             return;
         };
 
-        self.machines.dispatch_event(
+        if let Err(err) = self.machines.dispatch_event(
             ability_entity,
             AbilityEvent::TryActivate {
                 source: entity,
                 target: target_data,
             },
-        );
+        ) {
+            error!("[{}] AbilityMachine dispatch failed: {err}", ability_entity);
+        }
     }
 
     pub fn try_activate_by_tag<T: Component + Reflect>(
@@ -161,13 +164,15 @@ impl<'w, 's> Abilities<'w, 's> {
         let abilities = self.get_abilities_by_tag::<T>(actor_id);
 
         for ability_id in abilities {
-            self.machines.dispatch_event(
+            if let Err(err) = self.machines.dispatch_event(
                 ability_id,
                 AbilityEvent::TryActivate {
                     source: actor_id,
                     target: target_data,
                 },
-            );
+            ) {
+                error!("[{}] AbilityMachine dispatch failed: {err}", ability_id);
+            }
         }
     }
 

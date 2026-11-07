@@ -1,5 +1,6 @@
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
+use bevy::time::TimeUpdateStrategy;
 use vitality::actors::ActorBuilder;
 use vitality::context::Vitality;
 use vitality::effect::{Effect, EffectApplicationPolicy, EffectBuilder};
@@ -29,6 +30,8 @@ fn test_update_current_values() {
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
     app.add_plugins(init_attribute::<TestA>);
     app.add_systems(Startup, prepare_actor);
+    // A headless update lasts microseconds, so with the real clock FixedUpdate never runs.
+    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
 
     app.update();
 

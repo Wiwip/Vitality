@@ -127,9 +127,9 @@ impl EffectBuilder {
         self
     }
 
-    pub fn add_effect_trigger<E: EntityEvent, B: Bundle, M>(
+    pub fn add_effect_trigger<E: EntityEvent, M>(
         mut self,
-        observer: impl IntoObserverSystem<E, B, M> + Clone + Send + Sync + 'static,
+        observer: impl IntoObserverSystem<E, M> + Clone + Send + Sync + 'static,
     ) -> Self {
         self.def.on_effect_triggers.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
@@ -139,9 +139,9 @@ impl EffectBuilder {
         self
     }
 
-    pub fn add_actor_trigger<E: EntityEvent, B: Bundle, M>(
+    pub fn add_actor_trigger<E: EntityEvent, M>(
         mut self,
-        observer: impl IntoObserverSystem<E, B, M> + Clone + Send + Sync + 'static,
+        observer: impl IntoObserverSystem<E, M> + Clone + Send + Sync + 'static,
     ) -> Self {
         self.def.on_actor_triggers.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {

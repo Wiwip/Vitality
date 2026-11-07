@@ -1,4 +1,4 @@
-use crate::ability::ability_state::AbilityEvent;
+use crate::ability::ability_state::{AbilityEvent, AbilityMachine};
 use crate::ability::{
     Ability, AbilityError, AbilityOf, AbilityRecovery, GrantedAbilities, TargetData,
 };
@@ -115,13 +115,13 @@ impl<'s, 'w> Vitality<'w, 's> {
             return;
         };
 
-        self.commands.trigger(MachineEvent {
-            entity: ability_entity,
-            event: AbilityEvent::TryActivate {
+        self.commands.trigger(MachineEvent::<AbilityMachine>::new(
+            ability_entity,
+            AbilityEvent::TryActivate {
                 source: entity,
                 target: target_data,
             },
-        });
+        ));
     }
 
     pub fn grant_ability_by_token_unchecked(

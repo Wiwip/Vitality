@@ -397,7 +397,7 @@ where
     }
 }
 
-pub fn on_add_attribute<T: Attribute>(trigger: On<Insert, T>, mut commands: Commands) {
+pub fn on_add_attribute<T: Attribute>(trigger: On<Insert<T>>, mut commands: Commands) {
     commands.trigger(MarkNodeDirty::<T> {
         entity: trigger.event_target(),
         phantom_data: Default::default(),

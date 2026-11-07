@@ -95,7 +95,7 @@ pub fn task<T: AbilityTask>(data: T::Data) -> impl Scene {
         MachineInstance<TaskMachine>
         on({
             let cell = cell.clone();
-            move |trigger: On<Add, Task>, mut commands: Commands| {
+            move |trigger: On<Add<Task>>, mut commands: Commands| {
                 if let Ok(mut guard) = cell.lock() {
                     if let Some(payload_data) = guard.take() {
                         commands.entity(trigger.entity).insert(payload_data);
@@ -147,10 +147,10 @@ fn on_execute_task_observer<T: AbilityTask>(
     );
 
     if status == TaskStatus::Complete {
-        commands.trigger(MachineEvent {
-            entity: trigger.task_id,
-            event: TaskEvent::Complete,
-        });
+        commands.trigger(MachineEvent::<TaskMachine>::new(
+            trigger.task_id,
+            TaskEvent::Complete,
+        ));
     }
 }
 
@@ -224,21 +224,25 @@ pub fn on_task_completion_notification(
     mut trigger: On<NotifyTaskCompletion>,
     query: Query<(&Tasks, &Complete)>,
     abilities: Query<&Ability>,
-    mut ability_machines: MachineQuery<AbilityMachine>,
+    task_machines: MachineQuery<TaskMachine>,
+    mut commands: Commands,
 ) {
     let Ok((tasks, rule)) = query.get(trigger.entity) else {
         // Has no subtasks, not a problem.
         return;
     };
-    let task_machines = &ability_machines.view.task_machines;
 
     let result = match rule {
-        Complete::All => tasks
-            .iter()
-            .all(|task| task_machines.is_in_state(task, TaskState::Completed)),
-        Complete::Any => tasks
-            .iter()
-            .any(|task| task_machines.is_in_state(task, TaskState::Completed)),
+        Complete::All => tasks.iter().all(|task| {
+            task_machines
+                .is_in_state(task, TaskState::Completed)
+                .unwrap_or(false)
+        }),
+        Complete::Any => tasks.iter().any(|task| {
+            task_machines
+                .is_in_state(task, TaskState::Completed)
+                .unwrap_or(false)
+        }),
     };
 
     debug!(
@@ -249,7 +253,11 @@ pub fn on_task_completion_notification(
     if !abilities.contains(trigger.entity) {
         trigger.propagate(result);
     } else if result {
-        let _ = ability_machines.dispatch_event(trigger.entity, AbilityEvent::EndAbility);
+        // A trigger, not a dispatch: this system cannot borrow both machine queries.
+        commands.trigger(MachineEvent::<AbilityMachine>::new(
+            trigger.entity,
+            AbilityEvent::EndAbility,
+        ));
     }
 }
 
@@ -469,29 +477,27 @@ impl<'a, 'w, 's> TaskScope<'a, 'w, 's> {
         let Some(task_id) = self.task_id else {
             return;
         };
-        self.commands.trigger(MachineEvent {
-            entity: task_id,
-            event: TaskEvent::Execute,
-        });
+        self.commands.trigger(MachineEvent::<TaskMachine>::new(
+            task_id,
+            TaskEvent::Execute,
+        ));
     }
 
     pub fn complete(&mut self) {
         let Some(task_id) = self.task_id else {
             return;
         };
-        self.commands.trigger(MachineEvent {
-            entity: task_id,
-            event: TaskEvent::Complete,
-        });
+        self.commands.trigger(MachineEvent::<TaskMachine>::new(
+            task_id,
+            TaskEvent::Complete,
+        ));
     }
 
     pub fn stop(&mut self) {
         let Some(task_id) = self.task_id else {
             return;
         };
-        self.commands.trigger(MachineEvent {
-            entity: task_id,
-            event: TaskEvent::Stop,
-        });
+        self.commands
+            .trigger(MachineEvent::<TaskMachine>::new(task_id, TaskEvent::Stop));
     }
 }

@@ -91,6 +91,7 @@ mod test {
     use crate::{AttributesPlugin, attribute};
     use bevy::ecs::system::RunSystemOnce;
     use bevy::log::LogPlugin;
+    use bevy::time::TimeUpdateStrategy;
 
     attribute!(TestA, f32);
     attribute!(TestB, f64);
@@ -165,6 +166,8 @@ mod test {
             crate::init_attribute::<TestA>,
             crate::init_attribute::<TestB>,
         ));
+        // A headless update lasts microseconds, so with the real clock FixedUpdate never runs.
+        app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
 
         app.add_systems(
             Startup,

@@ -4,7 +4,7 @@ use bevy::asset::Assets;
 use bevy::prelude::*;
 
 pub fn on_add_ability(
-    trigger: On<Add, Ability>,
+    trigger: On<Add<Ability>>,
     abilities: Query<(&Ability, &AbilityOf)>,
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,

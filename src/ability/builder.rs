@@ -125,9 +125,9 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn add_execution<E: EntityEvent, B: Bundle, M>(
+    pub fn add_execution<E: EntityEvent, M>(
         mut self,
-        observer: impl IntoObserverSystem<E, B, M> + Clone + Send + Sync + 'static,
+        observer: impl IntoObserverSystem<E, M> + Clone + Send + Sync + 'static,
     ) -> Self {
         self.mutators.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
@@ -142,9 +142,9 @@ impl AbilityBuilder {
         self
     }
 
-    pub fn add_trigger<E: EntityEvent, B: Bundle, M>(
+    pub fn add_trigger<E: EntityEvent, M>(
         mut self,
-        observer: impl IntoObserverSystem<E, B, M> + Clone + Send + Sync + 'static,
+        observer: impl IntoObserverSystem<E, M> + Clone + Send + Sync + 'static,
     ) -> Self {
         self.triggers.push(EntityActions::new(
             move |actor_commands: &mut EntityCommands| {

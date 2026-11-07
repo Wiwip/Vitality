@@ -356,6 +356,7 @@ mod test {
     use crate::registry::{Registry, RegistryMut};
     use crate::{AttributesPlugin, attribute, init_attribute};
     use bevy::ecs::system::RunSystemOnce;
+    use bevy::time::TimeUpdateStrategy;
 
     attribute!(TestA, f32);
     attribute!(TestB, f64);
@@ -400,6 +401,8 @@ mod test {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
         app.add_plugins(init_attribute::<TestInt>);
+        // A headless update lasts microseconds, so with the real clock FixedUpdate never runs.
+        app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
 
         app.add_systems(Startup, (prepare_effects, prepare_actor).chain());
 

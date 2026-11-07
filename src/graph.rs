@@ -1,5 +1,4 @@
 use crate::effect::{AppliedEffects, EffectSource};
-use bevy::ecs::VariantDefaults;
 use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
@@ -15,7 +14,7 @@ use std::collections::HashSet;
 /// Modifiers are added to Effects as Vec<Mod>
 /// - Modifiers must apply to an attribute
 
-#[derive(Component, Default, VariantDefaults, Copy, Clone, Reflect, Debug)]
+#[derive(Component, Default, Copy, Clone, Reflect, Debug)]
 pub enum NodeType {
     #[default]
     Actor,

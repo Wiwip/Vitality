@@ -21,6 +21,7 @@ use hfsm_bevy::{
     Access, EventResult, ExternalContext, LocalContext, Machine, MachineDefinition, MachineQuery,
     MachineState, StateId, StateTimer,
 };
+use std::time::Duration;
 
 pub struct AbilityMachine;
 impl Machine for AbilityMachine {
@@ -217,10 +218,13 @@ impl MachineState<AbilityMachine> for ActiveState {
 
         // Signal tasks to begin
         for task_entity in tasks.iter() {
-            let _ = ctx
+            if let Err(err) = ctx
                 .external
                 .task_machines
-                .dispatch_event(task_entity, TaskEvent::Activate);
+                .dispatch_event(task_entity, TaskEvent::Activate)
+            {
+                error!("[{}] TaskMachine dispatch failed: {err}", task_entity);
+            }
         }
     }
 
@@ -252,7 +256,7 @@ impl MachineState<AbilityMachine> for RecoveryState {
 
         // Sets the recovery timer cooldown. Uses a snapshotting model.
         ctx.local.timers.set_timer(
-            new_cooldown,
+            Duration::from_secs_f32(new_cooldown),
             AbilityEvent::Recovered,
             AbilityState::Recovery,
         );
@@ -262,19 +266,28 @@ impl MachineState<AbilityMachine> for RecoveryState {
                 .external
                 .task_machines
                 .is_in_state(task_id, TaskState::Running)
+                .unwrap_or(false)
             {
-                ctx.external
+                if let Err(err) = ctx
+                    .external
                     .task_machines
-                    .dispatch_event(task_id, TaskEvent::Stop);
+                    .dispatch_event(task_id, TaskEvent::Stop)
+                {
+                    error!("[{}] TaskMachine dispatch failed: {err}", task_id);
+                }
             }
         }
     }
 
     fn on_exit(&self, ctx: &mut Access<AbilityMachine>) {
         for task_id in ctx.external.tasks.iter_descendants(ctx.ability_id) {
-            ctx.external
+            if let Err(err) = ctx
+                .external
                 .task_machines
-                .dispatch_event(task_id, TaskEvent::Reset);
+                .dispatch_event(task_id, TaskEvent::Reset)
+            {
+                error!("[{}] TaskMachine dispatch failed: {err}", task_id);
+            }
         }
     }
 }

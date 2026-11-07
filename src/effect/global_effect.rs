@@ -35,7 +35,7 @@ pub fn spawn_global_actor(mut commands: Commands, mut ctx: Vitality) {
 }
 
 /// When an actor is spawned, ensures that the global effects apply to the actor.
-fn observe_spawned_actor(trigger: On<Add, Actor>, mut ctx: Vitality) {
+fn observe_spawned_actor(trigger: On<Add<Actor>>, mut ctx: Vitality) {
     ctx.spawn_global_effects(trigger.entity);
 }
 
@@ -55,6 +55,7 @@ mod test {
     use crate::registry::{Registry, RegistryMut};
     use crate::{AttributesPlugin, attribute, init_attribute};
     use bevy::ecs::system::RunSystemOnce;
+    use bevy::time::TimeUpdateStrategy;
 
     attribute!(TestAttribute, f64);
 
@@ -112,6 +113,8 @@ mod test {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
         app.add_plugins(init_attribute::<TestAttribute>);
+        // A headless update lasts microseconds, so with the real clock FixedUpdate never runs.
+        app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
 
         app.add_systems(
             Startup,
