@@ -5,7 +5,7 @@ use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
 use crate::systems::MarkNodeDirty;
 use crate::util::pretty_type_name;
-use crate::{AttributesMut, AttributesRef};
+use crate::view::{ActorRead, ActorWrite};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::log::error;
@@ -70,7 +70,7 @@ where
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Source, ActorRef = AttributesRef<'a, 'b>>,
+            ActorProvider<'a, 'b, Source>,
     {
         Self::at::<Source, C>()
     }
@@ -78,7 +78,7 @@ where
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Target, ActorRef = AttributesRef<'a, 'b>>,
+            ActorProvider<'a, 'b, Target>,
     {
         Self::at::<Target, C>()
     }
@@ -86,7 +86,7 @@ where
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Ability, ActorRef = AttributesRef<'a, 'b>>,
+            ActorProvider<'a, 'b, Ability>,
     {
         Self::at::<Ability, C>()
     }
@@ -94,7 +94,7 @@ where
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Caster, ActorRef = AttributesRef<'a, 'b>>,
+            ActorProvider<'a, 'b, Caster>,
     {
         Self::at::<Caster, C>()
     }
@@ -102,7 +102,7 @@ where
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Effect, ActorRef = AttributesRef<'a, 'b>>,
+            ActorProvider<'a, 'b, Effect>,
     {
         Self::at::<Effect, C>()
     }
@@ -110,7 +110,7 @@ where
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Role, ActorRef = AttributesRef<'a, 'b>>,
+            ActorProvider<'a, 'b, Role>,
     {
         Node {
             expr: AttributeVar {
@@ -133,7 +133,7 @@ where
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Role, ActorRef = AttributesRef<'a, 'b>>,
+            ActorProvider<'a, 'b, Role>,
     {
         Node {
             expr: AttributeVar {
@@ -157,7 +157,7 @@ where
         Role: 'static,
         C: ContextMut + 'static,
         for<'a, 'b> C::ContextItemMut<'a, 'b>:
-            ActorProviderMut<'a, 'b, Role, ActorMut = AttributesMut<'a, 'b>>,
+            ActorProviderMut<'a, 'b, Role>,
     {
         let expr = expr.as_expr();
 
@@ -191,7 +191,7 @@ where
         Role: 'static,
         C: ContextMut + 'static,
         for<'a, 'b> C::ContextItemMut<'a, 'b>:
-            ActorProviderMut<'a, 'b, Role, ActorMut = AttributesMut<'a, 'b>>,
+            ActorProviderMut<'a, 'b, Role>,
     {
         let expr = expr.as_expr();
 
@@ -225,7 +225,7 @@ where
         Role: 'static,
         C: ContextMut + 'static,
         for<'a, 'b> C::ContextItemMut<'a, 'b>:
-            ActorProviderMut<'a, 'b, Role, ActorMut = AttributesMut<'a, 'b>>,
+            ActorProviderMut<'a, 'b, Role>,
     {
         let expr = expr.as_expr();
 

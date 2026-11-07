@@ -7,6 +7,7 @@ use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::effect::global_effect::{GlobalActor, GlobalEffects};
 use crate::effect::{ApplyEffectEvent, Effect, EffectTargeting};
 use crate::registry::Registry;
+use crate::view::{ActorRead, ActorWrite};
 use crate::registry::ability_registry::AbilityToken;
 use crate::registry::actor_registry::ActorToken;
 use crate::registry::effect_registry::EffectToken;
@@ -212,11 +213,11 @@ pub struct Caster;
 
 // A trait for contexts that have a "Source" or primary actor
 pub trait ActorProvider<'a, 'b, Role> {
-    type ActorRef;
+    type ActorRef: ActorRead;
     fn get_actor(&self) -> &Self::ActorRef;
 }
 pub trait ActorProviderMut<'a, 'b, Role> {
-    type ActorMut;
+    type ActorMut: ActorWrite;
     fn get_actor_mut(&mut self) -> &mut Self::ActorMut;
 }
 
