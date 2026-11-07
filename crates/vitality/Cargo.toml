@@ -1,0 +1,45 @@
+[package]
+name = "vitality"
+version = "0.2.0"
+edition = "2024"
+
+[dependencies]
+rand = "0.10"
+ptree = "0.5"
+#bevy-inspector-egui = "0.36"
+petgraph = "0.8"
+serde = "1.0"
+num-traits = "0.2"
+smol_str = "0.2.2"
+express-it = { workspace = true }
+hfsm_bevy = { workspace = true }
+
+[dependencies.bevy]
+version = "0.20"
+default-features = false
+features = [
+    "bevy_log",
+    "bevy_asset",
+    "bevy_ui",
+    "bevy_scene",
+]
+
+[dev-dependencies]
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[dev-dependencies.bevy]
+version = "0.20"
+default-features = false
+features = [
+    "ui",
+    "bevy_state",
+    "default_font",
+    "dynamic_linking",
+    "bevy_ui_debug",
+    "bevy_feathers",
+    "debug",
+]
+
+[[bench]]
+name = "bench_systems"
+harness = false
