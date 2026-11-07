@@ -10,7 +10,6 @@ use crate::prelude::Attribute;
 use bevy::asset::Handle;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::{Component, Deref, Entity, Event, Reflect};
-use std::marker::PhantomData;
 
 pub use crate::effect::builder::EffectBuilder;
 pub use application::{ApplyEffectEvent, EffectApplicationPolicy};
@@ -64,34 +63,6 @@ impl Effect {
             duration,
         ))
     }
-}
-
-/// What are the attributes the modifier depends on?
-#[derive(Component, Reflect, Debug)]
-#[relationship(relationship_target = AttributeDependents<T>)]
-pub struct AttributeDependency<T: Attribute + 'static> {
-    #[relationship]
-    pub source: Entity,
-    marker: PhantomData<T>,
-}
-
-impl<T: Attribute> AttributeDependency<T> {
-    pub fn new(source: Entity) -> Self {
-        Self {
-            source,
-            marker: PhantomData,
-        }
-    }
-}
-
-/// Usually on actors. Who depends on this entity and for what attributes?
-/// Serves to notify derived modifiers that the attribute has changed.
-#[derive(Component, Reflect, Debug)]
-#[relationship_target(relationship = AttributeDependency<T>)]
-pub struct AttributeDependents<T: Attribute + 'static> {
-    #[relationship]
-    sources: Vec<Entity>,
-    marker: PhantomData<T>,
 }
 
 /// The source of this effect.

@@ -5,11 +5,11 @@ use crate::ability::{AbilityOf, AbilityRecovery, GrantedAbilities};
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::attribute::clamps::{Clamp, apply_clamps, update_clamps};
 use crate::attributes::{
-    Attribute, ReflectAccessAttribute, on_add_attribute, on_change_notify_attribute_dependencies,
+    Attribute, AttributeDependency, ReflectAccessAttribute, on_add_attribute, on_change_notify_attribute_dependencies,
     on_change_notify_attribute_parents,
 };
 use crate::effect::{
-    AppliedEffects, AttributeDependency, Effect, EffectDuration, EffectSource, EffectSources,
+    AppliedEffects, Effect, EffectDuration, EffectSource, EffectSources,
     EffectTarget, EffectTicker,
 };
 use crate::graph::NodeType;

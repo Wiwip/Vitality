@@ -1,6 +1,4 @@
-use crate::ability::Ability;
 use crate::context::{ActorProvider, ActorProviderMut, Caster, Source, Target};
-use crate::effect::{AttributeDependents, Effect};
 use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
 use crate::systems::MarkNodeDirty;
@@ -82,14 +80,6 @@ where
     {
         Self::at::<Target, C>()
     }
-    fn ability<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
-    where
-        C: Context,
-        for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Ability>,
-    {
-        Self::at::<Ability, C>()
-    }
     fn caster<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
     where
         C: Context,
@@ -97,14 +87,6 @@ where
             ActorProvider<'a, 'b, Caster>,
     {
         Self::at::<Caster, C>()
-    }
-    fn effect<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
-    where
-        C: Context,
-        for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Effect>,
-    {
-        Self::at::<Effect, C>()
     }
     fn at<Role, C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
     where
@@ -466,4 +448,32 @@ impl<T, N: fmt::Display, C: Context> fmt::Display for AttributeVar<T, N, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", pretty_type_name::<T>())
     }
+}
+
+/// What are the attributes the modifier depends on?
+#[derive(Component, Reflect, Debug)]
+#[relationship(relationship_target = AttributeDependents<T>)]
+pub struct AttributeDependency<T: Attribute + 'static> {
+    #[relationship]
+    pub source: Entity,
+    marker: PhantomData<T>,
+}
+
+impl<T: Attribute> AttributeDependency<T> {
+    pub fn new(source: Entity) -> Self {
+        Self {
+            source,
+            marker: PhantomData,
+        }
+    }
+}
+
+/// Usually on actors. Who depends on this entity and for what attributes?
+/// Serves to notify derived modifiers that the attribute has changed.
+#[derive(Component, Reflect, Debug)]
+#[relationship_target(relationship = AttributeDependency<T>)]
+pub struct AttributeDependents<T: Attribute + 'static> {
+    #[relationship]
+    sources: Vec<Entity>,
+    marker: PhantomData<T>,
 }
