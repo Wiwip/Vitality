@@ -32,6 +32,9 @@ protected = .cargo/**
 protected = rust-toolchain.toml
 protected = .agent-sandbox
 protected = .idea/**
+protected = Cargo.toml
+protected = crates/*/Cargo.toml
+protected = scripts/**
 ```
 
 `scripts/gate.sh` mirrors the repo to `/tmp/vitality-build` and runs `cargo test --offline --workspace --lib --tests`
