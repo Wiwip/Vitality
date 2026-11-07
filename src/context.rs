@@ -9,13 +9,13 @@ use crate::effect::{ApplyEffectEvent, Effect, EffectTargeting};
 use crate::registry::Registry;
 use crate::registry::ability_registry::AbilityToken;
 use crate::registry::actor_registry::ActorToken;
+use crate::registry::effect_registry::EffectToken;
 use crate::{AttributesMut, AttributesRef};
 use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
 use express_it::expr::{Context, ContextMut};
 use hfsm_bevy::MachineEvent;
-use crate::registry::effect_registry::EffectToken;
 
 #[derive(SystemParam)]
 pub struct Vitality<'w, 's> {
