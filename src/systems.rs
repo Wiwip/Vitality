@@ -48,7 +48,7 @@ pub fn mark_node_dirty_observer<T: Attribute>(
 pub fn update_current_value_system<T: Attribute>(
     graph: DependencyGraph,
     nodes: Query<&NodeType>,
-    actors: Query<Entity, (With<ManageAttributes>, With<T>)>,
+    dirty_actors: Query<Entity, (With<ManageAttributes>, With<T>, With<Dirty<T>>)>,
     dirty_nodes: Query<&Dirty<T>>,
     statuses: Query<EffectStatusParam>,
     attributes: Query<AttributeQueryDataReadOnly<T>>,
@@ -60,12 +60,7 @@ pub fn update_current_value_system<T: Attribute>(
     type_bindings: Res<AppAttributeBindings>,
 ) {
     debug_once!("Ready: update_effect_tree_system::{}", type_name::<T>());
-    for actor_entity in actors.iter() {
-        // Ignore clean actors
-        if !dirty_nodes.contains(actor_entity) {
-            continue;
-        }
-
+    for actor_entity in dirty_actors.iter() {
         let calculator = update_effect_tree_attributes::<T>(
             actor_entity,
             &graph,
