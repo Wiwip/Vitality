@@ -1,77 +1,78 @@
-use bevy::prelude::*;
-use criterion::*;
-use vitality::attribute;
-use vitality::prelude::*;
+//! Criterion entry point for the vitality resolver benches (BENCH-PLAN.md).
+//!
+//! Only this one bench target exists (`[[bench]] name = "bench_systems", harness = false`), and
+//! cargo turns any *other* top-level `benches/*.rs` into a `harness = true` target that cannot
+//! link. So shared code lives in `benches/support/` and is pulled in below with `#[path]`: add a
+//! group to `resolver_benches`, do not add a file next to this one.
+//!
+//! Running this in the sandbox. The repo's manifests, lockfile and `~/.cargo/registry` are
+//! read-only and there is no network, so cargo only runs inside the `/tmp` mirror; the gate never
+//! compiles bench targets, so `--no-run` has to be asked for:
+//!
+//! ```text
+//! export VITALITY_MIRROR=/tmp/vitality-auto VITALITY_CARGO_HOME=/tmp/ch-auto
+//! cd /mnt/rust/RustroverProjects/vitality
+//! bash scripts/gate.sh                                     # tests only, no bench targets
+//! cd /tmp/vitality-auto && cargo bench --offline --no-run   # compile the bench targets
+//! cd /tmp/vitality-auto && cargo bench --offline            # full run
+//! cd /tmp/vitality-auto && cargo bench --offline -- --warm-up-time 0.5 --measurement-time 1 \
+//!     --sample-size 10                                      # short run for the log
+//! ```
+//!
+//! A bench id is `<group>/<WorldSpec::shape_id()>`, so a number never travels without the shape it
+//! came from. Label each number `st`/`mt` and `dyn`/`static` by hand when it is quoted: this crate's
+//! dev-dependencies turn on bevy's `dynamic_linking` and leave `multi_threaded` off (BENCH-PLAN §1.4).
 
-criterion_group!(benches, criterion_benchmark);
-criterion_main!(benches);
+#[path = "support/common.rs"]
+mod common;
 
-attribute!(Health);
-attribute!(HealthRegen);
-attribute!(MaxHealth);
-attribute!(AttackPower);
+use crate::common::{HarnessWorld, WorldSpec, actor_entities, mark_dirty_fraction, seed_rng, tick};
+use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 
-fn populate_world(mut commands: Commands, entity: u32, effects: u32) {
-    let mut rng = rand::rng();
-    /*for _ in 0..entity {
-        let player_entity = commands.spawn_empty().id();
-        ActorBuilder::new(player_entity)
-            .with::<Health>(12.0)
-            .with::<HealthRegen>(7.0)
-            .with::<Health>(100.0)
-            .clamp::<Health, MaxHealth>(0.0);
+/// Reality check: a whole `app.update()`, which under `TimeUpdateStrategy::FixedTimesteps(1)` is
+/// exactly one fixed tick of the real schedule set-up.
+fn app_update(c: &mut Criterion) {
+    let spec = WorldSpec {
+        attributes_per_actor: 8,
+        effects_per_actor: 4,
+        modifiers_per_effect: 1,
+        actors: 100,
+        dirty_fraction: 0.25,
+        ticking_fraction: 0.0,
+    };
 
-        for _ in 0..effects {
-            let effect = commands.spawn_empty().id();
-            EffectBuilder::new(player_entity, effect)
-                .with_permanent_duration()
-                .with_periodic_application(rng.random_range(0.5..1.5))
-                .modify_by_scalar::<Health>(rng.random_range(0.0..42.0), Additive)
-                .build(&mut commands);
-        }
-    }*/
-}
-
-fn populate_world_by_ref(mut commands: Commands, entity: u32, effects: u32) {
-    let mut rng = rand::rng();
-    /*for _ in 0..entity {
-        let player_entity = commands.spawn_empty().id();
-        ActorBuilder::new(player_entity)
-            .with::<Health>(12.0)
-            .with::<HealthRegen>(7.0)
-            .with::<Health>(100.0)
-            .clamp::<Health, MaxHealth>(0.0);
-
-        AttributeBuilder::<AttackPower>::new(player_entity)
-            .by_ref::<Health>(0.10)
-            .by_ref::<MaxHealth>(0.25)
-            .commit(&mut commands);
-
-        for _ in 0..effects {
-            let effect = commands.spawn_empty().id();
-            EffectBuilder::new(player_entity, effect)
-                .with_permanent_duration()
-                .with_periodic_application(rng.random_range(0.5..1.5))
-                .modify_by_ref::<Health, HealthRegen>(1.0)
-                .build(&mut commands);
-        }
-    }*/
-}
-
-fn criterion_benchmark(c: &mut Criterion) {
-    /*c.bench_function("populate_world", |b| {
-        let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .add_plugins(DeathByAttributesPlugin);
-        populate_world(app.world_mut().commands(), 1000, 50);
-        b.iter(|| app.update())
+    let mut group = c.benchmark_group("harness/app_update");
+    group.throughput(Throughput::Elements(spec.actors as u64));
+    group.bench_function(spec.shape_id(), |b| {
+        // Build and re-marking are setup, so only the tick is timed and the dirty set cannot
+        // drift across samples (BENCH-PLAN §1.3 and §7). `PerIteration`: an `App` is not a value
+        // to keep several of in memory.
+        b.iter_batched_ref(
+            || {
+                let mut app = spec.build_app();
+                let attrs = app.world().resource::<HarnessWorld>().attrs();
+                let actors = actor_entities(app.world_mut());
+                let mut rng = seed_rng();
+                mark_dirty_fraction(
+                    app.world_mut(),
+                    attrs,
+                    &actors,
+                    spec.dirty_fraction,
+                    &mut rng,
+                );
+                app
+            },
+            tick,
+            BatchSize::PerIteration,
+        );
     });
-
-    c.bench_function("populate_world_by_ref", |b| {
-        let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .add_plugins(DeathByAttributesPlugin);
-        populate_world_by_ref(app.world_mut().commands(), 1000, 50);
-        b.iter(|| app.update())
-    });*/
+    group.finish();
 }
+
+/// Every bench group hangs off here.
+fn resolver_benches(c: &mut Criterion) {
+    app_update(c);
+}
+
+criterion_group!(benches, resolver_benches);
+criterion_main!(benches);
