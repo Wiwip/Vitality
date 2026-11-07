@@ -59,3 +59,17 @@
 - fix pass: no
 - departures: none — one import moved from `:18` to `:12`, `rustfmt --edition 2024 src/context.rs` only, `cargo fmt --all` deliberately not run so the protected `src/systems.rs` could not be rewritten. The reviewer confirmed `src/systems.rs` is still exactly the owner's `Dirty<T>` edit and was already rustfmt-clean.
 - note on the review: the reviewer ran all four checks and raised no finding, but its report has no `Verdict:` line, so the contract's verdict is missing rather than negative. Recorded instead of re-run: on a one-import formatting diff, a second child costs more than the ambiguity.
+
+## T-2: clear the two lints the migration left in the library build [P2]
+- serves: the owner's plan, stage 7 — "`fmt --check` and clippy once at the end"
+- worker: 105079ca-cecb-4e74-9892-72eb8ecd96e9
+- reviewer: 0eb9fa0f-7ace-49af-9d3c-c85abdbfe1ee
+- files: `src/ability/builder.rs` `src/effect/builder.rs` `src/inspector/debug_overlay.rs`
+- tests: none (`test: none`, pure lint). `bash scripts/gate.sh` exits 0 with 9 tests; the reviewer re-ran it on a clean mirror (`VITALITY_MIRROR=/tmp/vitality-gate`) to see `Compiling vitality v0.2.0` rather than a replay, and deleted that mirror afterwards.
+- check: `cargo check --offline --lib` now emits no warning line at all (before: the BSN `DEPRECATED_COMMAS` deprecation plus its summary line), and the four named `implied_bounds_in_impls` sites are gone — the reviewer measured lib clippy warnings 83 → 77 site by site, 6 removals and 0 additions. The item's grep-is-0 clause is corrected below: it is an authoring error, not a missed change.
+- fix pass: no
+- departures: two, both correct calls by the worker, both confirmed by the reviewer.
+  1. The item's check (`grep -Ec 'implied_bounds_in_impls|DEPRECATED_COMMAS'` prints 0) is unreachable inside its own scope: 3 of the 8 hits are `Copy`-via-`AsPrimitive` at `src/ability/builder.rs:48` and `src/actors.rs:110`, byte-identical to `ecaa458`, one of them outside the permitted files. Clearing them would widen the item past its own "do not widen to the rest of clippy" rule. Kept the named change, reported 3.
+  2. The item said "the same `--` form C-1 used", but that comma was *trailing* with no following entity. The worker dropped the separator instead of writing `DebugOverlayMarker --`, which matches bevy's documented same-entity form (`bevy_scene-0.20.1/src/lib.rs:114-120`); it compiled the `--` variant too and both are warning-free.
+- proof the BSN edit is inert: `cargo expand --lib inspector::debug_overlay` before and after, diffed over 29 849 lines — 13 lines, all deletions, all the generated `DEPRECATED_COMMAS` marker block; the `SceneFunction` body is byte-identical, one `Children` child carrying `Text`, `TextFont`, `DebugOverlayMarker` in that order. `Send` was implied by the trait supertrait (`bevy_ecs-0.20.1/src/system/observer_system.rs:28`), so the accepted type set is equal, not larger; `src/mutator.rs:10` still requires `Send + Sync` on the stored closure.
+- findings for later, not fixed here: reaching a grep of 0 needs the `Copy` removals at `src/ability/builder.rs:48` and `src/actors.rs:110`, which is an owner call; anything that baselines the lib warning count at 83 now sees 77, because clippy's `let_unit_value` warning on the macro's generated `let _ = warning;` went with the marker block; and `Children [ Text(..) TextFont{..} DebugOverlayMarker ]` now has no separator at all, so a future `Node {..}` appended there lands on the same child silently — BSN only splits on `--`.

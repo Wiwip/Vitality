@@ -34,7 +34,7 @@ fn create_overlay() -> impl Scene {
                 font: FontSourceTemplate::Handle("fonts/JetBrainsMono-Regular.ttf"),
                 font_size: px(12.0),
             }
-            DebugOverlayMarker,
+            DebugOverlayMarker
         ]
     }
 }
