@@ -19,6 +19,9 @@ for dir in cache index; do
   [ -e "$home/registry/$dir" ] || ln -s "$HOME/.cargo/registry/$dir" "$home/registry/$dir"
 done
 
+# member manifests change as crates move, so the lockfile check hashes all of them
+manifest_sum() { (cd "$1" && find . -name Cargo.toml -not -path './target/*' | sort | xargs cat | sha256sum); }
+
 mkdir -p "$mirror"
 # The path deps live outside the repo, so the mirror needs the same siblings next to it.
 parent=$(dirname "$mirror")
@@ -30,13 +33,14 @@ while read -r dep; do
   esac
   link=$parent/$name
   { [ -e "$link" ] || [ -L "$link" ]; } || ln -s "$src/../$name" "$link"
-done < <(sed -n 's/.*path[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$src/Cargo.toml")
+done < <(find "$src" -name Cargo.toml -not -path '*/target/*' -exec sed -n 's/.*path[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' {} + | sort -u)
 
 # Copy everything but build output and the lockfile: the mirror resolves its own offline graph.
 tar -C "$src" \
   --exclude=./target \
   --exclude=./.git \
   --exclude=./.auto \
+  --exclude=./.env \
   --exclude=./Cargo.lock \
   -cf - . | tar -C "$mirror" -xf -
 
@@ -45,9 +49,9 @@ export CARGO_HOME=$home
 
 if [ ! -f Cargo.lock ]; then
   cargo generate-lockfile --offline
-elif ! cmp -s "$src/Cargo.toml" "$mirror/.gate-manifest"; then
+elif [ "$(manifest_sum "$src")" != "$(cat "$mirror/.gate-manifest" 2>/dev/null)" ]; then
   cargo update --offline
-  cp "$src/Cargo.toml" "$mirror/.gate-manifest"
+  manifest_sum "$src" > "$mirror/.gate-manifest"
 fi
 
-exec cargo test --offline --lib --tests
+exec cargo test --offline --workspace --lib --tests

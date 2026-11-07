@@ -1,48 +1,10 @@
-[package]
-name = "vitality"
-version = "0.2.0"
-edition = "2024"
+[workspace]
+resolver = "3"
+members = ["crates/*"]
 
-[dependencies]
-rand = "0.10"
-ptree = "0.5"
-#bevy-inspector-egui = "0.36"
-petgraph = "0.8"
-serde = "1.0"
-num-traits = "0.2"
-smol_str = "0.2.2"
+[workspace.dependencies]
 express-it = { path = "../express-it" }
 hfsm_bevy = { path = "../hfsm-rs/crates/hfsm_bevy" }
-
-[dependencies.bevy]
-version = "0.20"
-default-features = false
-features = [
-    "bevy_log",
-    "bevy_asset",
-    "bevy_ui",
-    "bevy_scene",
-]
-
-[dev-dependencies]
-criterion = { version = "0.8", features = ["html_reports"] }
-
-[dev-dependencies.bevy]
-version = "0.20"
-default-features = false
-features = [
-    "ui",
-    "bevy_state",
-    "default_font",
-    "dynamic_linking",
-    "bevy_ui_debug",
-    "bevy_feathers",
-    "debug",
-]
-
-[[bench]]
-name = "bench_systems"
-harness = false
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
@@ -52,7 +14,6 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
 
-# Add this to your Cargo.toml
 [profile.release]
 codegen-units = 1
 debug = true
