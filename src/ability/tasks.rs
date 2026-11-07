@@ -236,12 +236,14 @@ pub fn on_task_completion_notification(
         Complete::All => tasks.iter().all(|task| {
             task_machines
                 .is_in_state(task, TaskState::Completed)
-                .unwrap_or(false)
+                .inspect_err(|err| error!("[{}] TaskMachine is_in_state failed: {err}", task))
+                .unwrap_or_default()
         }),
         Complete::Any => tasks.iter().any(|task| {
             task_machines
                 .is_in_state(task, TaskState::Completed)
-                .unwrap_or(false)
+                .inspect_err(|err| error!("[{}] TaskMachine is_in_state failed: {err}", task))
+                .unwrap_or_default()
         }),
     };
 

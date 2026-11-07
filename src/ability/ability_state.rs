@@ -262,7 +262,8 @@ impl MachineState<AbilityMachine> for RecoveryState {
                 .external
                 .task_machines
                 .is_in_state(task_id, TaskState::Running)
-                .unwrap_or(false)
+                .inspect_err(|err| error!("[{}] TaskMachine is_in_state failed: {err}", task_id))
+                .unwrap_or_default()
             {
                 if let Err(err) = ctx
                     .external

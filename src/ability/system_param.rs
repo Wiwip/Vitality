@@ -80,7 +80,13 @@ impl<'w, 's> Abilities<'w, 's> {
     pub fn is_ability_ready(&self, ability_entity: Entity) -> bool {
         self.machines
             .is_in_state(ability_entity, AbilityState::Ready)
-            .unwrap_or(false)
+            .inspect_err(|err| {
+                warn_once!(
+                    "[{}] AbilityMachine is_in_state failed: {err}",
+                    ability_entity
+                )
+            })
+            .unwrap_or_default()
     }
 
     pub fn get_ability_from_token(&self, token: &AbilityToken) -> Handle<AbilityDef> {
