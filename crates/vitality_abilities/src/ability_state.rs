@@ -72,7 +72,7 @@ impl MachineState<AbilityMachine> for ReadyState {
 
                 // Checks if we meet the Actor-based conditions (i.e. is not stunned)
                 let context = ActorExprContext {
-                    actor_context: source_entity_ref,
+                    actor_context: source_entity_ref.into(),
                 };
                 let meets_actor_exec_conditions = ability_spec
                     .execution_conditions

@@ -4,7 +4,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
 use hfsm_bevy::MachineQuery;
-use vitality_core::AttributesRef;
+use vitality_core::AbilityRef;
 use vitality_core::ability::ability_state::{AbilityEvent, AbilityMachine, AbilityState};
 use vitality_core::ability::tasks::{Task, Tasks};
 use vitality_core::ability::{Ability, AbilityError, AbilityOf, GrantedAbilities, TargetData};
@@ -15,13 +15,13 @@ use vitality_core::registry::{Registry, ability_registry::AbilityToken};
 #[derive(SystemParam)]
 pub struct Abilities<'w, 's> {
     pub abilities:
-        Query<'w, 's, (Read<Ability>, AttributesRef<'static, 'static>), Without<IsResource>>,
+        Query<'w, 's, (Read<Ability>, AbilityRef<'static, 'static>), Without<IsResource>>,
     pub actors: Query<
         'w,
         's,
         (
             Read<Actor>,
-            AttributesRef<'static, 'static>,
+            AbilityRef<'static, 'static>,
             Read<GrantedAbilities>,
         ),
         Without<IsResource>,

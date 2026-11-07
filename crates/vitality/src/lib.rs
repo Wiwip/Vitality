@@ -8,7 +8,7 @@ use vitality_effects::{ConditionPlugin, EffectsPlugin, GlobalEffectPlugin, init_
 
 pub use vitality_core::prelude;
 pub use vitality_core::{
-    AppAttributeBindings, AttributeBindings, AttributeError, AttributesMut, AttributesRef,
+    AppAttributeBindings, AttributeBindings, AttributeError, AbilityMut, AbilityRef, EffectsMut, EffectsRef,
     BaseValueChanged, CurrentValueChanged, Dirty, attribute, attribute_impl, express_it,
     num_traits, tag,
 };

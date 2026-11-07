@@ -1,6 +1,6 @@
 use bevy::ecs::bundle::Bundle;
 use bevy::ecs::component::{Component, Mutable};
-use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
+use bevy::ecs::world::{EntityMutExcept, EntityRefExcept, FilteredEntityMut, FilteredEntityRef};
 use bevy::prelude::{Entity, Mut};
 
 /// Read access to one entity's attributes. Each crate picks its own exclusion list, so the
@@ -35,5 +35,29 @@ impl<B: Bundle> ActorRead for EntityMutExcept<'_, '_, B> {
 impl<B: Bundle> ActorWrite for EntityMutExcept<'_, '_, B> {
     fn get_mut<C: Component<Mutability = Mutable>>(&mut self) -> Option<Mut<'_, C>> {
         EntityMutExcept::get_mut(self)
+    }
+}
+
+impl ActorRead for FilteredEntityRef<'_, '_> {
+    fn id(&self) -> Entity {
+        FilteredEntityRef::id(self)
+    }
+    fn get<C: Component>(&self) -> Option<&C> {
+        FilteredEntityRef::get(self)
+    }
+}
+
+impl ActorRead for FilteredEntityMut<'_, '_> {
+    fn id(&self) -> Entity {
+        FilteredEntityMut::id(self)
+    }
+    fn get<C: Component>(&self) -> Option<&C> {
+        FilteredEntityMut::get(self)
+    }
+}
+
+impl ActorWrite for FilteredEntityMut<'_, '_> {
+    fn get_mut<C: Component<Mutability = Mutable>>(&mut self) -> Option<Mut<'_, C>> {
+        FilteredEntityMut::get_mut(self)
     }
 }

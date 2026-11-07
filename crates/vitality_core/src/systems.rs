@@ -7,7 +7,7 @@ use crate::graph::{DependencyGraph, NodeType};
 use crate::modifier::modifier::RecalculateExpression;
 use crate::modifier::{AttributeCalculator, OwnedModifiers};
 use crate::prelude::*;
-use crate::{AppAttributeBindings, AttributesRef, CurrentValueChanged, Dirty};
+use crate::{AppAttributeBindings, EffectsRef, CurrentValueChanged, Dirty};
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 use petgraph::visit::IntoNeighbors;
@@ -48,7 +48,7 @@ pub fn update_current_value_system<T: Attribute>(
     dirty_nodes: Query<&Dirty<T>>,
     statuses: Query<EffectStatusParam>,
     attributes: Query<AttributeQueryDataReadOnly<T>>,
-    attribute_refs: Query<AttributesRef>,
+    attribute_refs: Query<EffectsRef>,
     effects: Query<(&OwnedModifiers, &EffectSource, &EffectTarget)>,
     modifiers: Query<&AttributeModifier<T>>,
     mut commands: Commands,
@@ -90,7 +90,7 @@ fn update_effect_tree_attributes<T: Attribute>(
     dirty_nodes: &Query<&Dirty<T>>,
     statuses: &Query<EffectStatusParam>,
     attributes: &Query<AttributeQueryDataReadOnly<T>>,
-    attribute_refs: &Query<AttributesRef>,
+    attribute_refs: &Query<EffectsRef>,
     effects: &Query<(&OwnedModifiers, &EffectSource, &EffectTarget)>,
     modifiers: &Query<&AttributeModifier<T>>,
     commands: &mut Commands,

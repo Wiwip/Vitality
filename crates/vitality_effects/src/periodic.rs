@@ -1,6 +1,6 @@
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
-use vitality_core::AttributesRef;
+use vitality_core::EffectsRef;
 use vitality_core::assets::EffectDef;
 use vitality_core::attributes::Attribute;
 use vitality_core::context::EffectExprContext;
@@ -8,10 +8,10 @@ use vitality_core::effect::{Effect, EffectSource, EffectTarget, EffectTicker};
 use vitality_core::modifier::{ApplyAttributeModifierMessage, AttributeModifier, OwnedModifiers};
 
 pub(crate) fn apply_periodic_effect<T: Attribute>(
-    actors: Query<AttributesRef, Without<IsResource>>,
+    actors: Query<EffectsRef, Without<IsResource>>,
     effects: Query<
         (
-            AttributesRef,
+            EffectsRef,
             &Effect,
             &EffectTicker,
             &OwnedModifiers,

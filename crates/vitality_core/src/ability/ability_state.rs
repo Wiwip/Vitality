@@ -1,4 +1,4 @@
-use crate::AttributesRef;
+use crate::AbilityRef;
 use crate::ability::task_states::TaskMachine;
 use crate::ability::tasks::Tasks;
 use crate::ability::{Ability, AbilityOf, AbilityRecovery, GrantedAbilities, TargetData};
@@ -47,11 +47,11 @@ impl LocalContext for AbilityContext {
 #[derive(SystemParam)]
 pub struct AbilitySystemParam<'w, 's> {
     pub abilities:
-        Query<'w, 's, (Read<Ability>, AttributesRef<'static, 'static>), Without<IsResource>>,
+        Query<'w, 's, (Read<Ability>, AbilityRef<'static, 'static>), Without<IsResource>>,
     pub actors: Query<
         'w,
         's,
-        (AttributesRef<'static, 'static>, Read<GrantedAbilities>),
+        (AbilityRef<'static, 'static>, Read<GrantedAbilities>),
         Without<IsResource>,
     >,
     pub casters: Query<'w, 's, Read<AbilityOf>>,

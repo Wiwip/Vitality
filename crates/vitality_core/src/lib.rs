@@ -199,12 +199,13 @@ pub fn init_core_attribute<T: Attribute>(app: &mut App) {
     );
 }
 
-pub type AttributesMut<'w, 's> = EntityMutExcept<
+/// Attribute view for code that also touches effect components in the same system.
+pub type EffectsMut<'w, 's> = EntityMutExcept<
     'w,
     's,
     (
-        // We exclude anything related to effects
         ChildOf,
+        ModifierOf,
         (
             Effect,
             EffectDuration,
@@ -214,11 +215,37 @@ pub type AttributesMut<'w, 's> = EntityMutExcept<
             AppliedEffects,
             EffectSources,
         ),
+    ),
+>;
+
+pub type EffectsRef<'w, 's> = EntityRefExcept<
+    'w,
+    's,
+    (
+        ChildOf,
+        ModifierOf,
+        (
+            Effect,
+            EffectDuration,
+            EffectTicker,
+            EffectSource,
+            EffectTarget,
+            AppliedEffects,
+            EffectSources,
+        ),
+    ),
+>;
+
+/// Attribute view for code that also touches ability, task or state machine components.
+pub type AbilityMut<'w, 's> = EntityMutExcept<
+    'w,
+    's,
+    (
+        ChildOf,
         GrantedAbilities,
         Tasks,
         AbilityOf,
         AbilityRecovery,
-        ModifierOf,
         (
             MachineInstance<AbilityMachine>,
             MachineInstance<TaskMachine>,
@@ -229,26 +256,15 @@ pub type AttributesMut<'w, 's> = EntityMutExcept<
     ),
 >;
 
-pub type AttributesRef<'w, 's> = EntityRefExcept<
+pub type AbilityRef<'w, 's> = EntityRefExcept<
     'w,
     's,
     (
-        // We exclude anything related to effects
         ChildOf,
-        (
-            Effect,
-            EffectDuration,
-            EffectTicker,
-            EffectSource,
-            EffectTarget,
-            AppliedEffects,
-            EffectSources,
-        ),
         GrantedAbilities,
         Tasks,
         AbilityOf,
         AbilityRecovery,
-        ModifierOf,
         (
             MachineInstance<AbilityMachine>,
             MachineInstance<TaskMachine>,

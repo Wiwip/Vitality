@@ -6,7 +6,6 @@ mod targeting;
 mod timing;
 
 use crate::assets::EffectDef;
-use crate::prelude::Attribute;
 use bevy::asset::Handle;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::{Component, Deref, Entity, Event, Reflect};

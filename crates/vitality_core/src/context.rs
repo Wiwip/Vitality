@@ -5,13 +5,14 @@ use crate::ability::{
 use crate::actors::SpawnActorCommand;
 use crate::assets::{AbilityDef, ActorDef, EffectDef};
 use crate::effect::global_effect::{GlobalActor, GlobalEffects};
-use crate::effect::{ApplyEffectEvent, Effect, EffectTargeting};
+use crate::effect::{ApplyEffectEvent, EffectTargeting};
 use crate::registry::Registry;
 use crate::view::{ActorRead, ActorWrite};
 use crate::registry::ability_registry::AbilityToken;
 use crate::registry::actor_registry::ActorToken;
 use crate::registry::effect_registry::EffectToken;
-use crate::{AttributesMut, AttributesRef};
+use crate::{AbilityMut, AbilityRef, EffectsMut, EffectsRef};
+use bevy::ecs::world::{FilteredEntityMut, FilteredEntityRef};
 use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
@@ -243,20 +244,20 @@ impl ContextMut for ActorExprSchema {
 }
 
 pub struct ActorExprContext<'w, 's> {
-    pub actor_context: AttributesRef<'w, 's>,
+    pub actor_context: FilteredEntityRef<'w, 's>,
 }
 pub struct ActorExprContextMut<'w, 's> {
-    pub actor_context: AttributesMut<'w, 's>,
+    pub actor_context: FilteredEntityMut<'w, 's>,
 }
 
 impl<'w, 's> ActorProvider<'w, 's, Source> for ActorExprContext<'w, 's> {
-    type ActorRef = AttributesRef<'w, 's>;
+    type ActorRef = FilteredEntityRef<'w, 's>;
     fn get_actor(&self) -> &Self::ActorRef {
         &self.actor_context
     }
 }
 impl<'w, 's> ActorProviderMut<'w, 's, Source> for ActorExprContextMut<'w, 's> {
-    type ActorMut = AttributesMut<'w, 's>;
+    type ActorMut = FilteredEntityMut<'w, 's>;
     fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
         &mut self.actor_context
     }
@@ -284,31 +285,31 @@ impl ContextMut for EffectExprSchema {
 }
 
 pub struct EffectExprContext<'w, 's> {
-    pub source_actor: AttributesRef<'w, 's>,
-    pub target_actor: Option<AttributesRef<'w, 's>>,
-    pub effect_holder: AttributesRef<'w, 's>,
+    pub source_actor: EffectsRef<'w, 's>,
+    pub target_actor: Option<EffectsRef<'w, 's>>,
+    pub effect_holder: EffectsRef<'w, 's>,
 }
 
 pub struct EffectExprContextMut<'w, 's> {
-    pub source_actor: AttributesMut<'w, 's>,
-    pub target_actor: Option<AttributesMut<'w, 's>>,
-    pub effect_holder: AttributesMut<'w, 's>,
+    pub source_actor: EffectsMut<'w, 's>,
+    pub target_actor: Option<EffectsMut<'w, 's>>,
+    pub effect_holder: EffectsMut<'w, 's>,
 }
 
 impl<'w, 's> ActorProvider<'w, 's, Source> for EffectExprContext<'w, 's> {
-    type ActorRef = AttributesRef<'w, 's>;
+    type ActorRef = EffectsRef<'w, 's>;
     fn get_actor(&self) -> &Self::ActorRef {
         &self.source_actor
     }
 }
 impl<'w, 's> ActorProviderMut<'w, 's, Source> for EffectExprContextMut<'w, 's> {
-    type ActorMut = AttributesMut<'w, 's>;
+    type ActorMut = EffectsMut<'w, 's>;
     fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
         &mut self.source_actor
     }
 }
 impl<'w, 's> ActorProvider<'w, 's, Target> for EffectExprContext<'w, 's> {
-    type ActorRef = AttributesRef<'w, 's>;
+    type ActorRef = EffectsRef<'w, 's>;
     fn get_actor(&self) -> &Self::ActorRef {
         if let Some(target) = &self.target_actor {
             target
@@ -318,7 +319,7 @@ impl<'w, 's> ActorProvider<'w, 's, Target> for EffectExprContext<'w, 's> {
     }
 }
 impl<'w, 's> ActorProviderMut<'w, 's, Target> for EffectExprContextMut<'w, 's> {
-    type ActorMut = AttributesMut<'w, 's>;
+    type ActorMut = EffectsMut<'w, 's>;
     fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
         if let Some(target) = &mut self.target_actor {
             target
@@ -328,13 +329,13 @@ impl<'w, 's> ActorProviderMut<'w, 's, Target> for EffectExprContextMut<'w, 's> {
     }
 }
 impl<'w, 's> ActorProvider<'w, 's, EffectRole> for EffectExprContext<'w, 's> {
-    type ActorRef = AttributesRef<'w, 's>;
+    type ActorRef = EffectsRef<'w, 's>;
     fn get_actor(&self) -> &Self::ActorRef {
         &self.effect_holder
     }
 }
 impl<'w, 's> ActorProviderMut<'w, 's, EffectRole> for EffectExprContextMut<'w, 's> {
-    type ActorMut = AttributesMut<'w, 's>;
+    type ActorMut = EffectsMut<'w, 's>;
     fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
         &mut self.effect_holder
     }
@@ -362,44 +363,44 @@ impl ContextMut for AbilityExprSchema {
 }
 
 pub struct AbilityExprContext<'w, 's> {
-    pub caster_ref: AttributesRef<'w, 's>,
-    pub target_ref: Option<AttributesRef<'w, 's>>,
-    pub ability_ref: AttributesRef<'w, 's>,
+    pub caster_ref: AbilityRef<'w, 's>,
+    pub target_ref: Option<AbilityRef<'w, 's>>,
+    pub ability_ref: AbilityRef<'w, 's>,
 }
 
 pub struct AbilityExprContextMut<'w, 's> {
-    pub caster_mut: AttributesMut<'w, 's>,
-    pub target_mut: Option<AttributesMut<'w, 's>>,
-    pub ability_mut: AttributesMut<'w, 's>,
+    pub caster_mut: AbilityMut<'w, 's>,
+    pub target_mut: Option<AbilityMut<'w, 's>>,
+    pub ability_mut: AbilityMut<'w, 's>,
 }
 
 impl<'w, 's> ActorProvider<'w, 's, Caster> for AbilityExprContext<'w, 's> {
-    type ActorRef = AttributesRef<'w, 's>;
+    type ActorRef = AbilityRef<'w, 's>;
     fn get_actor(&self) -> &Self::ActorRef {
         &self.caster_ref
     }
 }
 impl<'w, 's> ActorProvider<'w, 's, Source> for AbilityExprContext<'w, 's> {
-    type ActorRef = AttributesRef<'w, 's>;
+    type ActorRef = AbilityRef<'w, 's>;
     fn get_actor(&self) -> &Self::ActorRef {
         &self.caster_ref
     }
 }
 impl<'w, 's> ActorProviderMut<'w, 's, Caster> for AbilityExprContextMut<'w, 's> {
-    type ActorMut = AttributesMut<'w, 's>;
+    type ActorMut = AbilityMut<'w, 's>;
     fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
         &mut self.caster_mut
     }
 }
 impl<'w, 's> ActorProviderMut<'w, 's, Source> for AbilityExprContextMut<'w, 's> {
-    type ActorMut = AttributesMut<'w, 's>;
+    type ActorMut = AbilityMut<'w, 's>;
     fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
         &mut self.caster_mut
     }
 }
 
 impl<'w, 's> ActorProvider<'w, 's, Target> for AbilityExprContext<'w, 's> {
-    type ActorRef = AttributesRef<'w, 's>;
+    type ActorRef = AbilityRef<'w, 's>;
     fn get_actor(&self) -> &Self::ActorRef {
         if let Some(target) = &self.target_ref {
             target
@@ -409,7 +410,7 @@ impl<'w, 's> ActorProvider<'w, 's, Target> for AbilityExprContext<'w, 's> {
     }
 }
 impl<'w, 's> ActorProviderMut<'w, 's, Target> for AbilityExprContextMut<'w, 's> {
-    type ActorMut = AttributesMut<'w, 's>;
+    type ActorMut = AbilityMut<'w, 's>;
     fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
         if let Some(target) = &mut self.target_mut {
             target
@@ -420,13 +421,13 @@ impl<'w, 's> ActorProviderMut<'w, 's, Target> for AbilityExprContextMut<'w, 's> 
 }
 
 impl<'w, 's> ActorProvider<'w, 's, AbilityRole> for AbilityExprContext<'w, 's> {
-    type ActorRef = AttributesRef<'w, 's>;
+    type ActorRef = AbilityRef<'w, 's>;
     fn get_actor(&self) -> &Self::ActorRef {
         &self.ability_ref
     }
 }
 impl<'w, 's> ActorProviderMut<'w, 's, AbilityRole> for AbilityExprContextMut<'w, 's> {
-    type ActorMut = AttributesMut<'w, 's>;
+    type ActorMut = AbilityMut<'w, 's>;
     fn get_actor_mut(&mut self) -> &mut Self::ActorMut {
         &mut self.ability_mut
     }

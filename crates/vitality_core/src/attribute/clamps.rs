@@ -3,7 +3,8 @@ use crate::assets::ActorDef;
 use crate::attributes::AttributeQueryData;
 use crate::context::ActorExprContext;
 use crate::prelude::*;
-use crate::{AttributesRef, CurrentValueChanged};
+use crate::CurrentValueChanged;
+use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
 use express_it::expr::Expr;
 use std::any::{Any, TypeId};
@@ -30,7 +31,7 @@ where
 /// When the Source attribute changes, we update the bounds of the target attribute
 pub fn update_clamps<T: Attribute>(
     trigger: On<CurrentValueChanged<T>>,
-    mut set: ParamSet<(Query<(&Actor, AttributesRef)>, Query<&mut Clamp<T>>)>,
+    mut set: ParamSet<(Query<(&Actor, FilteredEntityRef)>, Query<&mut Clamp<T>>)>,
     actor_assets: Res<Assets<ActorDef>>,
 ) -> Result<(), BevyError> {
     let (min_value, max_value) = {
