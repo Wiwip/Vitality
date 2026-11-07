@@ -1,0 +1,12 @@
+[package]
+name = "vitality_effects"
+version = "0.2.0"
+edition = "2024"
+
+[dependencies]
+num-traits = { workspace = true }
+vitality_core = { workspace = true }
+
+[dependencies.bevy]
+workspace = true
+features = ["bevy_log", "bevy_asset"]

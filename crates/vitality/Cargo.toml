@@ -3,33 +3,29 @@ name = "vitality"
 version = "0.2.0"
 edition = "2024"
 
+[features]
+default = ["debug-overlay"]
+debug-overlay = ["dep:vitality_debug"]
+
 [dependencies]
-rand = "0.10"
-ptree = "0.5"
-#bevy-inspector-egui = "0.36"
-petgraph = "0.8"
-serde = "1.0"
-num-traits = "0.2"
-smol_str = "0.2.2"
 express-it = { workspace = true }
 hfsm_bevy = { workspace = true }
+num-traits = { workspace = true }
+vitality_abilities = { workspace = true }
+vitality_core = { workspace = true }
+vitality_debug = { workspace = true, optional = true }
+vitality_effects = { workspace = true }
 
 [dependencies.bevy]
-version = "0.20"
-default-features = false
-features = [
-    "bevy_log",
-    "bevy_asset",
-    "bevy_ui",
-    "bevy_scene",
-]
+workspace = true
+features = ["bevy_log", "bevy_asset", "bevy_scene"]
 
 [dev-dependencies]
+rand = { workspace = true }
 criterion = { version = "0.8", features = ["html_reports"] }
 
 [dev-dependencies.bevy]
-version = "0.20"
-default-features = false
+workspace = true
 features = [
     "ui",
     "bevy_state",

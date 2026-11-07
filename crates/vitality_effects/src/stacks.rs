@@ -1,0 +1,74 @@
+use bevy::prelude::*;
+use num_traits::AsPrimitive;
+use vitality_core::assets::EffectDef;
+use vitality_core::attributes::Attribute;
+use vitality_core::effect::{
+    Effect, EffectDuration, EffectStackingPolicy, NotifyAddStackEvent, Stacks,
+};
+
+fn apply_stacking_policy(
+    policy: &EffectStackingPolicy,
+    effect_entity: Entity,
+    stacks: &mut Query<&mut Stacks, With<Effect>>,
+    durations: &mut Query<&mut EffectDuration, With<Effect>>,
+) {
+    match policy {
+        EffectStackingPolicy::Add { count, max_stack } => {
+            // Apply additive stacking, increasing stack count up to max
+            if let Ok(mut stack_count) = stacks.get_mut(effect_entity) {
+                let mut base_stacks = stack_count.base_value();
+                base_stacks += count;
+                stack_count.set_base_value(base_stacks.clamp(1, max_stack.as_()));
+                stack_count.set_current_value(base_stacks.clamp(1.as_(), max_stack.as_()));
+            } else {
+                error!(
+                    "Failed to find component Stacks for entity: {:?}",
+                    effect_entity
+                );
+            }
+        }
+        EffectStackingPolicy::RefreshDuration => {
+            // Reset duration for overridden effects
+            if let Ok(mut duration) = durations.get_mut(effect_entity) {
+                duration.reset();
+            } else {
+                error!(
+                    "Failed to find component EffectApplication for entity: {:?}",
+                    effect_entity
+                );
+            }
+        }
+        EffectStackingPolicy::None => {
+            error!(
+                "Effect stacking should not be triggered for effect entity {:?} with incompatible policy (None)",
+                effect_entity
+            );
+        }
+    }
+}
+
+pub(crate) fn read_add_stack_event(
+    mut event_reader: MessageReader<NotifyAddStackEvent>,
+    mut stacks: Query<&mut Stacks, With<Effect>>,
+    mut applications: Query<&mut EffectDuration, With<Effect>>,
+    effect_assets: Res<Assets<EffectDef>>,
+) {
+    for ev in event_reader.read() {
+        let effect_definition = match effect_assets.get(&ev.handle) {
+            Some(effect) => effect,
+            None => {
+                panic!(
+                    "Failed to find effect definition for handle: {:?}",
+                    ev.handle
+                );
+            }
+        };
+
+        apply_stacking_policy(
+            &effect_definition.stacking_policy,
+            ev.effect_entity,
+            &mut stacks,
+            &mut applications,
+        );
+    }
+}

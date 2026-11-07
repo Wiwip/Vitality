@@ -5,7 +5,8 @@ Vitality: Bevy gameplay-attribute framework (attributes, effects, abilities).
 ## Build
 - `cargo check --offline`
 - `cargo test --offline`
-- Path deps: `../express-it`, `../hfsm-rs`. Don't edit them.
+- Path deps: `../express-it`, `../hfsm-rs`, declared once in the root `[workspace.dependencies]`. Don't edit them.
+- Workspace: `vitality_core` (data model, attributes, modifiers, builders), `vitality_effects` and `vitality_abilities` (runtime systems/plugins), `vitality_debug` (bevy_ui overlay), `vitality` (facade, examples, benches, integration tests).
 - Don't touch `rust-toolchain.toml` or `.cargo/`.
 
 ## Comments
@@ -33,7 +34,7 @@ protected = .agent-sandbox
 protected = .idea/**
 ```
 
-`scripts/gate.sh` mirrors the repo to `/tmp/vitality-build` and runs `cargo test --offline --lib --tests`
+`scripts/gate.sh` mirrors the repo to `/tmp/vitality-build` and runs `cargo test --offline --workspace --lib --tests`
 there, with `CARGO_HOME=/tmp/ch`. It has to: this sandbox mounts `Cargo.toml`, `Cargo.lock` and
 `~/.cargo/registry` read-only with no network, so cargo cannot resolve or build in the repo itself.
 The first run pays one cold dependency build (minutes); later runs only rebuild this crate. To check
