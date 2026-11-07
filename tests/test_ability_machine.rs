@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
+use bevy::scene::{QueuedScenes, ScenePatch, ScenePlugin};
 use bevy::time::TimeUpdateStrategy;
 use hfsm_bevy::{
     Machine, MachineDefinition, MachineEvent, MachineExternalContext, MachineLocalContext,
@@ -357,6 +358,29 @@ fn machine_definition_is_installed_before_the_first_update() {
     assert!(
         in_state::<AbilityMachine>(&mut app, ability, AbilityState::Ready),
         "an ability granted before the first update must be Ready after it"
+    );
+}
+
+/// The guard keeps `ScenePlugin` installed even when the host inited `Assets<ScenePatch>` itself:
+/// both scene sites, `apply_scene` and `spawn_scene`, read that asset.
+#[test]
+fn scene_plugin_is_installed_when_the_host_only_inited_the_asset() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+    app.init_asset::<ScenePatch>();
+    app.add_plugins(AttributesPlugin);
+
+    assert!(
+        app.is_plugin_added::<ScenePlugin>(),
+        "AttributesPlugin must install ScenePlugin even when Assets<ScenePatch> already exists"
+    );
+    assert!(
+        app.world().contains_resource::<QueuedScenes>(),
+        "ScenePlugin::build is the only thing that inserts QueuedScenes"
+    );
+    assert!(
+        app.world().contains_resource::<Assets<ScenePatch>>(),
+        "the host's own Assets<ScenePatch> must still be there"
     );
 }
 
