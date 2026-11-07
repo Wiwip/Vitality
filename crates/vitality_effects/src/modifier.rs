@@ -1,19 +1,22 @@
+use crate::EffectsMut;
+use crate::EffectsRef;
 use crate::context::{EffectExprContext, EffectExprContextMut, EffectExprSchema};
-use crate::effect::{EffectSource, EffectTarget};
-use crate::math::AbsDiff;
-use crate::modifier::calculator::ModOp;
-use crate::modifier::{
-    ApplyAttributeModifierMessage, AttributeCalculator, ModifierMarker, ModifierOf,
-};
-use crate::modifier::{EffectSubject, ReflectAccessModifier};
 use crate::prelude::*;
 use crate::systems::MarkNodeDirty;
-use crate::util::pretty_type_name;
-use crate::{AttributeBindings, EffectsRef};
+use crate::{EffectSource, EffectTarget};
+use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
+use bevy::prelude::{Component, Entity, EntityCommands, Reflect, reflect_trait};
+use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use std::collections::HashSet;
-use std::fmt::Display;
+use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
+use vitality_core::AttributeBindings;
+use vitality_core::math::AbsDiff;
+use vitality_core::modifier::AttributeCalculator;
+pub use vitality_core::modifier::ModOp;
+use vitality_core::util::pretty_type_name;
 
 pub trait Modifier: Send + Sync {
     /// Spawns the modifier as a component on the effect, targeting the actor for observers.
@@ -102,7 +105,7 @@ where
         let mut deps = HashSet::default();
         self.expr.get_dependencies(&mut deps);
         for dep in deps {
-            let Some(attr_dep) = type_bindings.insert_dependency_functions.get(&dep) else {
+            let Some(attr_dep) = type_bindings.dependency_inserter(&dep) else {
                 error!(
                     "Expression dependency {:?} is not a registered attribute dependency for modifier {}",
                     dep,
@@ -122,7 +125,7 @@ where
             effect_holder: context.effect_holder.as_readonly(),
         };
 
-        let calc = AttributeCalculator::<T>::convert(self);
+        let calc = AttributeCalculator::<T>::from_op(self.operation, self.value);
 
         let attr_ref = match self.who {
             EffectSubject::Target => &immutable_context
@@ -224,3 +227,147 @@ pub fn update_modifier_when_dependencies_changed<T: Attribute>(
         phantom_data: Default::default(),
     });
 }
+
+#[derive(Message)]
+pub struct ApplyAttributeModifierMessage<T: Attribute> {
+    pub source_entity: Entity,
+    pub target_entity: Entity,
+    pub effect_entity: Entity,
+    pub modifier: AttributeModifier<T>,
+}
+
+pub fn apply_modifier_events<T: Attribute>(
+    mut event_reader: MessageReader<ApplyAttributeModifierMessage<T>>,
+    mut attributes: Query<EffectsMut, Without<IsResource>>,
+    mut commands: Commands,
+) {
+    for ev in event_reader.read() {
+        match apply_modifier(&ev, &mut attributes) {
+            Ok(true) => commands.trigger(MarkNodeDirty::<T> {
+                entity: ev.target_entity,
+                phantom_data: Default::default(),
+            }),
+            Err(err) => debug!("Failed to apply modifier {}. {}", ev.modifier, err),
+            _ => {}
+        }
+    }
+}
+
+pub fn apply_modifier<T: Attribute>(
+    trigger: &ApplyAttributeModifierMessage<T>,
+    attributes: &mut Query<EffectsMut, Without<IsResource>>,
+) -> Result<bool, BevyError> {
+    let query = [trigger.source_entity, trigger.target_entity];
+    let [source, target] = attributes.get_many(query)?;
+
+    let base_value = target
+        .get::<T>()
+        .ok_or(format!(
+            "Could not find attribute {} on entity {}.",
+            pretty_type_name::<T>(),
+            trigger.target_entity
+        ))?
+        .base_value();
+
+    // We update the modifier's internal value before applying it.
+    let context = EffectExprContext {
+        source_actor: source,
+        target_actor: Some(target), // Needs to be fixed.
+        effect_holder: source,
+    };
+    let mut modifier = trigger.modifier.clone();
+    modifier.update_value(&context);
+
+    // Apply the modifier
+    let calculator = AttributeCalculator::<T>::from_op(modifier.operation, modifier.value);
+    let new_base_value = calculator.eval(base_value);
+
+    let has_changed = new_base_value.are_different(base_value);
+    if has_changed {
+        let mut attributes_mut = attributes.get_mut(trigger.target_entity)?;
+
+        let mut attribute = attributes_mut.get_mut::<T>().ok_or(format!(
+            "Could not find attribute {} on entity {}.",
+            pretty_type_name::<T>(),
+            trigger.target_entity
+        ))?;
+
+        attribute.set_base_value(new_base_value);
+    }
+    Ok(has_changed)
+}
+
+pub type ModifierFn = dyn Fn(&mut EntityCommands, Entity) + Send + Sync;
+
+#[derive(Component, Default, Copy, Clone, Debug, Reflect)]
+pub struct ModifierMarker;
+
+#[reflect_trait] // Generates a `ReflectMyTrait` type
+pub trait AccessModifier {
+    fn describe(&self) -> String;
+    fn name(&self) -> String;
+}
+
+impl<T> AccessModifier for AttributeModifier<T>
+where
+    T: Attribute,
+{
+    fn describe(&self) -> String {
+        format!("{}", self)
+    }
+    fn name(&self) -> String {
+        pretty_type_name::<T>()
+    }
+}
+
+#[derive(Copy, Clone, Debug, Reflect, Serialize, Deserialize)]
+pub enum EffectSubject {
+    Target,
+    Source,
+    Effect,
+}
+
+impl Display for EffectSubject {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EffectSubject::Target => write!(f, "target"),
+            EffectSubject::Source => write!(f, "source"),
+            EffectSubject::Effect => write!(f, "effect"),
+        }
+    }
+}
+
+impl From<EffectSubject> for SmolStr {
+    fn from(value: EffectSubject) -> Self {
+        SmolStr::from(value.to_string())
+    }
+}
+
+#[derive(Copy, Clone, Debug, Reflect, Serialize, Deserialize)]
+pub enum ActorSubject {
+    Actor,
+}
+
+impl Display for ActorSubject {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ActorSubject::Actor => write!(f, "actor"),
+        }
+    }
+}
+
+impl From<ActorSubject> for SmolStr {
+    fn from(value: ActorSubject) -> Self {
+        SmolStr::from(value.to_string())
+    }
+}
+
+/// The target entity of this effect.
+#[derive(Component, Reflect, Debug)]
+#[relationship(relationship_target = OwnedModifiers)]
+pub struct ModifierOf(pub Entity);
+
+/// All modifiers belonging to this effect.
+#[derive(Component, Reflect, Debug)]
+#[relationship_target(relationship = ModifierOf, linked_spawn)]
+pub struct OwnedModifiers(Vec<Entity>);

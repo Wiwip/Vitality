@@ -7,8 +7,8 @@ use express_it::expr::Expr;
 use std::any::TypeId;
 use std::collections::HashSet;
 use std::fmt::Formatter;
-use vitality_core::condition::HasComponent;
-use vitality_core::modifier::EffectSubject;
+use vitality_effects::conditions::HasComponent;
+use vitality_effects::modifier::EffectSubject;
 
 impl<C: Component + Reflect> Expr<bool, AbilityExprSchema> for HasComponent<C> {
     fn eval(&self, ctx: &AbilityExprContext) -> bool {

@@ -1,8 +1,6 @@
-use crate::attributes::Attribute;
-use crate::context::{ActorExprContext, EffectExprContext, EffectExprSchema};
+use crate::context::{EffectExprContext, EffectExprSchema};
 use crate::modifier::EffectSubject;
 use crate::prelude::ActorExprSchema;
-use crate::util::pretty_type_name;
 use bevy::prelude::{Component, TypePath};
 use bevy::reflect::Reflect;
 use express_it::expr::Expr;
@@ -12,6 +10,9 @@ use std::collections::HashSet;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
+use vitality_core::attributes::Attribute;
+use vitality_core::context::ActorExprContext;
+use vitality_core::util::pretty_type_name;
 
 #[derive(TypePath)]
 pub struct IsAttributeWithinBounds<T: Attribute> {

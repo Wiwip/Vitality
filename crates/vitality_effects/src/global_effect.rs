@@ -1,8 +1,17 @@
+use crate::definition::EffectDef;
+use crate::graph::NodeType;
+use crate::{ApplyEffectEvent, EffectTargeting};
 use bevy::prelude::*;
 use vitality_core::attributes::ManageAttributes;
-use vitality_core::effect::global_effect::GlobalActor;
-use vitality_core::effect::{ApplyEffectEvent, EffectTargeting, GlobalEffects};
-use vitality_core::graph::NodeType;
+
+#[derive(Resource, Deref, DerefMut, Default)]
+pub struct GlobalEffects(Vec<Handle<EffectDef>>);
+
+#[derive(Component, Clone, Copy)]
+pub struct GlobalActor;
+
+#[derive(Component, Clone, Copy)]
+pub struct GlobalEffect;
 
 /// A plugin that manages global effects within the game.
 /// Its purpose is to add effects that are applied to any spawned actor.

@@ -9,10 +9,10 @@ use vitality_abilities::registry::AbilityToken;
 use vitality_abilities::{
     Ability, AbilityDef, AbilityError, AbilityOf, AbilityRecovery, GrantedAbilities, TargetData,
 };
-use vitality_core::assets::EffectDef;
-use vitality_core::effect::global_effect::{GlobalActor, GlobalEffects};
-use vitality_core::effect::{ApplyEffectEvent, EffectTargeting};
-use vitality_core::registry::effect_registry::EffectToken;
+use vitality_effects::definition::EffectDef;
+use vitality_effects::registry::EffectToken;
+use vitality_effects::{ApplyEffectEvent, EffectTargeting};
+use vitality_effects::{GlobalActor, GlobalEffects};
 
 #[derive(SystemParam)]
 pub struct Vitality<'w, 's> {

@@ -7,9 +7,9 @@ use vitality_abilities::tasks::Tasks;
 use vitality_abilities::{Ability, AbilityRecovery, GrantedAbilities};
 use vitality_core::attributes::ManageAttributes;
 use vitality_core::attributes::ReflectAccessAttribute;
-use vitality_core::effect::{AppliedEffects, Effect, Stacks};
-use vitality_core::modifier::{ModifierMarker, OwnedModifiers, ReflectAccessModifier};
-use vitality_core::prelude::*;
+use vitality_effects::modifier::{ModifierMarker, OwnedModifiers, ReflectAccessModifier};
+use vitality_effects::prelude::*;
+use vitality_effects::{AppliedEffects, Effect, Stacks};
 
 #[derive(Component, Default, Copy, Clone)]
 pub struct DebugOverlayMarker;
@@ -40,7 +40,10 @@ fn create_overlay() -> impl Scene {
 }
 
 pub fn explore_actors_system(
-    actors: Query<(EntityRef, Option<&AppliedEffects>), (With<ManageAttributes>, With<DebugOverlayMarker>)>,
+    actors: Query<
+        (EntityRef, Option<&AppliedEffects>),
+        (With<ManageAttributes>, With<DebugOverlayMarker>),
+    >,
     effects: Query<(&Effect, &Stacks, Option<&Name>, Option<&OwnedModifiers>)>,
     granted_abilities: Query<&GrantedAbilities>,
     ability_query: Query<(&Ability, Option<&AbilityRecovery>, Option<&Name>)>,

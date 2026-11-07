@@ -1,18 +1,21 @@
-use crate::attributes::AttributeDependents;
-use crate::attributes::{
-    Attribute, AttributeQueryData, AttributeQueryDataReadOnly, ManageAttributes,
-};
-use crate::effect::{EffectSource, EffectStatusParam, EffectTarget};
+use crate::EffectsRef;
 use crate::graph::{DependencyGraph, NodeType};
-use crate::modifier::modifier::RecalculateExpression;
-use crate::modifier::{AttributeCalculator, OwnedModifiers};
+use crate::modifier::OwnedModifiers;
+use crate::modifier::RecalculateExpression;
 use crate::prelude::*;
-use crate::{AppAttributeBindings, CurrentValueChanged, Dirty, EffectsRef};
+use crate::{EffectSource, EffectStatusParam, EffectTarget};
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 use petgraph::visit::IntoNeighbors;
 use std::any::type_name;
+use std::collections::HashSet;
 use std::marker::PhantomData;
+use vitality_core::attributes::AttributeDependents;
+use vitality_core::attributes::{
+    Attribute, AttributeQueryData, AttributeQueryDataReadOnly, ManageAttributes,
+};
+use vitality_core::modifier::AttributeCalculator;
+use vitality_core::{AppAttributeBindings, CurrentValueChanged};
 
 #[derive(EntityEvent)]
 #[entity_event(propagate=&'static EffectTarget, auto_propagate)]
@@ -165,7 +168,7 @@ fn update_effect_tree_attributes<T: Attribute>(
                         return None;
                     }
 
-                    let calc = AttributeCalculator::convert(modifier);
+                    let calc = AttributeCalculator::from_op(modifier.operation, modifier.value);
 
                     Some(calc)
                 })
@@ -222,4 +225,60 @@ pub fn update_attribute<T: Attribute>(
             }
         }
     };
+}
+
+#[derive(Component, Copy, Clone, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Dirty<T> {
+    phantom: PhantomData<T>,
+}
+
+impl<T> Default for Dirty<T> {
+    fn default() -> Self {
+        Self {
+            phantom: PhantomData,
+        }
+    }
+}
+
+pub fn on_add_attribute<T: Attribute>(trigger: On<Insert<T>>, mut commands: Commands) {
+    commands.trigger(MarkNodeDirty::<T> {
+        entity: trigger.event_target(),
+        phantom_data: Default::default(),
+    });
+}
+
+#[derive(EntityEvent)]
+pub struct AttributeDependencyChanged<T> {
+    pub entity: Entity,
+    phantom_data: PhantomData<T>,
+}
+
+pub fn on_change_notify_attribute_dependencies<T: Attribute>(
+    query: Query<&AttributeDependents<T>, Changed<T>>,
+    mut commands: Commands,
+) {
+    for dependents in query.iter() {
+        let unique_entities: HashSet<Entity> = dependents.iter().collect();
+        let notify_targets: Vec<Entity> = unique_entities.into_iter().collect();
+
+        notify_targets.iter().for_each(|target| {
+            commands.trigger(AttributeDependencyChanged::<T> {
+                entity: *target,
+                phantom_data: Default::default(),
+            });
+        });
+    }
+}
+
+pub fn on_change_notify_attribute_parents<T: Attribute>(
+    query: Query<Entity, Changed<T>>,
+    mut commands: Commands,
+) {
+    for entity in query.iter() {
+        commands.trigger(MarkNodeDirty::<T> {
+            entity,
+            phantom_data: Default::default(),
+        });
+    }
 }

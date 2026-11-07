@@ -1,5 +1,5 @@
+use crate::attributes::Attribute;
 use crate::math::SaturatingAttributes;
-use crate::prelude::{Attribute, AttributeModifier};
 use bevy::prelude::*;
 use num_traits::{AsPrimitive, Bounded, FromPrimitive, Zero};
 use serde::Serialize;
@@ -112,9 +112,8 @@ impl<T: Attribute> AttributeCalculator<T> {
         self.multiplier *= other.multiplier;
     }
 
-    pub fn convert(modifier: &AttributeModifier<T>) -> Self {
-        let value = modifier.value;
-        let calculator = match modifier.operation {
+    pub fn from_op(operation: ModOp, value: T::Property) -> Self {
+        let calculator = match operation {
             ModOp::Set => Self {
                 set: Some(value),
                 ..default()

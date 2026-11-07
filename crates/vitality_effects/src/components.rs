@@ -1,21 +1,8 @@
-mod application;
-mod builder;
-pub mod global_effect;
-mod stacks;
-mod targeting;
-mod timing;
-
-use crate::assets::EffectDef;
+use crate::definition::EffectDef;
+use crate::{EffectApplicationPolicy, EffectBuilder, EffectTicker, Stacks};
 use bevy::asset::Handle;
 use bevy::ecs::query::QueryData;
 use bevy::prelude::{Component, Deref, Entity, Event, Reflect};
-
-pub use crate::effect::builder::EffectBuilder;
-pub use application::{ApplyEffectEvent, EffectApplicationPolicy};
-pub use global_effect::GlobalEffects;
-pub use stacks::{EffectStackingPolicy, NotifyAddStackEvent, Stacks};
-pub use targeting::EffectTargeting;
-pub use timing::{EffectDuration, EffectTicker};
 
 pub enum EffectStatus {
     Active,

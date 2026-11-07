@@ -1,22 +1,7 @@
-use crate::assets::EffectDef;
-use crate::attributes::{
-    Attribute, AttributeDependency, ReflectAccessAttribute, on_add_attribute,
-    on_change_notify_attribute_dependencies, on_change_notify_attribute_parents,
-};
-use crate::effect::{
-    AppliedEffects, Effect, EffectDuration, EffectSource, EffectSources, EffectTarget, EffectTicker,
-};
-use crate::graph::NodeType;
-use crate::modifier::modifier::update_modifier_when_dependencies_changed;
-use crate::modifier::{
-    ApplyAttributeModifierMessage, AttributeCalculatorCached, AttributeModifier, ModifierOf,
-    apply_modifier_events,
-};
-use crate::registry::RegistryPlugin;
+use crate::attributes::{Attribute, AttributeDependency, ReflectAccessAttribute};
+use crate::modifier::AttributeCalculatorCached;
 use crate::schedule::EffectsSet;
-use crate::systems::{mark_node_dirty_observer, update_attribute, update_current_value_system};
 use crate::util::pretty_type_name;
-use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 use bevy::platform::collections::HashMap;
 use bevy::platform::collections::hash_map::Entry;
 use bevy::prelude::*;
@@ -28,18 +13,12 @@ use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 
-pub mod assets;
 pub mod attributes;
-pub mod condition;
 pub mod context;
-pub mod effect;
-pub mod graph;
 pub mod math;
 pub mod modifier;
 pub mod mutator;
-pub mod registry;
 pub mod schedule;
-pub mod systems;
 pub mod util;
 pub mod view;
 
@@ -49,9 +28,8 @@ pub use num_traits;
 pub mod prelude {
     pub use crate::attribute;
     pub use crate::attributes::{AccessAttribute, Attribute, ReflectAccessAttribute};
-    pub use crate::context::{ActorExprSchema, EffectExprSchema};
-    pub use crate::effect::{EffectApplicationPolicy, EffectBuilder};
-    pub use crate::modifier::{AccessModifier, AttributeModifier, EffectSubject, ModOp};
+    pub use crate::context::ActorExprSchema;
+    pub use crate::modifier::ModOp;
 
     pub use express_it::expr::Expr;
 
@@ -59,19 +37,14 @@ pub mod prelude {
     pub use bevy::prelude::ReflectComponent;
 }
 
-/// Registers the types, assets and schedule sets every other vitality crate builds on.
+/// Registers the schedule sets and resources every other vitality crate builds on.
 pub struct CorePlugin;
 
 impl Plugin for CorePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AppAttributeBindings>()
-            .add_plugins(RegistryPlugin)
             .init_schedule(PreUpdate)
-            .init_schedule(PostUpdate)
-            .init_asset::<EffectDef>()
-            .register_type::<AppliedEffects>()
-            .register_type::<EffectTarget>()
-            .register_type::<NodeType>();
+            .init_schedule(PostUpdate);
 
         // ScenePlugin is unique and DefaultPlugins already adds it, so adding it again would panic.
         if !app.is_plugin_added::<ScenePlugin>() {
@@ -112,6 +85,11 @@ impl AttributeBindings {
             .insert(TypeId::of::<T>(), Self::dependency_fn::<T>);
     }
 
+    /// The function that makes `entity` a dependency of the attribute with this type id.
+    pub fn dependency_inserter(&self, type_id: &TypeId) -> Option<fn(Entity, &mut EntityCommands)> {
+        self.insert_dependency_functions.get(type_id).copied()
+    }
+
     // Binds the AttributeId to a specific TypeId used for reflection
     fn bind_type_id<T: 'static>(&mut self) {
         let type_id = TypeId::of::<T>();
@@ -138,12 +116,11 @@ impl AttributeBindings {
     }
 }
 
+/// Registers the reflection data and expression bindings of an attribute.
 pub fn init_core_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<T>();
-    app.register_type::<AttributeModifier<T>>();
     app.register_type::<AttributeCalculatorCached<T>>();
     app.register_type_data::<T, ReflectAccessAttribute>();
-    app.add_message::<ApplyAttributeModifierMessage<T>>();
 
     // Register u64->TypeId bindings for expressions
     app.world_mut()
@@ -153,84 +130,7 @@ pub fn init_core_attribute<T: Attribute>(app: &mut App) {
         .unwrap()
         .add::<T>();
 
-    app.add_systems(
-        FixedUpdate,
-        apply_modifier_events::<T>.in_set(EffectsSet::UpdateBaseValues),
-    );
-
-    app.add_systems(
-        FixedUpdate,
-        update_current_value_system::<T>.in_set(EffectsSet::UpdateCurrentValues),
-    );
-
-    app.add_systems(
-        FixedUpdate,
-        (
-            on_change_notify_attribute_parents::<T>.in_set(EffectsSet::Notify),
-            on_change_notify_attribute_dependencies::<T>.in_set(EffectsSet::Notify),
-        ),
-    );
-
-    app.add_observer(mark_node_dirty_observer::<T>);
-    app.add_observer(on_add_attribute::<T>);
-    app.add_observer(update_attribute::<T>);
-    app.add_observer(update_modifier_when_dependencies_changed::<T>);
-
-    debug!(
-        "Registered Systems for attribute: {}.",
-        pretty_type_name::<T>()
-    );
-}
-
-/// Attribute view for code that also touches effect components in the same system.
-pub type EffectsMut<'w, 's> = EntityMutExcept<
-    'w,
-    's,
-    (
-        ChildOf,
-        ModifierOf,
-        (
-            Effect,
-            EffectDuration,
-            EffectTicker,
-            EffectSource,
-            EffectTarget,
-            AppliedEffects,
-            EffectSources,
-        ),
-    ),
->;
-
-pub type EffectsRef<'w, 's> = EntityRefExcept<
-    'w,
-    's,
-    (
-        ChildOf,
-        ModifierOf,
-        (
-            Effect,
-            EffectDuration,
-            EffectTicker,
-            EffectSource,
-            EffectTarget,
-            AppliedEffects,
-            EffectSources,
-        ),
-    ),
->;
-
-#[derive(Component, Copy, Clone, Debug)]
-#[component(storage = "SparseSet")]
-pub struct Dirty<T> {
-    phantom: PhantomData<T>,
-}
-
-impl<T> Default for Dirty<T> {
-    fn default() -> Self {
-        Self {
-            phantom: PhantomData,
-        }
-    }
+    debug!("Registered attribute: {}.", pretty_type_name::<T>());
 }
 
 #[derive(EntityEvent, Debug)]

@@ -7,9 +7,6 @@ edition = "2024"
 bevy_reflect = { workspace = true }
 express-it = { workspace = true }
 num-traits = { workspace = true }
-petgraph = { workspace = true }
-ptree = { workspace = true }
-rand = { workspace = true }
 serde = { workspace = true }
 smol_str = { workspace = true }
 

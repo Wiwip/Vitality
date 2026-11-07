@@ -12,7 +12,7 @@ use std::marker::PhantomPinned;
 use std::time::Duration;
 use vitality_core::attributes::ReflectAccessAttribute;
 use vitality_core::modifier::AttributeCalculatorCached;
-use vitality_core::prelude::Attribute;
+use vitality_effects::prelude::Attribute;
 
 /// The entity that this effect is targeting.
 #[derive(Component, Clone, Reflect, Debug)]

@@ -1,16 +1,12 @@
 use crate::context::{ActorProvider, ActorProviderMut, Caster, Source, Target};
 use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
-use crate::systems::MarkNodeDirty;
 use crate::util::pretty_type_name;
 use crate::view::{ActorRead, ActorWrite};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::log::error;
-use bevy::prelude::{
-    Changed, Commands, Component, Entity, EntityEvent, Insert, On, Query, Reflect,
-    RelationshipTarget, TypePath,
-};
+use bevy::prelude::{Component, Entity, Reflect, TypePath};
 use bevy::reflect::{GetTypeRegistration, Typed, reflect_trait};
 use express_it::expr::{AsExpression, Context, ContextMut, Expr};
 use express_it::nodes::Node;
@@ -368,48 +364,6 @@ where
     }
     fn name(&self) -> String {
         pretty_type_name::<T>()
-    }
-}
-
-pub fn on_add_attribute<T: Attribute>(trigger: On<Insert<T>>, mut commands: Commands) {
-    commands.trigger(MarkNodeDirty::<T> {
-        entity: trigger.event_target(),
-        phantom_data: Default::default(),
-    });
-}
-
-#[derive(EntityEvent)]
-pub struct AttributeDependencyChanged<T> {
-    pub entity: Entity,
-    phantom_data: PhantomData<T>,
-}
-
-pub fn on_change_notify_attribute_dependencies<T: Attribute>(
-    query: Query<&AttributeDependents<T>, Changed<T>>,
-    mut commands: Commands,
-) {
-    for dependents in query.iter() {
-        let unique_entities: HashSet<Entity> = dependents.iter().collect();
-        let notify_targets: Vec<Entity> = unique_entities.into_iter().collect();
-
-        notify_targets.iter().for_each(|target| {
-            commands.trigger(AttributeDependencyChanged::<T> {
-                entity: *target,
-                phantom_data: Default::default(),
-            });
-        });
-    }
-}
-
-pub fn on_change_notify_attribute_parents<T: Attribute>(
-    query: Query<Entity, Changed<T>>,
-    mut commands: Commands,
-) {
-    for entity in query.iter() {
-        commands.trigger(MarkNodeDirty::<T> {
-            entity,
-            phantom_data: Default::default(),
-        });
     }
 }
 
