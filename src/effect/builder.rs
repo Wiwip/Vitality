@@ -71,7 +71,7 @@ impl EffectBuilder {
     ///     .build();
     ///
     /// let damage = EffectBuilder::instant()
-    ///     .modify::<Health>(Damage::value(), ModOp::Sub, EffectSubject::Target)
+    ///     .modify::<Health>(Damage::src(), ModOp::Sub, EffectSubject::Target)
     ///     .build();
     ///
     /// // Regen 2 health every 1.0 seconds for 12.0 seconds.
@@ -107,9 +107,9 @@ impl EffectBuilder {
     ///
     /// // A damage over time effect that has a 10% chance of applying every tick.
     /// EffectBuilder::every_second_for_duration(1.0, 12.0)
-    ///     .modify::<Health>(Damage::value(), ModOp::Add, EffectSubject::Target)
+    ///     .modify::<Health>(Damage::src(), ModOp::Add, EffectSubject::Target)
     ///     .attach_if(ChanceCondition(0.10))
-    ///     .build()
+    ///     .build();
     /// ```
     pub fn attach_if(
         mut self,
