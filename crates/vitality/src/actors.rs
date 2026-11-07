@@ -1,20 +1,35 @@
-use crate::GrantedAbilities;
-use crate::ability::{Ability, AbilityOf};
-use crate::assets::{AbilityDef, ActorDef, EffectDef};
-use crate::attribute::clamps::Clamp;
-use crate::attributes::ManageAttributes;
-use crate::effect::{ApplyEffectEvent, EffectTargeting};
-use crate::graph::NodeType;
-use crate::modifier::AttributeCalculatorCached;
-use crate::mutator::EntityActions;
-use crate::prelude::*;
-use crate::util::pretty_type_name;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use express_it::expr::{AsExpression, Expr};
-use num_traits::{AsPrimitive, Num};
+use smol_str::SmolStr;
 use std::any::{Any, TypeId};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
+use vitality_core::ability::{Ability, AbilityOf, GrantedAbilities};
+use vitality_core::assets::{AbilityDef, EffectDef};
+use vitality_core::attributes::{Attribute, ManageAttributes};
+use vitality_core::context::ActorExprSchema;
+use vitality_core::effect::{ApplyEffectEvent, EffectTargeting};
+use vitality_core::graph::NodeType;
+use vitality_core::modifier::AttributeCalculatorCached;
+use vitality_core::mutator::EntityActions;
+use vitality_core::num_traits::{AsPrimitive, Num};
+use vitality_core::util::pretty_type_name;
+
+use crate::clamp::Clamp;
+
+#[derive(Asset, TypePath)]
+pub struct ActorDef {
+    pub name: String,
+    pub description: String,
+    pub builder_actions: VecDeque<EntityActions>,
+    pub abilities: Vec<Handle<AbilityDef>>,
+    pub effects: Vec<Handle<EffectDef>>,
+
+    // The value below is hidden behind 'Any' but actually:
+    // Box<(Expr<T::Property>, Expr<T::Property>)>
+    pub clamp_exprs: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
+    pub clamp_reverse_lookup: HashMap<SmolStr, Vec<SmolStr>>,
+}
 
 #[derive(Component, Clone, Debug, Deref)]
 #[require(ManageAttributes, GrantedAbilities)]
@@ -179,5 +194,49 @@ impl ActorBuilder {
 
     pub fn build(self) -> ActorDef {
         self.actor
+    }
+}
+
+#[derive(Default, Clone, PartialEq, Eq, Hash, Reflect)]
+pub struct ActorToken(SmolStr);
+
+impl ActorToken {
+    /// Construct a new [`AbilityToken`] from a [`SmolStr`].
+    pub const fn new(text: SmolStr) -> Self {
+        Self(text)
+    }
+
+    /// Construct a new [`AbilityToken`] from a static string.
+    pub const fn new_static(text: &'static str) -> Self {
+        Self(SmolStr::new_static(text))
+    }
+}
+
+impl core::fmt::Display for ActorToken {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl core::fmt::Debug for ActorToken {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "AbilityToken({:?})", self.0)
+    }
+}
+
+#[derive(Resource, Default)]
+pub struct ActorRegistry {
+    map: HashMap<ActorToken, Handle<ActorDef>>,
+}
+
+impl ActorRegistry {
+    pub fn add(&mut self, token: ActorToken, handle: Handle<ActorDef>) {
+        self.map.insert(token, handle);
+    }
+
+    pub fn get(&self, token: &ActorToken) -> &Handle<ActorDef> {
+        self.map
+            .get(&token)
+            .expect(format!("{:?} not registered", token).as_str())
     }
 }

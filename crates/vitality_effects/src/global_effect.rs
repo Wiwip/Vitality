@@ -1,8 +1,8 @@
 use bevy::prelude::*;
-use vitality_core::actors::{Actor, ActorBuilder};
-use vitality_core::context::Vitality;
-use vitality_core::effect::GlobalEffects;
+use vitality_core::attributes::ManageAttributes;
 use vitality_core::effect::global_effect::GlobalActor;
+use vitality_core::effect::{ApplyEffectEvent, EffectTargeting, GlobalEffects};
+use vitality_core::graph::NodeType;
 
 /// A plugin that manages global effects within the game.
 /// Its purpose is to add effects that are applied to any spawned actor.
@@ -17,16 +17,30 @@ impl Plugin for GlobalEffectPlugin {
     }
 }
 
-pub fn spawn_global_actor(mut commands: Commands, mut ctx: Vitality) {
-    let global_actor = commands.spawn(GlobalActor).id();
-
-    let actor = ActorBuilder::new().name("Global Effect Actor").build();
-
-    let actor_handle = ctx.add_actor(actor);
-    ctx.insert_actor(global_actor, &actor_handle);
+pub fn spawn_global_actor(mut commands: Commands) {
+    commands.spawn((
+        GlobalActor,
+        ManageAttributes,
+        NodeType::Actor,
+        Name::new("Global Effect Actor"),
+    ));
 }
 
 /// When an actor is spawned, ensures that the global effects apply to the actor.
-fn observe_spawned_actor(trigger: On<Add<Actor>>, mut ctx: Vitality) {
-    ctx.spawn_global_effects(trigger.entity);
+fn observe_spawned_actor(
+    trigger: On<Add<ManageAttributes>>,
+    global_actor: Query<Entity, With<GlobalActor>>,
+    global_effects: Res<GlobalEffects>,
+    mut commands: Commands,
+) {
+    let Ok(source) = global_actor.single() else {
+        return;
+    };
+    for handle in global_effects.iter() {
+        commands.trigger(ApplyEffectEvent {
+            entity: trigger.entity,
+            targeting: EffectTargeting::new(source, trigger.entity),
+            handle: handle.clone(),
+        });
+    }
 }

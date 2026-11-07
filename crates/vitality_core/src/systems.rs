@@ -1,13 +1,13 @@
+use crate::attributes::AttributeDependents;
 use crate::attributes::{
     Attribute, AttributeQueryData, AttributeQueryDataReadOnly, ManageAttributes,
 };
-use crate::attributes::AttributeDependents;
 use crate::effect::{EffectSource, EffectStatusParam, EffectTarget};
 use crate::graph::{DependencyGraph, NodeType};
 use crate::modifier::modifier::RecalculateExpression;
 use crate::modifier::{AttributeCalculator, OwnedModifiers};
 use crate::prelude::*;
-use crate::{AppAttributeBindings, EffectsRef, CurrentValueChanged, Dirty};
+use crate::{AppAttributeBindings, CurrentValueChanged, Dirty, EffectsRef};
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 use petgraph::visit::IntoNeighbors;

@@ -67,32 +67,28 @@ where
     fn src<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
     where
         C: Context,
-        for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Source>,
+        for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Source>,
     {
         Self::at::<Source, C>()
     }
     fn dst<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
     where
         C: Context,
-        for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Target>,
+        for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Target>,
     {
         Self::at::<Target, C>()
     }
     fn caster<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
     where
         C: Context,
-        for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Caster>,
+        for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Caster>,
     {
         Self::at::<Caster, C>()
     }
     fn at<Role, C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
     where
         C: Context,
-        for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Role>,
+        for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Role>,
     {
         Node {
             expr: AttributeVar {
@@ -114,8 +110,7 @@ where
     fn at_base<Role, C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
     where
         C: Context,
-        for<'a, 'b> C::ContextItem<'a, 'b>:
-            ActorProvider<'a, 'b, Role>,
+        for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Role>,
     {
         Node {
             expr: AttributeVar {
@@ -138,8 +133,7 @@ where
     where
         Role: 'static,
         C: ContextMut + 'static,
-        for<'a, 'b> C::ContextItemMut<'a, 'b>:
-            ActorProviderMut<'a, 'b, Role>,
+        for<'a, 'b> C::ContextItemMut<'a, 'b>: ActorProviderMut<'a, 'b, Role>,
     {
         let expr = expr.as_expr();
 
@@ -172,8 +166,7 @@ where
     where
         Role: 'static,
         C: ContextMut + 'static,
-        for<'a, 'b> C::ContextItemMut<'a, 'b>:
-            ActorProviderMut<'a, 'b, Role>,
+        for<'a, 'b> C::ContextItemMut<'a, 'b>: ActorProviderMut<'a, 'b, Role>,
     {
         let expr = expr.as_expr();
 
@@ -206,8 +199,7 @@ where
     where
         Role: 'static,
         C: ContextMut + 'static,
-        for<'a, 'b> C::ContextItemMut<'a, 'b>:
-            ActorProviderMut<'a, 'b, Role>,
+        for<'a, 'b> C::ContextItemMut<'a, 'b>: ActorProviderMut<'a, 'b, Role>,
     {
         let expr = expr.as_expr();
 

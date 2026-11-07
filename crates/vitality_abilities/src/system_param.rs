@@ -8,7 +8,7 @@ use vitality_core::AbilityRef;
 use vitality_core::ability::ability_state::{AbilityEvent, AbilityMachine, AbilityState};
 use vitality_core::ability::tasks::{Task, Tasks};
 use vitality_core::ability::{Ability, AbilityError, AbilityOf, GrantedAbilities, TargetData};
-use vitality_core::actors::Actor;
+use vitality_core::attributes::ManageAttributes;
 use vitality_core::assets::AbilityDef;
 use vitality_core::registry::{Registry, ability_registry::AbilityToken};
 
@@ -20,7 +20,7 @@ pub struct Abilities<'w, 's> {
         'w,
         's,
         (
-            Read<Actor>,
+            Read<ManageAttributes>,
             AbilityRef<'static, 'static>,
             Read<GrantedAbilities>,
         ),

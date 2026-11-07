@@ -7,23 +7,6 @@ use crate::prelude::ActorExprSchema;
 use bevy::prelude::*;
 use express_it::expr::{BoolExpr, StoredExpr};
 use express_it::plan::Plan;
-use smol_str::SmolStr;
-use std::any::{Any, TypeId};
-use std::collections::{HashMap, VecDeque};
-
-#[derive(Asset, TypePath)]
-pub struct ActorDef {
-    pub name: String,
-    pub description: String,
-    pub builder_actions: VecDeque<EntityActions>,
-    pub abilities: Vec<Handle<AbilityDef>>,
-    pub effects: Vec<Handle<EffectDef>>,
-
-    // The value below is hidden behind 'Any' but actually:
-    // Box<(Expr<T::Property>, Expr<T::Property>)>
-    pub clamp_exprs: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
-    pub clamp_reverse_lookup: HashMap<SmolStr, Vec<SmolStr>>,
-}
 
 #[derive(Asset, TypePath)]
 pub struct EffectDef {

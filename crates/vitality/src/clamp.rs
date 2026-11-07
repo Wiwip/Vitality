@@ -1,13 +1,11 @@
-use crate::actors::Actor;
-use crate::assets::ActorDef;
-use crate::attributes::AttributeQueryData;
-use crate::context::ActorExprContext;
-use crate::prelude::*;
-use crate::CurrentValueChanged;
+use crate::actors::{Actor, ActorDef};
 use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
 use express_it::expr::Expr;
 use std::any::{Any, TypeId};
+use vitality_core::CurrentValueChanged;
+use vitality_core::attributes::{Attribute, AttributeQueryData};
+use vitality_core::context::{ActorExprContext, ActorExprSchema};
 
 #[derive(Component, Default, Debug, Clone, Reflect)]
 #[reflect(Component, from_reflect = false)]

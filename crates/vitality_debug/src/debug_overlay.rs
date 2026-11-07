@@ -5,7 +5,7 @@ use ptree::{TreeBuilder, write_tree};
 use std::any::TypeId;
 use vitality_core::ability::tasks::Tasks;
 use vitality_core::ability::{Ability, AbilityRecovery, GrantedAbilities};
-use vitality_core::actors::Actor;
+use vitality_core::attributes::ManageAttributes;
 use vitality_core::attributes::ReflectAccessAttribute;
 use vitality_core::effect::{AppliedEffects, Effect, Stacks};
 use vitality_core::modifier::{ModifierMarker, OwnedModifiers, ReflectAccessModifier};
@@ -40,7 +40,7 @@ fn create_overlay() -> impl Scene {
 }
 
 pub fn explore_actors_system(
-    actors: Query<(EntityRef, Option<&AppliedEffects>), (With<Actor>, With<DebugOverlayMarker>)>,
+    actors: Query<(EntityRef, Option<&AppliedEffects>), (With<ManageAttributes>, With<DebugOverlayMarker>)>,
     effects: Query<(&Effect, &Stacks, Option<&Name>, Option<&OwnedModifiers>)>,
     granted_abilities: Query<&GrantedAbilities>,
     ability_query: Query<(&Ability, Option<&AbilityRecovery>, Option<&Name>)>,
@@ -53,7 +53,7 @@ pub fn explore_actors_system(
         &mut Text,
         (
             With<DebugOverlayMarker>,
-            Without<Actor>,
+            Without<ManageAttributes>,
             Without<ModifierMarker>,
         ),
     >,
