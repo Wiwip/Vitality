@@ -4,20 +4,22 @@ use bevy::prelude::*;
 use vitality_abilities::AbilityPlugin;
 use vitality_core::CorePlugin;
 use vitality_core::attributes::Attribute;
-use vitality_core::effect::Stacks;
 use vitality_core::init_core_attribute;
 use vitality_core::schedule::EffectsSet;
-use vitality_effects::{ConditionPlugin, EffectsPlugin, GlobalEffectPlugin, init_effect_attribute};
+use vitality_effects::{
+    ConditionPlugin, EffectsPlugin, GlobalEffectPlugin, Stacks, init_effect_attribute,
+};
 
-pub use vitality_core::prelude;
+pub use vitality_abilities as ability;
 pub use vitality_core::{
     AppAttributeBindings, AttributeBindings, AttributeError, BaseValueChanged, CurrentValueChanged,
-    Dirty, EffectsMut, EffectsRef, attribute, attribute_impl, express_it, num_traits, tag,
+    attribute, attribute_impl, attributes, express_it, math, mutator, num_traits, tag,
 };
-pub use vitality_core::{assets, attributes, graph, math, modifier, mutator};
+pub use vitality_effects as effect;
 
 pub mod actors;
 pub mod clamp;
+pub mod registry;
 mod vitality;
 
 pub mod context {
@@ -25,25 +27,9 @@ pub mod context {
     pub use vitality_core::context::*;
 }
 
-pub mod registry;
-
-pub mod ability {
-    pub use vitality_abilities::*;
-}
-
-pub mod condition {
-    pub use vitality_core::condition::*;
-    pub use vitality_effects::ConditionPlugin;
-}
-
-pub mod effect {
-    pub use vitality_core::effect::*;
-    pub use vitality_effects::EffectsPlugin;
-
-    pub mod global_effect {
-        pub use vitality_core::effect::global_effect::*;
-        pub use vitality_effects::GlobalEffectPlugin;
-    }
+pub mod prelude {
+    pub use vitality_abilities::prelude::*;
+    pub use vitality_effects::prelude::*;
 }
 
 #[cfg(feature = "debug-overlay")]
@@ -83,7 +69,7 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     app.add_systems(
         FixedUpdate,
         apply_clamps::<T>
-            .after(vitality_core::systems::update_current_value_system::<T>)
+            .after(vitality_effects::systems::update_current_value_system::<T>)
             .in_set(EffectsSet::UpdateCurrentValues),
     );
     app.add_observer(update_clamps::<T>);

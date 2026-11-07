@@ -5,15 +5,15 @@ use smol_str::SmolStr;
 use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet, VecDeque};
 use vitality_abilities::{Ability, AbilityDef, AbilityOf, GrantedAbilities};
-use vitality_core::assets::EffectDef;
 use vitality_core::attributes::{Attribute, ManageAttributes};
 use vitality_core::context::ActorExprSchema;
-use vitality_core::effect::{ApplyEffectEvent, EffectTargeting};
-use vitality_core::graph::NodeType;
 use vitality_core::modifier::AttributeCalculatorCached;
 use vitality_core::mutator::EntityActions;
 use vitality_core::num_traits::{AsPrimitive, Num};
 use vitality_core::util::pretty_type_name;
+use vitality_effects::definition::EffectDef;
+use vitality_effects::graph::NodeType;
+use vitality_effects::{ApplyEffectEvent, EffectTargeting};
 
 use crate::clamp::Clamp;
 

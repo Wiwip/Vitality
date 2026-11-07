@@ -1,11 +1,11 @@
+use crate::EffectsRef;
+use crate::context::EffectExprContext;
+use crate::definition::EffectDef;
+use crate::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
 use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
 use bevy::prelude::*;
-use vitality_core::EffectsRef;
-use vitality_core::assets::EffectDef;
-use vitality_core::context::EffectExprContext;
-use vitality_core::effect::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
 use vitality_core::schedule::EffectsSet;
 
 pub struct ConditionPlugin;

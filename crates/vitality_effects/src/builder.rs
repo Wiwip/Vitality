@@ -1,16 +1,17 @@
-use crate::assets::EffectDef;
-use crate::attributes::Attribute;
-use crate::condition::IsAttributeWithinBounds;
+use crate::EffectStackingPolicy;
+use crate::application::EffectApplicationPolicy;
+use crate::conditions::IsAttributeWithinBounds;
 use crate::context::EffectExprSchema;
-use crate::effect::EffectStackingPolicy;
-use crate::effect::application::EffectApplicationPolicy;
-use crate::modifier::{AttributeModifier, EffectSubject, ModOp};
-use crate::mutator::EntityActions;
+use crate::definition::EffectDef;
+use crate::modifier::{AttributeModifier, EffectSubject};
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
 use express_it::expr::{AsExpression, Expr};
 use std::ops::RangeBounds;
 use std::sync::Arc;
+use vitality_core::attributes::Attribute;
+use vitality_core::modifier::ModOp;
+use vitality_core::mutator::EntityActions;
 
 pub struct EffectBuilder {
     def: EffectDef,
@@ -56,8 +57,8 @@ impl EffectBuilder {
 
     /// Modifies an attribute.
     ///
-    /// A [Value](crate::attributes::GameValue) represents the value of the change to the attribute.
-    /// It can be a literal [Lit](crate::attributes::Lit), an [AttributeValue](crate::attributes::AttributeValue), or anything implementing [ValueSource](crate::attributes::ValueSource)
+    /// A [Value](vitality_core::attributes::GameValue) represents the value of the change to the attribute.
+    /// It can be a literal [Lit](vitality_core::attributes::Lit), an [AttributeValue](vitality_core::attributes::AttributeValue), or anything implementing [ValueSource](vitality_core::attributes::ValueSource)
     ///
     /// # Example
     /// ```

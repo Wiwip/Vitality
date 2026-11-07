@@ -4,7 +4,7 @@ use bevy::time::TimeUpdateStrategy;
 use vitality::actors::ActorBuilder;
 use vitality::context::Vitality;
 use vitality::effect::{Effect, EffectApplicationPolicy, EffectBuilder};
-use vitality::modifier::{EffectSubject, ModOp};
+use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 use vitality::{AttributesPlugin, attribute, init_attribute};
 

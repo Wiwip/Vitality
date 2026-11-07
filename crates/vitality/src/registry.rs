@@ -1,17 +1,17 @@
 use crate::actors::{ActorDef, ActorRegistry, ActorToken};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use vitality_abilities::AbilityDef;
-use vitality_abilities::registry::AbilityToken;
-use vitality_core::assets::EffectDef;
-use vitality_core::registry::effect_registry::EffectToken;
 
+use vitality_abilities::AbilityDef;
 pub use vitality_abilities::registry as ability_registry;
-pub use vitality_core::registry::effect_registry;
+use vitality_abilities::registry::AbilityToken;
+use vitality_effects::definition::EffectDef;
+pub use vitality_effects::registry as effect_registry;
+use vitality_effects::registry::EffectToken;
 
 #[derive(SystemParam)]
 pub struct Registry<'w> {
-    effects: vitality_core::registry::Registry<'w>,
+    effects: vitality_effects::registry::Registry<'w>,
     abilities: vitality_abilities::registry::Registry<'w>,
     actors: Res<'w, ActorRegistry>,
 }
@@ -36,7 +36,7 @@ impl Registry<'_> {
 
 #[derive(SystemParam)]
 pub struct RegistryMut<'w> {
-    effects: vitality_core::registry::RegistryMut<'w>,
+    effects: vitality_effects::registry::RegistryMut<'w>,
     abilities: vitality_abilities::registry::RegistryMut<'w>,
     actors: ResMut<'w, ActorRegistry>,
     actor_assets: ResMut<'w, Assets<ActorDef>>,

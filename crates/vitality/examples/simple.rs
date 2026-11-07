@@ -8,14 +8,14 @@ use std::time::Duration;
 use vitality::ability::{Abilities, AbilityBuilder, ExecuteAbility, TargetData};
 use vitality::actors::ActorBuilder;
 use vitality::ability::AbilityDef;
-use vitality::assets::EffectDef;
+use vitality::effect::definition::EffectDef;
 use vitality::attributes::ReflectAccessAttribute;
 use vitality::context::{Source, Vitality};
 use vitality::effect::{Effect, EffectStackingPolicy};
-use vitality::graph::DependencyGraph;
+use vitality::effect::graph::DependencyGraph;
 use vitality::inspector::ActorInspectorPlugin;
 use vitality::inspector::debug_overlay::DebugOverlayMarker;
-use vitality::modifier::{EffectSubject, ModOp};
+use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 use vitality::{AttributesPlugin, attribute, init_attribute, tag};
 

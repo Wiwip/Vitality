@@ -1,4 +1,4 @@
-use crate::effect::{AppliedEffects, EffectSource};
+use crate::{AppliedEffects, EffectSource};
 use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;

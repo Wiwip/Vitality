@@ -1,10 +1,10 @@
 use crate::context::EffectExprSchema;
-use crate::effect::{EffectApplicationPolicy, EffectStackingPolicy};
+use crate::modifier::Modifier;
 use crate::modifier::ModifierFn;
-use crate::modifier::modifier::Modifier;
-use crate::mutator::EntityActions;
+use crate::{EffectApplicationPolicy, EffectStackingPolicy};
 use bevy::prelude::*;
 use express_it::expr::StoredExpr;
+use vitality_core::mutator::EntityActions;
 
 #[derive(Asset, TypePath)]
 pub struct EffectDef {

@@ -24,7 +24,7 @@ use vitality::actors::{Actor, ActorBuilder};
 use vitality::actors::ActorDef;
 use vitality::ability::AbilityDef;
 use vitality::context::Vitality;
-use vitality::effect::global_effect::GlobalActor;
+use vitality::effect::GlobalActor;
 use vitality::registry::RegistryMut;
 use vitality::registry::ability_registry::AbilityToken;
 

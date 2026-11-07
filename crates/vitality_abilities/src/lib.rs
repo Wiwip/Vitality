@@ -24,6 +24,10 @@ use hfsm_bevy::StateMachineAppExt;
 use hfsm_bevy::{MachineInstance, StateTimer};
 use vitality_core::schedule::EffectsSet;
 
+pub mod prelude {
+    pub use crate::context::AbilityExprSchema;
+}
+
 pub use builder::AbilityBuilder;
 pub use components::*;
 pub use definition::AbilityDef;

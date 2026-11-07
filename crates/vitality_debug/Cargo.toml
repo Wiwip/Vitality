@@ -7,6 +7,7 @@ edition = "2024"
 ptree = { workspace = true }
 vitality_abilities = { workspace = true }
 vitality_core = { workspace = true }
+vitality_effects = { workspace = true }
 
 [dependencies.bevy]
 workspace = true

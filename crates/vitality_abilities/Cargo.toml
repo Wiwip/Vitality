@@ -10,6 +10,7 @@ num-traits = { workspace = true }
 serde = { workspace = true }
 smol_str = { workspace = true }
 vitality_core = { workspace = true }
+vitality_effects = { workspace = true }
 
 [dependencies.bevy]
 workspace = true
