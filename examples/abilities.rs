@@ -65,19 +65,17 @@ fn setup_ability(mut registry: RegistryMut) {
                 Complete::Any
                 Tasks [
                     #LongTask
-                    task::<DebugLongTask>(NoData),
+                    @task::<DebugLongTask>(NoData)
+                    --
                     #WaitTask
-                    wait_task(3.0)
+                    @wait_task(3.0)
                     Tasks [
-                        (
-                            #SpawnFireball
-                            task::<DebugInstantTask>(NoData)
-                        ),
-                        (
-                            #Teleport
-                            task::<DebugInstantTask>(NoData)
-                        ),
-                    ],
+                        #SpawnFireball
+                        @task::<DebugInstantTask>(NoData)
+                        --
+                        #Teleport
+                        @task::<DebugInstantTask>(NoData)
+                    ]
                 ]
             }
         })

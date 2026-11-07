@@ -27,7 +27,7 @@ Evidence for every line below was read from `../hfsm-rs` and from the pinned `be
 - after: G-1
 - test: none (the gate runs lib + `tests/` only). Check: sync the repo into `/tmp/vitality-build` and run `cargo check --offline --all-targets` there — exits 0, no errors; `examples/` and `benches/` compile.
 - origin: owner
-- status: todo
+- status: done
 
 ## C-2: install each machine with `add_state_machine`
 - change: also take the reviewer's better scene-plugin predicate from G-1: `src/lib.rs` guards `ScenePlugin` with `!app.world().contains_resource::<Assets<ScenePatch>>()`, which mis-reads a host that called `init_asset::<ScenePatch>()` itself (it then skips the install and `queue_apply_scene` panics on `QueuedScenes`, `bevy_scene-0.20.1/src/spawn.rs:500`); `!app.is_plugin_added::<ScenePlugin>()` is precise. Then: `src/ability/mod.rs:36-37` adds `StateMachinePlugin::<AbilityMachine>` and `StateMachinePlugin::<TaskMachine>`, while the definitions are inserted separately from `setup_ability_machine_definition` (`src/ability/ability_state.rs:107`) and `setup_task_machine_definition` (`src/ability/task_states.rs:91`). `App::add_state_machine::<T>(definition)` inserts the `MachineDefinition<T>` resource and the plugin together (`hfsm_bevy/src/lib.rs:178-201`), so the definition can never be missing when the plugin's `on_insert` observer fires for a `#[require(MachineInstance<T>)]` bundle. Move both installs to `add_state_machine` in `AbilityPlugin::build` and delete the two resource-inserting setup functions and wherever they are scheduled. Bounds hold: `T::Event: Clone + Debug` is already derived by `AbilityEvent` and `TaskEvent`.
