@@ -63,7 +63,7 @@ pub enum TaskEvent {
     TimeOut,
 }
 
-fn build_machine() -> MachineDefinition<TaskMachine> {
+pub(crate) fn build_machine() -> MachineDefinition<TaskMachine> {
     MachineDefinition::<TaskMachine>::builder(TaskState::Pending, |root| {
         root.leaf(TaskState::Pending, "Pending", PendingState)
             .on(TaskEvent::Activate, TaskState::Running);
@@ -85,10 +85,6 @@ fn build_machine() -> MachineDefinition<TaskMachine> {
     .build()
     .expect("Failed to build HFSM")
     .into()
-}
-
-pub fn setup_task_machine_definition(mut commands: Commands) {
-    commands.insert_resource(build_machine());
 }
 
 struct PendingState;

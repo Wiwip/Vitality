@@ -87,7 +87,7 @@ pub enum AbilityEvent {
     Recovered,
 }
 
-fn build_machine() -> MachineDefinition<AbilityMachine> {
+pub(crate) fn build_machine() -> MachineDefinition<AbilityMachine> {
     MachineDefinition::<AbilityMachine>::builder(AbilityState::Ready, |root| {
         root.leaf(AbilityState::Ready, "Ready", ReadyState)
             .on(AbilityEvent::Activate, AbilityState::Active);
@@ -102,10 +102,6 @@ fn build_machine() -> MachineDefinition<AbilityMachine> {
     .build()
     .expect("Failed to build HFSM")
     .into()
-}
-
-pub fn setup_ability_machine_definition(mut commands: Commands) {
-    commands.insert_resource(build_machine());
 }
 
 struct ReadyState;

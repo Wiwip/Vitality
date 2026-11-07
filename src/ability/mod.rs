@@ -8,10 +8,10 @@ pub mod tasks;
 
 use crate::AttributeCalculatorCached;
 use crate::ReflectAccessAttribute;
-use crate::ability::ability_state::{AbilityMachine, setup_ability_machine_definition};
+use crate::ability::ability_state::AbilityMachine;
 use crate::ability::command::on_add_ability;
 use crate::ability::systems::{activate_ability, tick_ability_cooldown};
-use crate::ability::task_states::{TaskMachine, setup_task_machine_definition};
+use crate::ability::task_states::TaskMachine;
 use crate::ability::tasks::{Tasks, handles_wait_task_timers, on_task_completion_notification};
 use crate::assets::AbilityDef;
 use crate::prelude::Attribute;
@@ -20,8 +20,7 @@ use crate::schedule::EffectsSet;
 use bevy::ecs::template::TemplateContext;
 use bevy::prelude::*;
 pub use builder::AbilityBuilder;
-use hfsm_bevy::MachineInstance;
-use hfsm_bevy::StateMachinePlugin;
+use hfsm_bevy::{MachineInstance, StateMachineAppExt};
 use num_traits::{AsPrimitive, Num};
 use std::error::Error;
 use std::fmt::Formatter;
@@ -33,12 +32,12 @@ pub struct AbilityPlugin;
 
 impl Plugin for AbilityPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(StateMachinePlugin::<AbilityMachine>::default())
-            .add_plugins(StateMachinePlugin::<TaskMachine>::default());
+        // add_state_machine inserts the definition and the plugin together, so the definition is
+        // never missing when a MachineInstance is first inserted.
+        app.add_state_machine::<AbilityMachine>(ability_state::build_machine())
+            .add_state_machine::<TaskMachine>(task_states::build_machine());
 
-        app.add_systems(PreStartup, setup_ability_machine_definition)
-            .add_systems(PreStartup, setup_task_machine_definition)
-            .add_systems(Update, tick_ability_cooldown.in_set(EffectsSet::Prepare))
+        app.add_systems(Update, tick_ability_cooldown.in_set(EffectsSet::Prepare))
             .add_systems(PreUpdate, handles_wait_task_timers);
 
         app.add_observer(activate_ability)

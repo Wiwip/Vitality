@@ -34,7 +34,7 @@ Evidence for every line below was read from `../hfsm-rs` and from the pinned `be
 - after: G-1
 - test: none (a pure install refactor with no new behaviour). Check: no `add_plugins(StateMachinePlugin` and no `insert_resource(build_machine` remain in `src/`; the gate stays green; `examples/abilities.rs` still compiles.
 - origin: owner
-- status: todo
+- status: done
 
 ## C-3: pin the ability and task machines with headless tests
 - change: nothing in the repo drives an ability or task machine — `tests/test_systems.rs` covers attributes/effects only — so G-1's behavioural change at `src/ability/tasks.rs` and the `Duration` cooldown have no regression net. Add `tests/test_ability_machine.rs` on `MinimalPlugins` + `Time` + `StateMachinePlugin`/`add_state_machine` (no `bevy_ui`, no asset server, so it runs headless): drive one ability `Ready → Active → Recovery → Ready` through `MachineEvent<AbilityMachine>`, assert `StateTimer::is_armed(AbilityState::Recovery)` after `EndAbility` and that `Recovered` follows when the clock passes the cooldown, and assert that two `NotifyTaskCompletion` notifications in one update produce exactly one `StateEntered<AbilityMachine>` for `Recovery` (the case G-1's deferred `EndAbility` trigger decides).

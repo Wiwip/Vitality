@@ -2,7 +2,7 @@ extern crate core;
 
 use crate::effect::{AttributeDependency, Stacks};
 use bevy::prelude::*;
-use bevy::scene::{ScenePatch, ScenePlugin};
+use bevy::scene::ScenePlugin;
 use std::any::TypeId;
 use std::error::Error;
 use std::fmt::Formatter;
@@ -100,7 +100,7 @@ impl Plugin for AttributesPlugin {
             .register_type::<NodeType>();
 
         // ScenePlugin is unique and DefaultPlugins already adds it, so adding it again would panic.
-        if !app.world().contains_resource::<Assets<ScenePatch>>() {
+        if !app.is_plugin_added::<ScenePlugin>() {
             app.add_plugins(ScenePlugin);
         }
 
