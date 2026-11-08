@@ -25,9 +25,15 @@
 
 #[path = "support/common.rs"]
 mod common;
+#[path = "support/leaf.rs"]
+mod leaf;
 
 use crate::common::{HarnessWorld, WorldSpec, actor_entities, mark_dirty_fraction, seed_rng, tick};
+use crate::leaf::{
+    LeafFixture, leaf_fixture, leaf_view, read_by_id, read_entity_ref, read_except, read_slot,
+};
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
+use std::hint::black_box;
 
 /// Reality check: a whole `app.update()`, which under `TimeUpdateStrategy::FixedTimesteps(1)` is
 /// exactly one fixed tick of the real schedule set-up.
@@ -69,9 +75,88 @@ fn app_update(c: &mut Criterion) {
     group.finish();
 }
 
+/// Family C (BENCH-PLAN §2C): one attribute leaf read four ways, on the same generated world.
+/// Metric is ns/read, so `Throughput` stays unset.
+///
+/// Setup is [`leaf_fixture`]: build the world, tick it once so the resolver has actually run,
+/// snapshot the slot blocks, resolve the `ComponentId` and the view `QueryState`. Measured is one
+/// `read_*` call per iteration — for path (i) that is
+/// `QueryState::get` (the per-actor handle fetch the library does before it touches any leaf) plus
+/// the typed `get` whose bundle scan is what T3 blames, so (i) is an upper bound on the scan alone.
+fn leaf_access_paths(c: &mut Criterion) {
+    // A leaf read does not scale with the world, so the shape stays small and clean: the exclusion
+    // bundle is what is being priced, not the storage.
+    let spec = WorldSpec {
+        attributes_per_actor: 8,
+        effects_per_actor: 2,
+        modifiers_per_effect: 1,
+        actors: 10,
+        dirty_fraction: 0.0,
+        ticking_fraction: 0.0,
+    };
+
+    // The exclusion width goes in the id because it is the variable `leaf/exclusion_length` sweeps,
+    // and `a=8` does not reveal it. Carried on all four ids so the (i)/(iii) ratio that decides
+    // BENCH-PLAN §3 stays a pair of ids from one run.
+    let excl = leaf_fixture(&spec).excl;
+
+    let mut group = c.benchmark_group("leaf/access_paths");
+    group.bench_function(
+        format!("{}/path_i_except_get/excl={}", spec.shape_id(), excl),
+        |b| {
+            b.iter_batched_ref(
+                || leaf_fixture(&spec),
+                |fixture: &mut LeafFixture| {
+                    let view = leaf_view(fixture.app.world(), &mut fixture.view, fixture.actor);
+                    black_box(read_except(&view))
+                },
+                BatchSize::PerIteration,
+            );
+        },
+    );
+    group.bench_function(
+        format!("{}/path_ii_entity_get/excl={}", spec.shape_id(), excl),
+        |b| {
+            b.iter_batched_ref(
+                || leaf_fixture(&spec),
+                |fixture: &mut LeafFixture| {
+                    black_box(read_entity_ref(fixture.app.world(), fixture.actor))
+                },
+                BatchSize::PerIteration,
+            );
+        },
+    );
+    group.bench_function(
+        format!("{}/path_iii_get_by_id/excl={}", spec.shape_id(), excl),
+        |b| {
+            b.iter_batched_ref(
+                || leaf_fixture(&spec),
+                |fixture: &mut LeafFixture| {
+                    black_box(read_by_id(fixture.app.world(), fixture.actor, fixture.id))
+                },
+                BatchSize::PerIteration,
+            );
+        },
+    );
+    group.bench_function(
+        format!("{}/path_iv_slot_block/excl={}", spec.shape_id(), excl),
+        |b| {
+            b.iter_batched_ref(
+                || leaf_fixture(&spec),
+                |fixture: &mut LeafFixture| {
+                    black_box(read_slot(fixture.app.world(), fixture.actor))
+                },
+                BatchSize::PerIteration,
+            );
+        },
+    );
+    group.finish();
+}
+
 /// Every bench group hangs off here.
 fn resolver_benches(c: &mut Criterion) {
     app_update(c);
+    leaf_access_paths(c);
 }
 
 criterion_group!(benches, resolver_benches);
