@@ -25,10 +25,14 @@
 
 #[path = "support/common.rs"]
 mod common;
+#[path = "support/floor.rs"]
+mod floor;
 #[path = "support/leaf.rs"]
 mod leaf;
 
-use crate::common::{HarnessWorld, WorldSpec, actor_entities, mark_dirty_fraction, seed_rng, tick};
+use crate::common::{
+    HarnessWorld, WorldSpec, actor_entities, mark_dirty_fraction, run_fixed_tick, seed_rng, tick,
+};
 use crate::leaf::{
     Arity, Excl0, Excl5, Excl20, Excl40, ExclFixture, LeafFixture, excl_fixture, leaf_bench_spec,
     leaf_fixture, leaf_sweep_spec, leaf_view, read_by_id, read_entity_ref, read_except, read_slot,
@@ -77,6 +81,84 @@ fn app_update(c: &mut Criterion) {
             BatchSize::PerIteration,
         );
     });
+    group.finish();
+}
+
+/// Family A (BENCH-PLAN §2A): what one registered attribute costs a tick that has nothing to do.
+///
+/// An attribute is not only a component. `init_attribute` puts six systems into `FixedUpdate` for
+/// its type, and with no dirty actor every one of them still runs, prepares its archetypes and
+/// iterates nothing. Five points on one axis — 1/10/20 attributes from the harness's default pool,
+/// 40/80 from [`floor::FLOOR_POOL`] — over 1000 actors each, so the y-axis is only the schedule.
+///
+/// The world is built *before* `b.iter` and never rebuilt: a floor is by definition a hot-loop
+/// number, and `leaf/warm_cold` showed what a per-sample build does to one (`iter_batched_ref`
+/// setup is milliseconds of allocation that the reported ns never includes, but which is exactly what
+/// evicts the caches the tick would run on). The same world is ticked hundreds of times here, which
+/// is only sound because it stays idle — [`floor::prepare_floor`] clears the dirty markers and
+/// asserts one idle tick later that nothing re-marked itself, and the assert below re-checks that
+/// after the loop. Ticking alone does not reach that state: a resolve hands out `&mut T`, which
+/// `EffectsSet::Notify` reads as a change and answers with a fresh `MarkNodeDirty`, so a world with
+/// markers left in it re-resolves every attribute of every actor forever.
+///
+/// `run_fixed_tick` is `World::run_schedule(FixedUpdate)`, not `app.update()`: it runs the resolver
+/// and nothing else. It also does not advance `Time<Fixed>` (`common.rs`), which is harmless for a
+/// shape with zero effects and is what keeps this a floor — do not "fix" the time here, or the group
+/// quietly becomes `periodic/*`.
+///
+/// The metric is ns/tick, so `Throughput` is the attribute count: an idle tick touches no actor, and
+/// an `Elements(actors)` line would price 1000 entities the tick never looks at. Criterion reports
+/// each point; the ns-per-attribute-per-tick slope §3 reads is the least-squares fit over these five
+/// ids, from the `mean.point_estimate` in each `target/criterion/floor_idle_tick/<id>/new/estimates.json`
+/// the run writes (all five in one run, so the fit is the same measurement the ids print).
+///
+/// Measured at this tip, `st`/`dyn` (bevy's `multi_threaded` off, `libbevy_dylib.so` linked),
+/// `/proc/loadavg` 3.47 before the run and 3.06 after, 1000 actors each:
+///
+/// ```text
+/// a=1    21 077 ns/tick     a=10    49 347 ns/tick    a=20    83 953 ns/tick
+/// a=40  153 218 ns/tick     a=80   338 551 ns/tick
+/// slope 4 033 ns per attribute per tick, intercept 7 436 ns/tick, R^2 0.9934
+/// ```
+///
+/// That slope is 2× BENCH-PLAN §3's 2 µs/attr/tick row, so the row's decision stands: collapse the
+/// systems behind an erased op table regardless of what `recompute/all_attrs` says. Two readings of
+/// the same five points matter for whoever acts on it. The marginal cost is convex — 3.1 µs/attr
+/// between a=1 and a=10, 3.5 across the middle, 4.6 µs/attr between a=40 and a=80 — so the fit
+/// understates an attribute at the top of the range. And the 7.4 µs intercept is fitted, not
+/// measured: every shape registers one more attribute than its id counts, because `AttributesPlugin`
+/// registers `Stacks` into every app, so roughly one attribute's worth of that intercept is attribute
+/// machinery and only the remainder is the `FixedUpdate` walk itself. `floor_spec(0, 1000)` is the
+/// point that would split the two.
+fn floor_idle_tick(c: &mut Criterion) {
+    let mut group = c.benchmark_group("floor/idle_tick");
+    for attributes in floor::FLOOR_COUNTS {
+        let spec = floor::floor_spec(attributes, floor::FLOOR_ACTORS);
+        let mut shape = floor::floor_shape(&spec, floor::floor_pool(attributes));
+        assert_eq!(
+            shape.app.world().resource::<HarnessWorld>().attrs().len(),
+            attributes,
+            "shape {} registered a different number of attributes than it declares",
+            spec.shape_id()
+        );
+        group.throughput(Throughput::Elements(attributes as u64));
+        let world = shape.app.world_mut();
+        group.bench_function(format!("{}/run_fixed_tick", spec.shape_id()), |b| {
+            b.iter(|| {
+                run_fixed_tick(world);
+                // One read of the world the tick just ran on, so the result is consumed.
+                black_box(world.entities().len());
+            });
+        });
+        assert_eq!(
+            floor::dirty_entity_count(world),
+            0,
+            "shape {} ended its timed loop with {} dirty entities: the samples after the first one \
+             were resolving, not idling",
+            spec.shape_id(),
+            floor::dirty_entity_count(world)
+        );
+    }
     group.finish();
 }
 
@@ -271,6 +353,7 @@ fn read_excl<B: Bundle>(fixture: &mut ExclFixture<B>) -> f64 {
 /// Every bench group hangs off here.
 fn resolver_benches(c: &mut Criterion) {
     app_update(c);
+    floor_idle_tick(c);
     leaf_access_paths(c);
     leaf_exclusion_length(c);
     leaf_warm_cold(c);
