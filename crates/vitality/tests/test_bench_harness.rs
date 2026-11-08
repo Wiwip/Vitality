@@ -330,7 +330,11 @@ fn tiny_spec_drives_the_resolver() {
     let pool = app.world().resource::<HarnessWorld>().attrs();
 
     let actors = actor_entities(app.world_mut());
-    assert_eq!(actors.len(), tiny_spec().actors, "one entity per spec.actors");
+    assert_eq!(
+        actors.len(),
+        tiny_spec().actors,
+        "one entity per spec.actors"
+    );
     for &actor in actors.iter() {
         for attr in pool {
             assert!(
@@ -499,8 +503,7 @@ fn test_recompute_ratio() {
             after[index], before[index],
             "{} was dirty and its tick left current_value at {}: the base was written by \
              {BASE_DELTA}, so the resolve did not run and this shape is not timing an all-dirty tick",
-            attr.name,
-            before[index]
+            attr.name, before[index]
         );
         assert!(
             (after[index] - before[index] - BASE_DELTA).abs() < 1e-3,
@@ -559,8 +562,7 @@ fn test_recompute_ratio() {
         after[0], before[0],
         "{} was the one dirty attribute and its tick left current_value at {}: the dirty attribute \
          did not resolve, so the shape cannot price a walk",
-        moved.name,
-        before[0]
+        moved.name, before[0]
     );
     for index in 1..before.len() {
         assert_eq!(
@@ -568,10 +570,7 @@ fn test_recompute_ratio() {
             "{} moved from {} to {} on the tick that dirtied only {}: the walk is not \
              attribute-local, so `recompute/one_attr` does not hold the other attributes still and \
              the all/one ratio does not measure what §2B says it measures",
-            pool[index].name,
-            before[index],
-            after[index],
-            moved.name
+            pool[index].name, before[index], after[index], moved.name
         );
     }
 
@@ -596,3 +595,157 @@ fn pool_names(pool: &[AttrSpec]) -> Vec<&'static str> {
     pool.iter().map(|attr| attr.name).collect()
 }
 
+/// The actors of `actors` that carry at least one `Dirty<T>`, each with the attribute names that
+/// carry it. Per attribute rather than an entity count, because `dirty=25` claims a share of the
+/// *attributes* of those actors, not a share of the entities.
+fn dirty_by_actor(
+    world: &World,
+    pool: &[AttrSpec],
+    actors: &[Entity],
+) -> Vec<(Entity, Vec<&'static str>)> {
+    actors
+        .iter()
+        .map(|actor| (*actor, recompute::dirty_names(world, pool, *actor)))
+        .filter(|(_, names)| !names.is_empty())
+        .collect()
+}
+
+/// `mark_dirty_fraction` is what puts `dirty=N` into a bench id, so two of its claims have to be
+/// readable without doing anything to the world first: the count it returns is a count a caller can
+/// see, and it lands on exactly that many actors.
+///
+/// Both were false as committed. `AttrSpec::mark_dirty` is a `World::trigger`, and the observer's
+/// `try_insert(Dirty<T>)` (`vitality_effects/src/systems.rs:31-42`) stays in the world's deferred
+/// command queue until something flushes it, so the call used to report 2 marks on a world that still
+/// showed 0 — and `build_app_with` ends with that call, so every `dirty=N` id rested on marks nobody
+/// had made visible. The assert below is the guard: it reads the dirty set back with no flush, no
+/// tick, nothing else in between.
+///
+/// What the shape starts from matters: a built world is dirty on *every* attribute of *every* actor
+/// (`test_recompute_ratio` pins that), so dirtiness is only attributable to this call on a settled,
+/// proved-clean world — hence `floor::prepare_floor`. The other thing pinned here is that the marks
+/// never decay: a resolve writes `&mut T` and `on_change_notify_attribute_parents::<T>`
+/// (`vitality_effects/src/systems.rs:274-283`) answers that write with a fresh `MarkNodeDirty`, so
+/// the tick that removes a `Dirty<T>` puts it straight back. They also do not spread: exactly the
+/// marked actors are still dirty two ticks later, never their neighbours.
+#[test]
+fn mark_dirty_fraction_marks_are_visible() {
+    let spec = WorldSpec {
+        attributes_per_actor: 3,
+        effects_per_actor: 2,
+        modifiers_per_effect: 1,
+        actors: 4,
+        dirty_fraction: 0.0,
+        ticking_fraction: 0.0,
+    };
+    let mut app = build_app_with(&spec, common::ATTRIBUTE_POOL);
+    let cleared = floor::prepare_floor(&mut app);
+    let pool: &'static [AttrSpec] = app.world().resource::<HarnessWorld>().attrs();
+    let actors = actor_entities(app.world_mut());
+    assert_eq!(
+        actors.len(),
+        spec.actors,
+        "the shape built {} actors",
+        actors.len()
+    );
+    assert!(
+        cleared > 0,
+        "the build left no marker to clear, so a 0 below proves nothing (see test_recompute_ratio)"
+    );
+    assert!(
+        dirty_by_actor(app.world(), pool, &actors).is_empty(),
+        "a prepared shape is not clean: {:#?}",
+        dirty_by_actor(app.world(), pool, &actors)
+    );
+
+    let mut rng = common::seed_rng();
+    let marked = common::mark_dirty_fraction(app.world_mut(), pool, &actors, 0.5, &mut rng);
+
+    let dirty = dirty_by_actor(app.world(), pool, &actors);
+    assert_eq!(
+        marked,
+        spec.actors / 2,
+        "a 0.5 fraction over {} actors marked {marked}",
+        spec.actors
+    );
+    assert_eq!(
+        dirty.len(),
+        marked,
+        "mark_dirty_fraction returned {marked} but the caller can read {} dirty actors back: the \
+         marks are still deferred, so a bench id carrying dirty=N is timing whatever the build left, \
+         not the N its id counts",
+        dirty.len()
+    );
+    for (actor, names) in &dirty {
+        assert_eq!(
+            *names,
+            pool_names(pool),
+            "{actor:?} was picked by a fraction that marks whole actors, but carries {names:?}",
+        );
+    }
+
+    // The workload a `dirty=N` id claims has to survive the ticks that run it.
+    for tick_number in 1..=2 {
+        run_fixed_tick(app.world_mut());
+        assert_eq!(
+            dirty_by_actor(app.world(), pool, &actors),
+            dirty,
+            "the dirty set changed on tick {tick_number} after mark_dirty_fraction: the shape is \
+             drifting out of its own id",
+        );
+    }
+}
+
+/// `recompute::print_ratios` reads criterion's `estimates.json` by hand — `serde_json` is not a
+/// dependency of this crate (the workspace declares `serde` only, `serde_json` sits in the lockfile as
+/// criterion's own dependency, and `crates/vitality/Cargo.toml` is a protected path), and adding one
+/// is not this loop's call. The first version of that parser took the first `"point_estimate"` after
+/// the first `"mean"`, which is the *nested* one the moment a CI carries a `point_estimate`, and a
+/// truncated file could yield a prefix of some other number. Both fail silently, so the samples below
+/// are the ones the parser must get right and the ones it must refuse instead of printing.
+#[test]
+fn estimate_parser_reads_mean_only() {
+    // The file criterion 0.8.2 writes today (`analysis/mod.rs:282-293`): CI first, then the mean's
+    // own point estimate, then `median` whose own point estimate is the wrong answer.
+    let written = r#"{"mean":{"confidence_interval":{"confidence_level":0.95,"lower_bound":100.0,"upper_bound":200.0},"point_estimate":150.0,"standard_error":10.0},"median":{"confidence_interval":{"confidence_level":0.95,"lower_bound":1.0,"upper_bound":2.0},"point_estimate":9.0,"standard_error":0.5}}"#;
+    let mean =
+        recompute::parse_estimate(written).expect("the estimates.json criterion writes today");
+    assert_eq!(mean.ns, 150.0, "mean.point_estimate");
+    assert_eq!(
+        mean.ci_half, 50.0,
+        "half of the mean's 95 % CI ([100, 200] is ±50)"
+    );
+
+    // Same value, adversarial shape: the mean's own point estimate first, and a `point_estimate`
+    // nested inside the CI. A scan for the first key after `"mean"` returns 7.0 here.
+    let nested = r#"{"mean":{"point_estimate":150.0,"confidence_interval":{"point_estimate":7.0,"lower_bound":100.0,"upper_bound":200.0}}}"#;
+    assert_eq!(
+        recompute::parse_estimate(nested)
+            .expect("a CI that carries its own point_estimate")
+            .ns,
+        150.0
+    );
+
+    // A `mean` that is not a top-level member, a truncated file, an empty file and a quoted number:
+    // none of them is a measurement, so none of them may come back as one.
+    assert!(
+        recompute::parse_estimate(r#"{"extra":{"mean":{"point_estimate":150.0}}}"#).is_none(),
+        "a nested `mean` is not criterion's top-level mean"
+    );
+    assert!(
+        recompute::parse_estimate(r#"{"mean":{"confidence_interval":{"lower_bound":100.0,"upp"#)
+            .is_none(),
+        "a truncated file has no mean"
+    );
+    assert!(
+        recompute::parse_estimate("").is_none(),
+        "an empty file has no mean"
+    );
+    assert!(
+        recompute::parse_estimate(
+            r#"{"mean":{"confidence_interval":{"lower_bound":100.0,"upper_bound":200.0},"point_estimate":"150"}}"#
+        )
+        .is_none(),
+        "a quoted number is not an estimate"
+    );
+}

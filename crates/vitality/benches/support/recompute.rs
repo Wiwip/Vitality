@@ -29,6 +29,7 @@ use crate::common::{
 use crate::floor;
 use bevy::prelude::{App, Entity, World};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 /// The A axis of §2B. 20 is the deepest attribute count the default pool serves without declaring a
 /// second pool, and `common.rs` says so.
@@ -177,7 +178,8 @@ pub fn assert_dirty_attrs(
     let expected: Vec<&'static str> = dirtied.pick(pool).iter().map(|a| a.name).collect();
     let got = dirty_names(world, pool, actor);
     assert_eq!(
-        got, expected,
+        got,
+        expected,
         "{when}: id `dirty={}` holds {} dirty attribute(s) {got:?}, expected the {} of {:?}",
         dirtied.tag(),
         got.len(),
@@ -217,19 +219,296 @@ pub fn criterion_root() -> Option<PathBuf> {
     candidates.into_iter().find(|path| path.is_dir())
 }
 
-/// `mean.point_estimate` (ns) from the estimates file criterion wrote for `group`/`bench_id`, or
-/// `None`. Criterion 0.8 stores each benchmark as it finishes (`analysis/mod.rs:171`, gated on
-/// `should_save_baseline`, true unless `--baseline`/`--save-baseline`/`--load-baseline` is passed), so
-/// the `one_attr` files are on disk before the `all_attrs` side of the same A is read. Parsed by hand:
-/// `serde_json` is not a dependency of this crate and none may be added.
-pub fn estimate_ns(root: &Path, group: &str, bench_id: &str) -> Option<f64> {
-    let text = std::fs::read_to_string(estimates_path(root, group, bench_id)).ok()?;
-    let mean = text.find("\"mean\"")?;
-    let key = "\"point_estimate\":";
-    let start = mean + text[mean..].find(key)? + key.len();
-    let tail = &text[start..];
-    let end = tail.find([',', '}']).unwrap_or_else(|| tail.len().min(40));
-    tail[..end].trim().parse().ok()
+/// The two numbers a ratio row needs out of one `estimates.json`: `mean.point_estimate` and half of
+/// its 95 % CI. A ratio is a difference of two means, and a difference is only a difference when it
+/// clears both half-widths added together — which is how `-0.33` and `1.65` got printed at this tip.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Estimate {
+    pub ns: f64,
+    pub ci_half: f64,
+}
+
+impl Estimate {
+    /// Whether the gap between two means is inside the noise both of them carry.
+    pub fn indistinguishable_from(&self, other: &Self) -> bool {
+        (self.ns - other.ns).abs() <= self.ci_half + other.ci_half
+    }
+}
+
+/// Why [`estimate`] refused to hand back a number. Every variant carries the path, because the
+/// failure this loop actually hit was reading a `target/criterion` tree an *older* bench binary wrote
+/// and calling the result measured.
+pub enum Refusal {
+    /// No file there: the benchmark did not run, or criterion was told not to save a baseline.
+    Missing(PathBuf),
+    /// Older than the running binary, so some other build wrote it.
+    Stale(PathBuf),
+    /// A file is there and its `mean` is not what criterion writes.
+    Unparsable(PathBuf),
+}
+
+impl Refusal {
+    fn explain(&self) -> String {
+        match self {
+            Self::Missing(path) => format!("no estimate at {}", path.display()),
+            Self::Stale(path) => format!(
+                "{} is older than this bench binary, so it was written by an earlier build",
+                path.display()
+            ),
+            Self::Unparsable(path) => format!(
+                "{} has no readable mean.point_estimate + confidence_interval",
+                path.display()
+            ),
+        }
+    }
+}
+
+/// mtime of the executable running the bench: the stamp every estimate has to be younger than.
+fn binary_mtime() -> Option<SystemTime> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.metadata().ok())
+        .and_then(|meta| meta.modified().ok())
+}
+
+/// The estimate criterion wrote for `group`/`bench_id`, or the reason there is none. Refuses a file
+/// older than this binary rather than printing a ratio made of an older build's numbers; criterion
+/// writes the file as its benchmark finishes, so in a real run every estimate of the run is newer than
+/// the binary that produced it.
+pub fn estimate(root: &Path, group: &str, bench_id: &str) -> Result<Estimate, Refusal> {
+    let path = estimates_path(root, group, bench_id);
+    let meta = match path.metadata() {
+        Ok(meta) => meta,
+        Err(_) => return Err(Refusal::Missing(path)),
+    };
+    if let Some(built) = binary_mtime() {
+        if meta.modified().is_ok_and(|written| written < built) {
+            return Err(Refusal::Stale(path));
+        }
+    }
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(_) => return Err(Refusal::Unparsable(path)),
+    };
+    parse_estimate(&text).ok_or(Refusal::Unparsable(path))
+}
+
+/// Reads the top-level `mean` member of an estimates file. Hand-written because `serde_json` is not a
+/// dependency of this crate — the workspace declares `serde` only, and the `serde_json` in the
+/// lockfile belongs to criterion, and `crates/vitality/Cargo.toml` is a protected path this loop may
+/// not edit — and because the first version of this scan searched for `"point_estimate"` after
+/// `"mean"`, which is the *nested* key the moment a CI carries one. So: walk members with the depth
+/// tracked, take only a top-level `mean`, only its own `point_estimate`, and refuse anything that does
+/// not parse instead of returning a prefix of a number.
+pub fn parse_estimate(text: &str) -> Option<Estimate> {
+    let mut scan = Scan::new(text.as_bytes());
+    scan.ws();
+    scan.expect(b"{")?;
+    loop {
+        scan.ws();
+        if scan.eat(b'}') {
+            return None;
+        }
+        let key = scan.string()?;
+        scan.ws();
+        scan.expect(b":")?;
+        if key == "mean" {
+            let (ns, ci_half) = scan.mean()?;
+            return Some(Estimate { ns, ci_half });
+        }
+        scan.skip_value()?;
+        scan.ws();
+        if scan.eat(b',') {
+            continue;
+        }
+        return None;
+    }
+}
+
+/// Position-tracked byte cursor, just enough JSON to read one member of one object.
+struct Scan<'a> {
+    text: &'a [u8],
+    at: usize,
+}
+
+impl<'a> Scan<'a> {
+    fn new(text: &'a [u8]) -> Self {
+        Self { text, at: 0 }
+    }
+
+    fn ws(&mut self) {
+        while self.at < self.text.len()
+            && matches!(self.text[self.at], b' ' | b'\t' | b'\n' | b'\r')
+        {
+            self.at += 1;
+        }
+    }
+
+    fn eat(&mut self, byte: u8) -> bool {
+        if self.text.get(self.at) == Some(&byte) {
+            self.at += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn expect(&mut self, token: &[u8]) -> Option<()> {
+        if self.text.get(self.at..self.at + token.len())? == token {
+            self.at += token.len();
+            Some(())
+        } else {
+            None
+        }
+    }
+
+    /// A JSON string, unescaped only. An escape would mean a key criterion does not write.
+    fn string(&mut self) -> Option<&'a str> {
+        self.expect(b"\"")?;
+        let start = self.at;
+        while self.at < self.text.len() && self.text[self.at] != b'"' {
+            self.at += 1;
+        }
+        let body = std::str::from_utf8(self.text.get(start..self.at)?).ok()?;
+        self.expect(b"\"")?;
+        if body.contains('\\') {
+            return None;
+        }
+        Some(body)
+    }
+
+    fn number(&mut self) -> Option<f64> {
+        let start = self.at;
+        self.eat(b'-');
+        while self.at < self.text.len() && self.text[self.at].is_ascii_digit() {
+            self.at += 1;
+        }
+        if self.eat(b'.') {
+            while self.at < self.text.len() && self.text[self.at].is_ascii_digit() {
+                self.at += 1;
+            }
+        }
+        if self.at == start || self.text[start..self.at] == *b"-" {
+            return None;
+        }
+        std::str::from_utf8(self.text.get(start..self.at)?)
+            .ok()?
+            .parse()
+            .ok()
+    }
+
+    /// `mean`: its own `point_estimate`, and the bounds of its own `confidence_interval`, in whichever
+    /// order criterion writes them.
+    fn mean(&mut self) -> Option<(f64, f64)> {
+        self.ws();
+        self.expect(b"{")?;
+        let mut point = None;
+        let mut bounds = None;
+        loop {
+            self.ws();
+            if self.eat(b'}') {
+                break;
+            }
+            let key = self.string()?;
+            self.ws();
+            self.expect(b":")?;
+            match key {
+                "point_estimate" => point = Some(self.number()?),
+                "confidence_interval" => bounds = Some(self.bounds()?),
+                _ => self.skip_value()?,
+            }
+            self.ws();
+            if self.eat(b',') {
+                continue;
+            }
+            self.expect(b"}")?;
+            break;
+        }
+        let (lower, upper) = bounds?;
+        Some((point?, (upper - lower) / 2.0))
+    }
+
+    /// `confidence_interval`'s bounds, read by key so a nested `point_estimate` in there is skipped
+    /// rather than mistaken for the mean's.
+    fn bounds(&mut self) -> Option<(f64, f64)> {
+        self.ws();
+        self.expect(b"{")?;
+        let (mut lower, mut upper) = (None, None);
+        loop {
+            self.ws();
+            if self.eat(b'}') {
+                break;
+            }
+            let key = self.string()?;
+            self.ws();
+            self.expect(b":")?;
+            match key {
+                "lower_bound" => lower = Some(self.number()?),
+                "upper_bound" => upper = Some(self.number()?),
+                _ => self.skip_value()?,
+            }
+            self.ws();
+            if self.eat(b',') {
+                continue;
+            }
+            self.expect(b"}")?;
+            break;
+        }
+        Some((lower?, upper?))
+    }
+
+    /// Consumes a value without caring what it holds, tracking depth so a `}` inside a nested object
+    /// cannot end the member walk.
+    fn skip_value(&mut self) -> Option<()> {
+        self.ws();
+        match self.text.get(self.at)? {
+            b'{' | b'[' => {
+                let (open, close) = match self.text[self.at] {
+                    b'{' => (b'{', b'}'),
+                    _ => (b'[', b']'),
+                };
+                let mut depth = 0usize;
+                let mut in_string = false;
+                while self.at < self.text.len() {
+                    let byte = self.text[self.at];
+                    self.at += 1;
+                    if in_string {
+                        if byte == b'"' {
+                            in_string = false;
+                        }
+                    } else {
+                        match byte {
+                            b'"' => in_string = true,
+                            b if b == open => depth += 1,
+                            b if b == close => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    return Some(());
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                None
+            }
+            b'"' => {
+                self.string()?;
+                Some(())
+            }
+            _ => {
+                while self.at < self.text.len()
+                    && !matches!(
+                        self.text[self.at],
+                        b',' | b'}' | b']' | b' ' | b'\n' | b'\r' | b'\t'
+                    )
+                {
+                    self.at += 1;
+                }
+                Some(())
+            }
+        }
+    }
 }
 
 /// One measured point of one side of the ratio: the shape and the criterion id it was timed under.
@@ -241,26 +520,52 @@ pub struct Point {
 /// Prints, per E, the raw `cost(all) / (A * cost(one))` and the floor-subtracted
 /// `(all - none) / (A * (one - none))`, reading the estimates criterion wrote for the ids it just
 /// timed. This *is* the §2B deliverable: the raw `time:` lines in criterion's own summary carry the
-/// shape, so nothing here restates them, and a missing estimate prints the path it wanted so a
-/// `--baseline` run cannot pass for a measured one.
+/// shape, so nothing here restates them.
 ///
-/// §2B's own row subtracts `idle(A)` — "so T1's floor is not counted as walk cost" — so
-/// [`marginal`] is the ratio §2B means, and the raw one is kept only because it is the number P-6's
-/// item text asks for. It is not a small correction: at A=20 the idle schedule is most of `one`, so
-/// the raw ratio is arithmetic on dead work.
+/// Four rules, all of them earned by a wrong number that got printed before:
 ///
-/// A shape whose dirty tick costs no more than its clean tick gets `marginal=0`: a denominator at or
-/// below zero cannot invent a ratio.
+/// * a row reads all three sides and asserts the three shapes are one shape, so an `all` cannot be
+///   paired with a `one` from another A or E;
+/// * an estimate older than this running binary, or missing, is an `ERROR` line and no number. A
+///   `target/criterion` tree left by an earlier build is otherwise indistinguishable from a
+///   measurement, and this loop read one;
+/// * every level carries its CI half-width, and a ratio whose denominator sits inside the half-widths
+///   of the two means it is made of prints `noise` rather than a figure — the `-0.33` and `1.65`
+///   marginals of an earlier run were both inside theirs;
+/// * A=1 rows print and never enter a median: `Dirtied::pick(One) == pick(All)` when
+///   `attributes_per_actor == 1`, so both sides of those rows are the same benchmark and their ratio
+///   is arithmetic on an identity, not a measurement.
+///
+/// §2B's own row subtracts `idle(A)` — "so T1's floor is not counted as walk cost" — so the marginal
+/// is the ratio §2B means, and the raw one is kept only because it is the number P-6's item text asks
+/// for. It is not a small correction: at A=20 the idle schedule is most of `one`, so the raw ratio is
+/// arithmetic on dead work.
 ///
 /// Called after every side of the A has been timed, because the files only exist once criterion has
 /// finished the benchmark that writes them.
 pub fn print_ratios(a: usize, none: &[Point], one: &[Point], all: &[Point]) {
-    let root = criterion_root();
+    assert_eq!(
+        none.len(),
+        all.len(),
+        "the sides of the ratio table hold {} and {} points",
+        none.len(),
+        all.len()
+    );
+    let rows = none.len();
+    let Some(root) = criterion_root() else {
+        println!(
+            "recompute ratio table (A={a}): ERROR no criterion output under CARGO_TARGET_DIR or any \
+             ancestor's target/criterion, so no ratio can be reported"
+        );
+        return;
+    };
     println!(
-        "recompute ratio table (A={a}, ns per run_fixed_tick, estimates under {root:?}): \
-         marginal=(all-none)/(A*(one-none)) is BENCH-PLAN §2B's ratio, none_dirty being the \
-         same world with zero attributes dirty (its idle schedule, §2A); raw=all/(A*one) is the \
-         item's simpler form, which counts that idle schedule as walk cost:"
+        "recompute ratio table (A={a}, ns per run_fixed_tick, estimates under {root:?}): each level is \
+         the mean ± half its 95 % CI; marginal=(all-none)/(A*(one-none)) is BENCH-PLAN §2B's ratio, \
+         none_dirty being the same world with zero attributes dirty (its idle schedule, §2A); \
+         raw=all/(A*one) is the item's simpler form, which counts that idle schedule as walk cost; \
+         `noise` means the denominator is inside the half-widths of the means it is made of, so the \
+         row carries no number:"
     );
     let mut raws = Vec::new();
     let mut marginals = Vec::new();
@@ -270,58 +575,89 @@ pub fn print_ratios(a: usize, none: &[Point], one: &[Point], all: &[Point]) {
             all.spec.shape_id(),
             "the sides of the ratio were measured on different shapes"
         );
-        // The full criterion ids of the pair, twice over on purpose: no number may travel without the
+        assert_eq!(
+            none.spec.shape_id(),
+            one.spec.shape_id(),
+            "the floor side of the ratio is a different shape from the one-attribute side, so the \
+             subtraction is not idle-work-vs-walk on one world"
+        );
+        // The full criterion ids of the row, twice over on purpose: no number may travel without the
         // shape it came from (BENCH-PLAN §1.5), and the row's `dirty=` must match the ids it reads.
         let id = format!(
             "{} vs {}",
             full_id(Dirtied::One, &one.bench_id),
             full_id(Dirtied::All, &all.bench_id)
         );
-        let ns = |dirtied: Dirtied, point: &Point| {
-            root.as_ref()
-                .and_then(|root| estimate_ns(root, dirtied.group(), &point.bench_id))
+        let read = |dirtied: Dirtied, point: &Point| {
+            estimate(&root, dirtied.group(), &point.bench_id).map_err(|refusal| refusal.explain())
         };
-        let (Some(none_ns), Some(one_ns), Some(all_ns)) =
-            (ns(Dirtied::None, none), ns(Dirtied::One, one), ns(Dirtied::All, all))
-        else {
-            println!(
-                "  {id}: no estimate at {:?} (a --baseline or --load-baseline run writes neither)",
-                root.as_ref()
-                    .map(|root| estimates_path(root, Dirtied::All.group(), &all.bench_id))
-            );
-            continue;
-        };
-        let raw = all_ns / (a as f64 * one_ns);
-        raws.push(raw);
-        let walk = one_ns - none_ns;
-        let marginal = if walk > 0.0 {
-            marginals.push((all_ns - none_ns) / (a as f64 * walk));
-            format!("{:.2}", (all_ns - none_ns) / (a as f64 * walk))
-        } else {
-            "0 (one<=none: a dirty tick cost no more than the clean one)".to_string()
+        let (none_ns, one_ns, all_ns) = match (
+            read(Dirtied::None, none),
+            read(Dirtied::One, one),
+            read(Dirtied::All, all),
+        ) {
+            (Ok(none), Ok(one_side), Ok(all_side)) => (none, one_side, all_side),
+            (none_side, one_side, all_side) => {
+                for reason in [none_side.err(), one_side.err(), all_side.err()]
+                    .into_iter()
+                    .flatten()
+                {
+                    println!("  {id}: ERROR {reason} — no ratio for this row");
+                }
+                continue;
+            }
         };
         println!(
-            "  {id}: none={none_ns:.0} one={one_ns:.0} all={all_ns:.0} raw={raw:.2} marginal={marginal}"
+            "  {id}: none={:.0}±{:.0} one={:.0}±{:.0} all={:.0}±{:.0}",
+            none_ns.ns, none_ns.ci_half, one_ns.ns, one_ns.ci_half, all_ns.ns, all_ns.ci_half
         );
+        let (raw_text, marginal_text) = if one_ns.indistinguishable_from(&none_ns) {
+            (String::from("noise"), String::from("noise"))
+        } else {
+            let walk = one_ns.ns - none_ns.ns;
+            let raw = all_ns.ns / (a as f64 * one_ns.ns);
+            raws.push(raw);
+            let marginal = if walk <= 0.0 {
+                String::from("no ratio (a dirty tick cost less than the clean one, outside noise)")
+            } else {
+                let ratio = (all_ns.ns - none_ns.ns) / (a as f64 * walk);
+                marginals.push(ratio);
+                format!("{ratio:.2}")
+            };
+            (format!("{raw:.2}"), marginal)
+        };
+        println!("  {id}: raw={raw_text} marginal={marginal_text}");
+    }
+    if a == 1 {
+        println!(
+            "  A=1: no median. Dirtied::pick(One) == pick(All) when attributes_per_actor == 1, so the \
+             two sides of every row above are the same benchmark run twice: their ratio is 1 by \
+             construction, not by measurement."
+        );
+        return;
     }
     println!(
         "  A={a}: raw {}; marginal {}",
-        ratios_in_words(&raws),
-        ratios_in_words(&marginals)
+        ratios_in_words(&raws, rows),
+        ratios_in_words(&marginals, rows)
     );
 }
 
-/// `median 0.07 over 4 points, min 0.06, max 0.12` — or the reason there is no number.
-fn ratios_in_words(ratios: &[f64]) -> String {
-    if ratios.is_empty() {
-        return "no ratio (no estimates)".to_string();
+/// `median 0.07 over 4 rows, min 0.06, max 0.12` — or the reason there is no number. Rows that came
+/// back `noise` or `ERROR` are not in the list, and a median over part of the grid is a number the run
+/// did not measure.
+fn ratios_in_words(ratios: &[f64], rows: usize) -> String {
+    if ratios.len() != rows {
+        return format!(
+            "no median ({} of {rows} rows carried a number; the rest are noise or ERROR above)",
+            ratios.len()
+        );
     }
     let mut sorted = ratios.to_vec();
     sorted.sort_by(|x, y| x.partial_cmp(y).expect("ratio of two positive durations"));
     format!(
-        "median {:.2} over {} points, min {:.2}, max {:.2}",
+        "median {:.2} over {rows} rows, min {:.2}, max {:.2}",
         sorted[sorted.len() / 2],
-        sorted.len(),
         sorted[0],
         sorted[sorted.len() - 1]
     )
@@ -329,5 +665,8 @@ fn ratios_in_words(ratios: &[f64]) -> String {
 
 /// The id criterion printed: group + bench id, so a ratio row and a `time:` line are the same string.
 fn full_id(dirtied: Dirtied, bench_id: &str) -> String {
-    format!("{dirtied_group}/{bench_id}", dirtied_group = dirtied.group())
+    format!(
+        "{dirtied_group}/{bench_id}",
+        dirtied_group = dirtied.group()
+    )
 }

@@ -20,8 +20,17 @@
 //! ```
 //!
 //! A bench id is `<group>/<WorldSpec::shape_id()>`, so a number never travels without the shape it
-//! came from. Label each number `st`/`mt` and `dyn`/`static` by hand when it is quoted: this crate's
-//! dev-dependencies turn on bevy's `dynamic_linking` and leave `multi_threaded` off (BENCH-PLAN §1.4).
+//! came from.
+//!
+//! **Every number this repo can produce is an `mt`/`dyn` build, never `st`/`static`.** In the mirror,
+//! `cargo tree --offline -e features -p vitality | grep -c multi_threaded` prints **12** and
+//! `grep -c dynamic_linking` prints **3**: the `[dev-dependencies.bevy]` block of
+//! `crates/vitality/Cargo.toml` (features `ui`, `dynamic_linking`, `debug`, …) unifies with the
+//! library's bevy for every test and bench target, and `ui` → `default_platform` → `multi_threaded` →
+//! `bevy_ecs`/`bevy_tasks`. A `st` label therefore describes a build nobody measured, and BENCH-PLAN
+//! §3's floor row — keyed on `st`, `static` — cannot be satisfied or dismissed from this tree as it
+//! stands; see [`floor_idle_tick`] for what that does to the decision and `.auto/decisions.md` D-22
+//! for the manifest change (protected path, owner's call) that would settle it.
 
 #[path = "support/common.rs"]
 mod common;
@@ -48,6 +57,19 @@ use std::hint::black_box;
 
 /// Reality check: a whole `app.update()`, which under `TimeUpdateStrategy::FixedTimesteps(1)` is
 /// exactly one fixed tick of the real schedule set-up.
+///
+/// The id carries `dirty=25`, so the timed tick has to start on a world dirty on 25 of its 100 actors
+/// and clean on the other 75. It did not: `build_app_with` hands back a world dirty on *every* actor
+/// (`common.rs`), the re-mark below only added marks to marks, and before P-13 the marks it added were
+/// still deferred, so every sample timed a 100 %-dirty tick under a `dirty=25` label. The setup now
+/// settles the world first — [`floor::prepare_floor`]: tick, clear every marker, one idle
+/// `run_fixed_tick` that has to leave nothing dirty — and marks the fraction afterwards, which
+/// [`mark_dirty_fraction`] now flushes so the marks are really on those entities when `tick` runs.
+/// The count is asserted per sample, in setup, because an id nobody checks is a label.
+///
+/// Build and settling are setup, not measurement, so only the tick is timed and the dirty set cannot
+/// drift across samples (BENCH-PLAN §1.3 and §7). `PerIteration`: an `App` is not a value to keep
+/// several of in memory.
 fn app_update(c: &mut Criterion) {
     let spec = WorldSpec {
         attributes_per_actor: 8,
@@ -61,21 +83,32 @@ fn app_update(c: &mut Criterion) {
     let mut group = c.benchmark_group("harness/app_update");
     group.throughput(Throughput::Elements(spec.actors as u64));
     group.bench_function(spec.shape_id(), |b| {
-        // Build and re-marking are setup, so only the tick is timed and the dirty set cannot
-        // drift across samples (BENCH-PLAN §1.3 and §7). `PerIteration`: an `App` is not a value
-        // to keep several of in memory.
         b.iter_batched_ref(
             || {
                 let mut app = spec.build_app();
+                // Clean before the fraction, or `dirty=25` describes nothing: a built world is dirty on
+                // everything and a resolve re-marks itself, so ticking is not how you get there.
+                floor::prepare_floor(&mut app);
                 let attrs = app.world().resource::<HarnessWorld>().attrs();
                 let actors = actor_entities(app.world_mut());
                 let mut rng = seed_rng();
-                mark_dirty_fraction(
-                    app.world_mut(),
-                    attrs,
-                    &actors,
+                let marked =
+                    mark_dirty_fraction(app.world_mut(), attrs, &actors, spec.dirty_fraction, &mut rng);
+                assert_eq!(
+                    marked,
+                    (spec.actors as f32 * spec.dirty_fraction).round() as usize,
+                    "shape {} asked for a {} fraction of {} actors and got {marked}",
+                    spec.shape_id(),
                     spec.dirty_fraction,
-                    &mut rng,
+                    spec.actors
+                );
+                assert_eq!(
+                    floor::dirty_entity_count(app.world()),
+                    marked,
+                    "shape {} marks {marked} actors in its setup but its world carries {}: the id's \
+                     dirty= field is not the workload the timed tick sees",
+                    spec.shape_id(),
+                    floor::dirty_entity_count(app.world())
                 );
                 app
             },
@@ -114,8 +147,9 @@ fn app_update(c: &mut Criterion) {
 /// ids, from the `mean.point_estimate` in each `target/criterion/floor_idle_tick/<id>/new/estimates.json`
 /// the run writes (all five in one run, so the fit is the same measurement the ids print).
 ///
-/// Measured at this tip, `st`/`dyn` (bevy's `multi_threaded` off, `libbevy_dylib.so` linked),
-/// `/proc/loadavg` 3.47 before the run and 3.06 after, 1000 actors each:
+/// Measured at this tip, `mt`/`dyn` (`multi_threaded` on and `libbevy_dylib.so` linked, as the module
+/// doc says; the label here read `st` until P-13 — the numbers below are that same run, only the label
+/// was wrong), `/proc/loadavg` 3.47 before the run and 3.06 after, 1000 actors each:
 ///
 /// ```text
 /// a=1    21 077 ns/tick     a=10    49 347 ns/tick    a=20    83 953 ns/tick
@@ -123,9 +157,15 @@ fn app_update(c: &mut Criterion) {
 /// slope 4 033 ns per attribute per tick, intercept 7 436 ns/tick, R^2 0.9934
 /// ```
 ///
-/// That slope is 2× BENCH-PLAN §3's 2 µs/attr/tick row, so the row's decision stands: collapse the
-/// systems behind an erased op table regardless of what `recompute/all_attrs` says. Two readings of
-/// the same five points matter for whoever acts on it. The marginal cost is convex — 3.1 µs/attr
+/// That slope is 2× BENCH-PLAN §3's 2 µs/attr/tick row, so the row's decision — collapse the systems
+/// behind an erased op table regardless of what `recompute/all_attrs` says — reads as met. Read it with
+/// the caveat: the row is keyed on `st`/`static` (`BENCH-PLAN.md:146`), a build this crate cannot
+/// produce without a manifest edit (the dev-dependency bevy turns `multi_threaded` and
+/// `dynamic_linking` on for every bench, module doc above), so that 2× is one `mt`/`dyn` measurement
+/// held against a threshold set for a build nobody can measure here. D-22: the direction of the
+/// correction is not guessable, because a single-threaded executor removes work-stealing *and* any
+/// parallel execution of the six per-attribute systems. Two readings of the same five points matter
+/// for whoever acts on it. The marginal cost is convex — 3.1 µs/attr
 /// between a=1 and a=10, 3.5 across the middle, 4.6 µs/attr between a=40 and a=80 — so the fit
 /// understates an attribute at the top of the range. And the 7.4 µs intercept is fitted, not
 /// measured: every shape registers one more attribute than its id counts, because `AttributesPlugin`
@@ -281,7 +321,7 @@ fn excl_width<B: Bundle + Arity>(group: &mut BenchmarkGroup<'_, WallTime>, spec:
 /// `cold` repeats `leaf/access_paths/path_i_except_get`: `iter_batched_ref` setup is a whole `App`
 /// build plus a tick per sample — milliseconds of allocation the reported number does not include,
 /// but which is exactly what evicts the caches around a read that has measured 572–695 ns at this
-/// tip (`st`/`dyn`, for both
+/// tip (`mt`/`dyn`, for both
 /// `leaf/access_paths/a=8/e=2/m=1/actors=10/dirty=0/tick=0/path_i_except_get/excl=9` and its
 /// `leaf/warm_cold/a=8/e=2/m=1/actors=10/dirty=0/tick=0/cold_except_get/excl=9` twin). `warm` is one
 /// already-built fixture read back to back, so nothing evicts anything.
