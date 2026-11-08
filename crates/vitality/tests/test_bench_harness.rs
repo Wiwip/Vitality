@@ -4,6 +4,8 @@
 
 #[path = "../benches/support/common.rs"]
 mod common;
+#[path = "../benches/support/floor.rs"]
+mod floor;
 #[path = "../benches/support/leaf.rs"]
 mod leaf;
 
@@ -150,6 +152,81 @@ fn four_paths(fixture: &mut leaf::LeafFixture, actor: Entity) -> [(&'static str,
         ),
         ("(iv) slot block", leaf::read_slot(world, actor)),
     ]
+}
+
+/// Family A (`floor/idle_tick`, BENCH-PLAN §2A) times ticks that do nothing, so the shape has to be
+/// provably idle before its ns/tick means anything: the actor count the spec asked for, every
+/// attribute of *the pool that shape registered* on every actor, nothing left dirty anywhere in the
+/// world, and no effect for a tick to resolve. The tiny version of the shape (3 attributes, 5
+/// actors) lives here; the bench's 1000-actor shapes are the same call with bigger numbers.
+///
+/// The pool-length check is the point of the second assertion: a shape that registers a deeper pool
+/// than it declares still gives every actor every attribute, so only `attrs().len()` catches that a
+/// 1-attribute point is really paying for 80 registrations and would put a lie in the fitted slope.
+///
+/// What `HarnessWorld::plan` can prove here is narrower than the other three: it records what the
+/// *generator* (`prepare_world`) built, not what a hand-built world contains. An empty `plan` says
+/// this shape asked for no effects; it says nothing about an effect someone inserted by hand.
+#[test]
+fn floor_shape_builds() {
+    let spec = floor::floor_spec(3, 5);
+    let shape = floor::floor_shape(&spec, common::ATTRIBUTE_POOL);
+    let world = shape.app.world();
+
+    assert_eq!(
+        shape.actors.len(),
+        spec.actors,
+        "the floor shape built {} actors, not the {} its id claims",
+        shape.actors.len(),
+        spec.actors
+    );
+
+    let pool = world.resource::<HarnessWorld>().attrs();
+    assert_eq!(
+        pool.len(),
+        spec.attributes_per_actor,
+        "the shape asked for {} attributes and registered {}: a deeper pool than the shape declares \
+         is what makes the floor's slope wrong, because every extra attribute brings its own \
+         systems into every tick",
+        spec.attributes_per_actor,
+        pool.len()
+    );
+    for &actor in shape.actors.iter() {
+        for attr in pool {
+            assert!(
+                attr.current(world, actor).is_some(),
+                "{} missing on actor {actor:?}: a floor point whose actors do not carry the whole \
+                 pool does not price the schedule it is labelled as",
+                attr.name
+            );
+        }
+    }
+
+    // Positive control for the walk below: `build_app_with` returns after Startup only, so the
+    // `Insert<T>` observers have dirtied every attribute of every actor and nothing has resolved.
+    // A walk that could not see this would also report 0 after the prepare tick, and the floor would
+    // be measured on a world nobody proved was clean.
+    assert!(
+        shape.dirty_at_build > 0,
+        "the world was already clean when build_app_with returned ({} dirty entities found by the \
+         walk): either the resolver ran during the build, or `dirty_entity_count` cannot see a \
+         Dirty<T> at all and its 0 below proves nothing",
+        shape.dirty_at_build
+    );
+
+    assert_eq!(
+        floor::dirty_entity_count(world),
+        0,
+        "a prepared floor shape still has {} dirty entities: the timed ticks would be resolving, \
+         not idling",
+        floor::dirty_entity_count(world)
+    );
+
+    assert!(
+        world.resource::<HarnessWorld>().plan.is_empty(),
+        "the floor shape built {} effects: with a modifier to apply a tick is not idle",
+        world.resource::<HarnessWorld>().plan.len()
+    );
 }
 
 /// `leaf/exclusion_length` (BENCH-PLAN §2C) puts its x-axis in the bench id, so two things have to
