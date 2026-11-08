@@ -29,6 +29,8 @@ mod common;
 mod floor;
 #[path = "support/leaf.rs"]
 mod leaf;
+#[path = "support/recompute.rs"]
+mod recompute;
 
 use crate::common::{
     HarnessWorld, WorldSpec, actor_entities, mark_dirty_fraction, run_fixed_tick, seed_rng, tick,
@@ -350,6 +352,72 @@ fn read_excl<B: Bundle>(fixture: &mut ExclFixture<B>) -> f64 {
     read_except(&view)
 }
 
+/// Family B (BENCH-PLAN §2B): does the effect walk run once per attribute (T2)?
+///
+/// One actor, A attributes, E permanent effects x 1 modifier, `b.iter` over [`run_fixed_tick`] on a
+/// world built outside the closure. The only thing `one_attr` and `all_attrs` differ in is how many
+/// of the A attributes carry a `Dirty<T>`, and the deliverable is the ratio of the two, which
+/// [`recompute::print_ratios`] prints per A from the `estimates.json` criterion writes for these very
+/// ids (criterion 0.8 stores each benchmark as it finishes, so the `one_attr` file is on disk before
+/// the `all_attrs` one of the same A is read).
+///
+/// What each side really times, per the asserts in `support/recompute.rs` and
+/// `test_recompute_ratio`: a resolve re-marks itself (`update_attribute` takes `&mut T`,
+/// `on_change_notify_attribute_parents::<T>` in `EffectsSet::Notify` answers that with a fresh
+/// `MarkNodeDirty`), so `recompute/one_attr` is *one attribute permanently dirty* — the same
+/// attribute, the same actor, every sample — and `recompute/all_attrs` is the realistic steady state
+/// of this design rather than a worst case. The ids say `dirty=one` / `dirty=all`, and the assert
+/// after each timed loop re-reads the dirty set per attribute so a shape cannot drift into the other
+/// one's workload mid-run.
+///
+/// `Throughput` stays unset: the metric is ns/tick of one actor, and `Elements(A)` would invite a
+/// reading of these as ns/attribute, which is what the ratio exists to establish.
+fn recompute_ratio(c: &mut Criterion) {
+    for attributes in recompute::RECOMPUTE_ATTR_COUNTS {
+        let mut none = Vec::new();
+        let mut one = Vec::new();
+        let mut all = Vec::new();
+        // One side entirely before the other, so both estimate files of an A exist when its ratio
+        // prints, and so the shapes of one side are built off the same cache state as each other.
+        for dirtied in [
+            recompute::Dirtied::None,
+            recompute::Dirtied::One,
+            recompute::Dirtied::All,
+        ] {
+            let mut group = c.benchmark_group(dirtied.group());
+            for effects in recompute::RECOMPUTE_EFFECT_COUNTS {
+                let spec = recompute::recompute_spec(attributes, effects);
+                let bench_id = format!("{}/run_fixed_tick", recompute::dirtied_id(&spec, dirtied));
+                let mut shape = recompute::recompute_shape(&spec, dirtied);
+                let pool = shape.app.world().resource::<HarnessWorld>().attrs();
+                let actor = shape.actor;
+                let world = shape.app.world_mut();
+                group.bench_function(&bench_id, |b| {
+                    b.iter(|| {
+                        run_fixed_tick(world);
+                        black_box(world.entities().len());
+                    });
+                });
+                recompute::assert_dirty_attrs(
+                    world,
+                    pool,
+                    actor,
+                    dirtied,
+                    &format!("{bench_id} after its timed loop"),
+                );
+                let side = recompute::Point { spec, bench_id };
+                match dirtied {
+                    recompute::Dirtied::None => none.push(side),
+                    recompute::Dirtied::One => one.push(side),
+                    recompute::Dirtied::All => all.push(side),
+                }
+            }
+            group.finish();
+        }
+        recompute::print_ratios(attributes, &none, &one, &all);
+    }
+}
+
 /// Every bench group hangs off here.
 fn resolver_benches(c: &mut Criterion) {
     app_update(c);
@@ -357,6 +425,7 @@ fn resolver_benches(c: &mut Criterion) {
     leaf_access_paths(c);
     leaf_exclusion_length(c);
     leaf_warm_cold(c);
+    recompute_ratio(c);
 }
 
 criterion_group!(benches, resolver_benches);

@@ -8,10 +8,15 @@ mod common;
 mod floor;
 #[path = "../benches/support/leaf.rs"]
 mod leaf;
+#[path = "../benches/support/recompute.rs"]
+mod recompute;
 
 use bevy::ecs::bundle::Bundle;
 use bevy::prelude::*;
-use common::{EffectPlan, HarnessWorld, WorldSpec, actor_entities, current_values, tick};
+use common::{
+    AttrSpec, EffectPlan, HarnessWorld, WorldSpec, actor_entities, build_app_with, current_values,
+    run_fixed_tick, tick,
+};
 
 fn tiny_spec() -> WorldSpec {
     WorldSpec {
@@ -394,3 +399,200 @@ fn tiny_spec_drives_the_resolver() {
         current_before + 5.0
     );
 }
+
+/// The shape `test_recompute_ratio` settles: 3 attributes on 1 actor and 20 permanent effects x 1
+/// modifier — the top row of the `recompute/*` grid, with A=3 rather than a benched 1/5/20 because 3
+/// is the smallest A that has an attribute the tick is supposed to leave alone *and* a second one to
+/// tell it apart from.
+const RECOMPUTE_ATTRIBUTES: usize = 3;
+const RECOMPUTE_EFFECTS: usize = 20;
+
+/// Base write big enough to survive `f32` rounding and small enough to keep every sum exact.
+const BASE_DELTA: f64 = 7.0;
+
+/// Family B (`recompute/one_attr` vs `recompute/all_attrs`, BENCH-PLAN §2B) decides on the ratio
+/// `cost(all) / (A * cost(one))`, and that ratio means something only if the two shapes differ in one
+/// thing: how many attributes are dirty when the timed tick runs. So both halves are checked per
+/// attribute — with everything dirty every attribute's value moves, and with one attribute dirty
+/// exactly that one moves while the others come back bit-identical (`assert_eq!`, not an epsilon: an
+/// attribute the walk never reached is the same `f32` it was, so any difference means it was touched).
+///
+/// Re-resolving a settled attribute leaves its value where it was, so "moves" needs a write to move:
+/// whichever attributes must change get `set_base(+BASE_DELTA)` before the single `run_fixed_tick` the
+/// benches loop over.
+///
+/// The dirty set is asserted per attribute at every step, including *after* the tick. A resolve writes
+/// through `&mut T`, `Notify` reads that as a change and re-marks, so the tick that removes `Dirty<T>`
+/// puts it back. If that fan-out ever reached a second attribute, a `dirty=one` id would be timing an
+/// all-dirty world and its ratio would be 1/A of the truth; the asserts after the tick are what catch
+/// it.
+#[test]
+fn test_recompute_ratio() {
+    let spec = recompute::recompute_spec(RECOMPUTE_ATTRIBUTES, RECOMPUTE_EFFECTS);
+
+    // Positive control for the hole in `common.rs`'s `dirty_fraction` doc: a built world is dirty on
+    // every attribute whatever `dirty_fraction` says, which is why the shape clears markers instead of
+    // ticking them away.
+    let mut fresh = build_app_with(&spec, common::ATTRIBUTE_POOL);
+    let pool: &'static [AttrSpec] = fresh.world().resource::<HarnessWorld>().attrs();
+    assert_eq!(
+        pool.len(),
+        RECOMPUTE_ATTRIBUTES,
+        "shape {} registered {} attributes",
+        spec.shape_id(),
+        pool.len()
+    );
+    let fresh_actors = actor_entities(fresh.world_mut());
+    assert_eq!(
+        fresh_actors.len(),
+        spec.actors,
+        "shape {} built {} actors",
+        spec.shape_id(),
+        fresh_actors.len()
+    );
+    let dirty_at_build = recompute::dirty_names(fresh.world(), pool, fresh_actors[0]);
+    assert_eq!(
+        dirty_at_build,
+        pool_names(pool),
+        "the built world is dirty on {} of {} attributes ({dirty_at_build:?}): the claim that a \
+         fresh build is dirty on all of them is what makes `clear_dirty` necessary in \
+         recompute_shape, so if it is false the settle has to be rethought",
+        dirty_at_build.len(),
+        RECOMPUTE_ATTRIBUTES
+    );
+
+    // (a) every attribute dirty in one tick: every attribute's current value moves.
+    let mut all = recompute::recompute_shape(&spec, recompute::Dirtied::All);
+    let added = {
+        let harness = all.app.world().resource::<HarnessWorld>();
+        (0..harness.attrs().len())
+            .map(|index| permanent_add(&harness.plan, index))
+            .collect::<Vec<f64>>()
+    };
+    for (index, add) in added.iter().enumerate() {
+        assert!(
+            *add > 0.0,
+            "{} of shape {} draws no permanent Add from the {RECOMPUTE_EFFECTS} effects, so nothing \
+             can move its current_value and half (a) cannot be shown for it",
+            pool[index].name,
+            spec.shape_id()
+        );
+    }
+
+    let actor = all.actor;
+    let before = current_values(all.app.world(), pool, actor);
+    recompute::assert_dirty_attrs(
+        all.app.world(),
+        pool,
+        actor,
+        recompute::Dirtied::All,
+        "(a) before its tick",
+    );
+    for attr in pool {
+        let base = attr.base(all.app.world(), actor).unwrap();
+        attr.set_base(all.app.world_mut(), actor, base + BASE_DELTA);
+    }
+    run_fixed_tick(all.app.world_mut());
+    let after = current_values(all.app.world(), pool, actor);
+    for (index, attr) in pool.iter().enumerate() {
+        assert_ne!(
+            after[index], before[index],
+            "{} was dirty and its tick left current_value at {}: the base was written by \
+             {BASE_DELTA}, so the resolve did not run and this shape is not timing an all-dirty tick",
+            attr.name,
+            before[index]
+        );
+        assert!(
+            (after[index] - before[index] - BASE_DELTA).abs() < 1e-3,
+            "{} moved by {} instead of {BASE_DELTA}: {} -> {}",
+            attr.name,
+            after[index] - before[index],
+            before[index],
+            after[index]
+        );
+    }
+    recompute::assert_dirty_attrs(
+        all.app.world(),
+        pool,
+        actor,
+        recompute::Dirtied::All,
+        "(a) after its tick",
+    );
+
+    // (b) one attribute dirty: exactly it moves, the rest are identical before and after.
+    let mut one = recompute::recompute_shape(&spec, recompute::Dirtied::One);
+    let actor = one.actor;
+    let before = current_values(one.app.world(), pool, actor);
+    for (left, left_value) in before.iter().enumerate() {
+        for (right, right_value) in before.iter().enumerate() {
+            assert!(
+                left == right || left_value != right_value,
+                "attributes {left} and {right} of shape {} start on the same current_value \
+                 {left_value}, so a move could not be told from a copy: the pool needs \
+                 distinguishable base values",
+                spec.shape_id()
+            );
+        }
+    }
+    recompute::assert_dirty_attrs(
+        one.app.world(),
+        pool,
+        actor,
+        recompute::Dirtied::One,
+        "(b) before its tick",
+    );
+
+    let moved = &pool[0];
+    let base_before = moved.base(one.app.world(), actor).unwrap();
+    moved.set_base(one.app.world_mut(), actor, base_before + BASE_DELTA);
+    moved.mark_dirty(one.app.world_mut(), actor);
+    run_fixed_tick(one.app.world_mut());
+
+    let after = current_values(one.app.world(), pool, actor);
+    assert_eq!(
+        moved.base(one.app.world(), actor).unwrap(),
+        base_before + BASE_DELTA,
+        "the base write on {} was lost",
+        moved.name
+    );
+    assert_ne!(
+        after[0], before[0],
+        "{} was the one dirty attribute and its tick left current_value at {}: the dirty attribute \
+         did not resolve, so the shape cannot price a walk",
+        moved.name,
+        before[0]
+    );
+    for index in 1..before.len() {
+        assert_eq!(
+            after[index], before[index],
+            "{} moved from {} to {} on the tick that dirtied only {}: the walk is not \
+             attribute-local, so `recompute/one_attr` does not hold the other attributes still and \
+             the all/one ratio does not measure what §2B says it measures",
+            pool[index].name,
+            before[index],
+            after[index],
+            moved.name
+        );
+    }
+
+    // The trap the ids have to be honest about: the resolve re-marked `moved` and re-marks it on every
+    // later tick, so `dirty=one` means "one attribute *permanently* dirty". It only stays that way if
+    // the fan-out stops at the attribute that resolved, which is what repeats here rather than once.
+    for tick_number in 1..=3 {
+        recompute::assert_dirty_attrs(
+            one.app.world(),
+            pool,
+            actor,
+            recompute::Dirtied::One,
+            &format!("(b) {tick_number} tick(s) in"),
+        );
+        run_fixed_tick(one.app.world_mut());
+    }
+}
+
+/// Every attribute name of a pool, in pool order — the same shape [`recompute::dirty_names`] returns,
+/// so the two compare.
+fn pool_names(pool: &[AttrSpec]) -> Vec<&'static str> {
+    pool.iter().map(|attr| attr.name).collect()
+}
+
