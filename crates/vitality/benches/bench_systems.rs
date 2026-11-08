@@ -32,6 +32,11 @@
 //! stands; see [`floor_idle_tick`] for what that does to the decision and `.auto/decisions.md` D-22
 //! for the manifest change (protected path, owner's call) that would settle it.
 
+/// The counting allocator of `allocs_per_tick` below. Its `#[global_allocator]` static is declared
+/// here rather than in the module, so each binary that `#[path]`-includes it — this one and
+/// `tests/test_bench_allocations.rs` — declares exactly one, for itself.
+#[path = "support/alloc_count.rs"]
+mod alloc_count;
 #[path = "support/common.rs"]
 mod common;
 #[path = "support/floor.rs"]
@@ -45,14 +50,17 @@ mod leaf;
 #[path = "support/recompute.rs"]
 mod recompute;
 
+use crate::alloc_count::{Calibration, Counts};
 use crate::common::{
-    HarnessWorld, WorldSpec, actor_entities, mark_dirty_fraction, run_fixed_tick, seed_rng, tick,
+    AttrSpec, HarnessWorld, WorldSpec, actor_entities, mark_dirty_fraction, run_fixed_tick,
+    seed_rng, tick,
 };
 use crate::leaf::{
     Arity, Excl0, Excl5, Excl20, Excl40, ExclFixture, LeafFixture, excl_fixture, leaf_bench_spec,
     leaf_fixture, leaf_sweep_spec, leaf_view, read_by_id, read_entity_ref, read_except, read_slot,
 };
 use bevy::ecs::bundle::Bundle;
+use bevy::prelude::{App, Entity};
 use criterion::measurement::WallTime;
 use criterion::{
     BatchSize, BenchmarkGroup, Criterion, Throughput, criterion_group, criterion_main,
@@ -462,6 +470,180 @@ fn recompute_ratio(c: &mut Criterion) {
     }
 }
 
+#[global_allocator]
+static ALLOC_COUNT: alloc_count::CountingAlloc = alloc_count::ALLOC;
+
+/// How many ticks one `allocs_per_tick` window runs. Long enough that one tick's allocator warm-up is
+/// a small part of the count; short enough that the window is not a bench of its own.
+const ALLOC_TICKS: u64 = 50;
+
+/// The share of the actors a group shape marks dirty for its second column.
+const ALLOC_DIRTY_FRACTION: f32 = 0.25;
+
+/// The two shapes the group measures, both built by [`WorldSpec::build_app`] and settled by
+/// [`floor::prepare_floor`], so P-14 borrows nothing from the leaf or recompute families.
+fn alloc_shapes() -> [WorldSpec; 2] {
+    [
+        // The tiny shape the gate test uses too, so the two files describe one world.
+        WorldSpec {
+            attributes_per_actor: 3,
+            effects_per_actor: 2,
+            modifiers_per_effect: 1,
+            actors: 4,
+            dirty_fraction: 0.0,
+            ticking_fraction: 0.0,
+        },
+        // The leaf family's attribute width at the harness's default actor count, so an allocations
+        // line has a duration neighbour of the same shape in `leaf/access_paths`.
+        WorldSpec {
+            attributes_per_actor: 8,
+            effects_per_actor: 2,
+            modifiers_per_effect: 1,
+            actors: 100,
+            dirty_fraction: 0.0,
+            ticking_fraction: 0.0,
+        },
+    ]
+}
+
+/// Family G (BENCH-PLAN §2G): allocations per tick, counted by `support/alloc_count.rs`.
+///
+/// One shape gives two ids — the settled world idling (`dirty=0`) and the same world with
+/// [`ALLOC_DIRTY_FRACTION`] of its actors marked through `MarkNodeDirty` (`dirty=25`) — and each id
+/// prints an `allocs/tick, bytes/tick` line beside it. The pair is what §3's last unmeasured row is
+/// read from: allocs/tick over [`floor::dirty_entity_count`] as "entities touched", which
+/// `alloc_count::line` renders against the row's 2-per-entity figure as a lower bound and never a
+/// verdict. `Throughput` stays unset because the printed column is the deliverable and an
+/// `Elements(actors)` line would price actors an idle tick never looks at.
+///
+/// **Read the printed lines, not the criterion estimate, for this family.** The estimate is a
+/// `WallTime` number — the same [`run_fixed_tick`] the floor and recompute groups time, on the same
+/// settled world — and it exists so every allocation line has a duration measured on that very world
+/// beside it. It is not a new §3 row: `floor/idle_tick` and `recompute/*` already time this tick.
+///
+/// ## Which of the two states this run is in, and where to read it
+/// Whether this process counts anything is answered by [`alloc_count::calibrate`] at the top of the
+/// group and printed once, not assumed here; `support/alloc_count.rs` explains what reaches the wrapper
+/// and why a build with `dynamic_linking` on (D-22) is expected to answer "nothing".
+///
+/// Two readings that hold in either state: the window is whole-process (`multi_threaded`, D-22), so
+/// only the *comparison* of the two columns is a claim about the tick — [`alloc_count::pair_line`] prints
+/// that comparison and never a total — and installing the wrapper costs one relaxed load per allocation
+/// on the off path, which the duration column of every group in this target now pays.
+fn allocs_per_tick(c: &mut Criterion) {
+    // Once per run: the probe is a property of the process, not of the shape, and every line below is
+    // rendered against its answer.
+    let cal = alloc_count::calibrate();
+    println!("{}", alloc_count::calibration_line(cal));
+    let mut group = c.benchmark_group("allocs_per_tick");
+    for spec in alloc_shapes() {
+        let mut app = spec.build_app();
+        // The idle column has to be made, not waited for: a built world is dirty on every attribute of
+        // every actor, and a resolve re-marks what it resolved.
+        floor::prepare_floor(&mut app);
+        let pool = app.world().resource::<HarnessWorld>().attrs();
+        let actors = actor_entities(app.world_mut());
+
+        let clean = alloc_column(&mut group, &spec, &mut app, pool, &actors, 0.0, cal);
+        let mut dirty_spec = spec.clone();
+        dirty_spec.dirty_fraction = ALLOC_DIRTY_FRACTION;
+        let dirty = alloc_column(
+            &mut group,
+            &dirty_spec,
+            &mut app,
+            pool,
+            &actors,
+            ALLOC_DIRTY_FRACTION,
+            cal,
+        );
+        println!(
+            "{}",
+            alloc_count::pair_line(
+                &clean.0,
+                &dirty.0,
+                clean.1,
+                dirty.1,
+                ALLOC_TICKS,
+                dirty.2,
+                cal,
+            )
+        );
+    }
+    group.finish();
+}
+
+/// One column of one shape: the timed tick with the gate closed, then one counted window over the same
+/// world with it open, printed beside the same id. Returns (id, counts, entities touched) — a window is
+/// read where it is taken, because the counters are process-wide.
+fn alloc_column(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    spec: &WorldSpec,
+    app: &mut App,
+    pool: &[AttrSpec],
+    actors: &[Entity],
+    fraction: f32,
+    cal: Calibration,
+) -> (String, Counts, usize) {
+    let world = app.world_mut();
+    let marked = if fraction > 0.0 {
+        mark_dirty_fraction(world, pool, actors, fraction, &mut seed_rng())
+    } else {
+        0
+    };
+    // Read before the window: a resolving tick re-dirties itself, so the row's denominator is the set
+    // the tick starts on, which is also all the id's `dirty=` field claims.
+    let touched = floor::dirty_entity_count(world);
+    assert_eq!(
+        touched,
+        marked,
+        "shape {} starts an allocation column on {touched} dirty entities while marking {marked}: \
+         `dirty_entity_count` is the denominator of §3's row, so an id whose `dirty=` field the world \
+         does not carry is a label, not a measurement",
+        spec.shape_id()
+    );
+
+    let id = format!("{}/run_fixed_tick", spec.shape_id());
+    group.bench_function(&id, |b| {
+        b.iter(|| {
+            run_fixed_tick(world);
+            black_box(world.entities().len());
+        });
+    });
+
+    alloc_count::counting(true);
+    let ((), counts) = alloc_count::counted(|| {
+        for _ in 0..ALLOC_TICKS {
+            run_fixed_tick(world);
+        }
+    });
+    alloc_count::counting(false);
+    println!(
+        "{}",
+        alloc_count::line(&id, counts, ALLOC_TICKS, touched, cal)
+    );
+
+    // The guard the other groups run too: a column whose world drifted into the other column's
+    // workload reports the wrong thing, and here it would also move the row's denominator.
+    let left = floor::dirty_entity_count(world);
+    if fraction > 0.0 {
+        assert!(
+            left > 0,
+            "shape {} ended its dirty column on a clean world ({left} dirty entities): the window \
+             above was idling, so its line is an idle number wearing a `dirty=` label",
+            spec.shape_id()
+        );
+    } else {
+        assert_eq!(
+            left,
+            0,
+            "shape {} ended its idle column with {left} dirty entities: the samples after the first \
+             were resolving, and the line printed for it is a dirty number wearing a `dirty=0` label",
+            spec.shape_id()
+        );
+    }
+    (id, counts, touched)
+}
+
 /// Every bench group hangs off here.
 fn resolver_benches(c: &mut Criterion) {
     app_update(c);
@@ -470,6 +652,7 @@ fn resolver_benches(c: &mut Criterion) {
     leaf_exclusion_length(c);
     leaf_warm_cold(c);
     recompute_ratio(c);
+    allocs_per_tick(c);
 }
 
 criterion_group!(benches, resolver_benches);
