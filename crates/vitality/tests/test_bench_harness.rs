@@ -4,9 +4,11 @@
 
 #[path = "../benches/support/common.rs"]
 mod common;
+#[path = "../benches/support/leaf.rs"]
+mod leaf;
 
 use bevy::prelude::*;
-use common::{EffectPlan, HarnessWorld, WorldSpec, actor_entities, tick};
+use common::{EffectPlan, HarnessWorld, WorldSpec, actor_entities, current_values, tick};
 
 fn tiny_spec() -> WorldSpec {
     WorldSpec {
@@ -16,6 +18,69 @@ fn tiny_spec() -> WorldSpec {
         actors: 2,
         dirty_fraction: 0.0,
         ticking_fraction: 0.0,
+    }
+}
+
+/// The four `leaf/access_paths` reads have to land on one number, or the bench compares four
+/// different things (BENCH-PLAN §2C). It goes through the bench's own fixture, so a path that has
+/// drifted from the live attribute value — a stale slot block, a bundle that excludes the
+/// attribute, a `ComponentId` for the wrong type, a `current_value` read where `Attribute::at_base()`
+/// belongs — fails here instead of in a report.
+#[test]
+fn all_access_paths_agree() {
+    // Referenced so the compile-time pin inside `leaf.rs` is checked under this test's name.
+    let _pin = leaf::pin_leaf_bundle_to_effects_view;
+
+    let mut fixture = leaf::leaf_fixture(&tiny_spec());
+    let world = fixture.app.world();
+    let harness = world.resource::<HarnessWorld>();
+    let pool = harness.attrs();
+    let added = permanent_add(harness.plan.as_slice(), leaf::LEAF_SLOT as usize);
+    assert!(
+        added > 0.0,
+        "no permanent Add landed on the leaf attribute (added {added}), so this test cannot tell a \
+         resolved current_value from a pending one"
+    );
+    assert!(
+        !fixture.actors.is_empty(),
+        "the tiny spec built no actor to read"
+    );
+
+    for &actor in fixture.actors.iter() {
+        let leaf_spec = &pool[leaf::LEAF_SLOT as usize];
+        let base = leaf_spec.base(world, actor).unwrap();
+        let current = leaf_spec.current(world, actor).unwrap();
+        assert_ne!(
+            base, current,
+            "{} on {actor:?} is unresolved (base == current == {base}): leaf_fixture must tick the \
+             world before snapshotting, or all four paths agree on a pending value",
+            leaf_spec.name
+        );
+
+        let expected = current_values(world, pool, actor)[leaf::LEAF_SLOT as usize];
+        assert!(
+            expected > 0.0,
+            "the leaf attribute on {actor:?} reads {expected}: nothing for the paths to agree on"
+        );
+
+        let paths: [(&str, f64); 4] = [
+            (
+                "(i) EntityRefExcept::get",
+                leaf::read_except(&leaf::leaf_view(world, &mut fixture.view, actor)),
+            ),
+            ("(ii) EntityRef::get", leaf::read_entity_ref(world, actor)),
+            (
+                "(iii) EntityRef::get_by_id",
+                leaf::read_by_id(world, actor, fixture.id),
+            ),
+            ("(iv) slot block", leaf::read_slot(world, actor)),
+        ];
+        for (path, got) in paths {
+            assert_eq!(
+                got, expected,
+                "{path} read {got}, harness says {expected} on {actor:?}"
+            );
+        }
     }
 }
 
