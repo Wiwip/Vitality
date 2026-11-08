@@ -36,6 +36,10 @@
 mod common;
 #[path = "support/floor.rs"]
 mod floor;
+// Declared, not called: no group staggers yet, and rule 2 of tests/test_bench_wiring.rs needs every
+// support module wired here so the gate compiles it.
+#[path = "support/identity.rs"]
+mod identity;
 #[path = "support/leaf.rs"]
 mod leaf;
 #[path = "support/recompute.rs"]
