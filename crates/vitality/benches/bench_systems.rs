@@ -39,6 +39,8 @@
 mod alloc_count;
 #[path = "support/common.rs"]
 mod common;
+#[path = "support/cross_actor.rs"]
+mod cross_actor;
 #[path = "support/floor.rs"]
 mod floor;
 // Declared, not called: no group staggers yet, and rule 2 of tests/test_bench_wiring.rs needs every
@@ -52,20 +54,24 @@ mod recompute;
 
 use crate::alloc_count::{Calibration, Counts};
 use crate::common::{
-    AttrSpec, HarnessWorld, WorldSpec, actor_entities, mark_dirty_fraction, run_fixed_tick,
-    seed_rng, tick,
+    Attr0, Attr4, Attr19, AttrSpec, HarnessWorld, WorldSpec, actor_entities, mark_dirty_fraction,
+    run_fixed_tick, seed_rng, tick,
+};
+use crate::cross_actor::{
+    SourceMove, cascade_tick, cross_id, cross_shape, cross_spec, passes_line, passes_to_converge,
 };
 use crate::leaf::{
     Arity, Excl0, Excl5, Excl20, Excl40, ExclFixture, LeafFixture, excl_fixture, leaf_bench_spec,
     leaf_fixture, leaf_sweep_spec, leaf_view, read_by_id, read_entity_ref, read_except, read_slot,
 };
 use bevy::ecs::bundle::Bundle;
-use bevy::prelude::{App, Entity};
+use bevy::prelude::{App, Entity, World};
 use criterion::measurement::WallTime;
 use criterion::{
     BatchSize, BenchmarkGroup, Criterion, Throughput, criterion_group, criterion_main,
 };
 use std::hint::black_box;
+use vitality::attributes::Attribute;
 
 /// Reality check: a whole `app.update()`, which under `TimeUpdateStrategy::FixedTimesteps(1)` is
 /// exactly one fixed tick of the real schedule set-up.
@@ -470,6 +476,135 @@ fn recompute_ratio(c: &mut Criterion) {
     }
 }
 
+/// The one place a grid point's attribute types and the pool slot names they must sit in are written
+/// together, so the `stringify!` [`cross_shape`] asserts with cannot drift from the types it builds with.
+macro_rules! cross_actor_point {
+    ($group:expr, $attributes:expr, $readers:expr, $src:ty, $dep:ty) => {
+        cross_actor_point::<$src, $dep>(
+            $group,
+            $attributes,
+            $readers,
+            stringify!($src),
+            stringify!($dep),
+        )
+    };
+}
+
+/// Family B (BENCH-PLAN §2B): the cross-actor cascade — what one dirty source costs the K actors whose
+/// modifiers read it.
+///
+/// Nine points: the same A axis `recompute/one_attr` uses, times K ∈ {1, 10, 100} readers. Each reader
+/// carries one permanent effect whose single modifier is `EffectSubject::Source` and reads the source's
+/// attribute, applied with the `ApplyEffectEvent` / `EffectTargeting::new(source, target)` pair
+/// `Vitality::apply_effect_to_target` triggers, so the timed tick is the fan-out — `AttributeDependents`
+/// → `RecalculateExpression` → `MarkNodeDirty` up `EffectTarget` — rather than a fold. The shape, what the
+/// timed unit contains and why a bare mark cannot be it are all in [`cross_actor`]; the gate guard is
+/// `tests/test_bench_cross_actor.rs`.
+///
+/// Ids carry `readers=K` and `cross=src-write` because `WorldSpec` has no field for the second actor, the
+/// cross effects, or the write inside the timed unit — and adding one would break the full `WorldSpec
+/// { .. }` literals in `tests/test_bench_harness.rs`. As with the leaf family's `excl=`, a shape the id
+/// cannot say is a label.
+///
+/// Each point prints its [`cross_actor::passes_to_converge`] line before timing: §2B reads that count as
+/// the staleness half of the row, and it is measured on the world the µs/tick beside it comes from. Both
+/// counts came out > 1, so §2B's per-tick staleness is confirmed and µs/tick is not a latency: a plain
+/// source write takes **3 resolver ticks** to reach a reader, 2 once `MarkNodeDirty` is triggered by hand
+/// — the write is only marked in `EffectsSet::Notify`, which runs after `UpdateCurrentValues`, and the
+/// readers are only marked during a resolve, so each of those two steps costs a tick.
+///
+/// Measured at this tip, `mt`/`dyn`, mean point estimate, 10 samples per id (`--warm-up-time 0.5
+/// --measurement-time 1`), `/proc/loadavg` 4.40 on 8 cores when the run ended — directional per §7, and
+/// `std_dev` runs 2.6–32.5 µs, wider on the `readers=100` points:
+/// ```text
+/// µs/tick      readers=1   readers=10   readers=100
+/// a=1            25.4         44.1         194.4
+/// a=5            42.2         57.3         217.9
+/// a=20           90.9        117.0         329.6
+/// ```
+///
+/// The row is a level plus a per-reader slope, and the slope is the cascade: 169–239 µs between
+/// readers=1 and readers=100 — 99 more readers — is **1.7–2.4 µs per reader per tick**, and it is
+/// flatter in A than the level is. The level's A-dependence is the schedule's, but read that against
+/// `floor/idle_tick` as directional, not as a same-run delta: the floor prices 4.0 µs per attribute per
+/// tick on an idle shape and at readers=1 this row sits only 4–7 µs above it (25.4 vs 21.1 at a=1, 90.9
+/// vs 84.0 at a=20), yet this `target/criterion` holds only `recompute_cross_actor` — those two floor
+/// points come from an earlier run — and σ on the readers=1 points here is 2.6–6.5 µs, the same order
+/// as the gap. What it does say is that a cascade of one reader is small next to the walk it rides on,
+/// and the readers are the cost. 100 readers behind a source that moves every tick is 0.33 ms at the
+/// widest shape — 2 % of a 60 Hz frame, for derived stats that arrive 3 ticks late.
+///
+/// `Throughput` stays unset: the metric is µs/tick of one source and its readers, and an `Elements(K)`
+/// line would price readers a tick only reaches through the cascade.
+fn recompute_cross_actor(c: &mut Criterion) {
+    let mut group = c.benchmark_group("recompute/cross_actor");
+    for readers in cross_actor::CROSS_READERS {
+        // The dependent modifier sits on the shape's last attribute, so `a=1` is the point where the
+        // attribute read and the attribute written are one type, and `a=20` is the widest the default
+        // pool serves. `cross_shape` fails if a slot is not the type named beside it.
+        cross_actor_point!(&mut group, 1, readers, Attr0, Attr0);
+        cross_actor_point!(&mut group, 5, readers, Attr0, Attr4);
+        cross_actor_point!(&mut group, 20, readers, Attr0, Attr19);
+    }
+    group.finish();
+}
+
+/// One point: build settled, print the pass count, settle again, then time [`cascade_tick`] — one source
+/// write plus one [`run_fixed_tick`] — on that world. Built outside the timed loop like every other §2B
+/// group, because the row is a steady-state per-tick number and a per-sample build would price the
+/// allocator instead of the cascade.
+fn cross_actor_point<S, D>(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    attributes: usize,
+    readers: usize,
+    src_name: &str,
+    dep_name: &str,
+) where
+    S: Attribute<Property = f32>,
+    D: Attribute<Property = f32>,
+{
+    let spec = cross_spec(attributes, readers);
+    let mut shape = cross_shape::<S, D>(&spec, src_name, dep_name);
+    let write = passes_to_converge::<S, D>(&mut shape, SourceMove::Write);
+    let marked = passes_to_converge::<S, D>(&mut shape, SourceMove::WriteThenMark);
+    println!("{}", passes_line(&shape, write, marked));
+    // Back to a world at rest: the pass counting leaves every actor dirty, and the first samples would
+    // otherwise price a cascade the shape's id does not claim.
+    floor::prepare_floor(&mut shape.app);
+    let source = shape.source;
+    let reader_list = shape.readers.clone();
+    let world = shape.app.world_mut();
+    let before: Vec<f64> = reader_list
+        .iter()
+        .map(|&reader| dep_value::<D>(world, reader))
+        .collect();
+
+    group.bench_function(cross_id(&spec), |b| {
+        b.iter(|| black_box(cascade_tick::<S>(world, source)));
+    });
+
+    // A flat reader is the one way this group can quietly time the idle walk. The source only ever
+    // moves up, so every reader's dependent value has to move up too.
+    for (&reader, &was) in reader_list.iter().zip(&before) {
+        let now = dep_value::<D>(world, reader);
+        assert!(
+            now > was,
+            "shape {} ended its timed loop with a reader whose dependent attribute never moved past \
+             {was}: no sample carried a source change to it, so the µs/tick above is the idle walk \
+             wearing a cross_actor label",
+            cross_id(&spec)
+        );
+    }
+}
+
+/// One reader's dependent value, read the way the row is about.
+fn dep_value<D: Attribute<Property = f32>>(world: &World, reader: Entity) -> f64 {
+    world
+        .get::<D>(reader)
+        .expect("every reader carries the dependent attribute the shape is typed on")
+        .current_value() as f64
+}
+
 #[global_allocator]
 static ALLOC_COUNT: alloc_count::CountingAlloc = alloc_count::ALLOC;
 
@@ -652,6 +787,7 @@ fn resolver_benches(c: &mut Criterion) {
     leaf_exclusion_length(c);
     leaf_warm_cold(c);
     recompute_ratio(c);
+    recompute_cross_actor(c);
     allocs_per_tick(c);
 }
 
