@@ -29,6 +29,32 @@ pub type LeafAttr = crate::common::Attr0;
 /// Where [`LeafAttr`] sits in a [`SlotBlock`].
 pub const LEAF_SLOT: u16 = 0;
 
+/// The shape `leaf/access_paths` and `leaf/warm_cold` time, in one place so the guard settles the
+/// world the numbers come from instead of the smaller one in the test. A leaf read does not scale
+/// with the world, so the shape stays small and clean: the thing being priced is the bundle, not the
+/// storage.
+pub fn leaf_bench_spec() -> WorldSpec {
+    WorldSpec {
+        attributes_per_actor: 8,
+        effects_per_actor: 2,
+        modifiers_per_effect: 1,
+        actors: 10,
+        dirty_fraction: 0.0,
+        ticking_fraction: 0.0,
+    }
+}
+
+/// [`leaf_bench_spec`] with a second modifier per effect, which is what `leaf/exclusion_length`
+/// times. At `m=1` the seeded draw puts no permanent Add on slot 0 of an 8-attribute actor, so its
+/// `current_value` equals its `base_value` however many ticks run and a guard cannot tell a settled
+/// read from a pending one.
+pub fn leaf_sweep_spec() -> WorldSpec {
+    WorldSpec {
+        modifiers_per_effect: 2,
+        ..leaf_bench_spec()
+    }
+}
+
 /// The exclusion bundle a leaf read really carries: `vitality_effects`' own attribute view, the one
 /// the modifier expressions hand `Attribute::at()`. Named instead of spelled out at each use so
 /// `leaf/exclusion_length` can sweep the bundle width without touching the read helpers.
@@ -116,6 +142,114 @@ pub fn leaf_fixture(spec: &WorldSpec) -> LeafFixture {
 /// it counts as a hidden variable in a bench id.
 pub fn bundle_width<B: Bundle>(world: &World) -> usize {
     B::get_component_ids(world.components()).flatten().count()
+}
+
+/// How many members a bundle type has, counted without a `World`. [`bundle_width`] counts only the
+/// members a particular world has a `ComponentId` for; the two differ for a type no entity has ever
+/// carried, and a bench id that reports only the second one is lying about its x-axis.
+pub trait Arity {
+    const ARITY: usize;
+}
+
+impl Arity for () {
+    const ARITY: usize = 0;
+}
+
+macro_rules! arity_of_tuple {
+    ($( $t:ident ),+) => {
+        impl<$( $t: Arity ),+> Arity for ($( $t, )+) {
+            const ARITY: usize = 0 $(+ $t::ARITY)+;
+        }
+    };
+}
+
+arity_of_tuple!(A);
+arity_of_tuple!(A, B);
+arity_of_tuple!(A, B, C);
+arity_of_tuple!(A, B, C, D);
+arity_of_tuple!(A, B, C, D, E);
+arity_of_tuple!(A, B, C, D, E, F);
+arity_of_tuple!(A, B, C, D, E, F, G);
+arity_of_tuple!(A, B, C, D, E, F, G, H);
+
+macro_rules! excl_markers {
+    ($( $name:ident ),+ $(,)?) => {
+        $(
+            /// Nothing inserts these: a marker exists only to make an exclusion bundle wider.
+            #[derive(Component)]
+            pub struct $name;
+
+            impl Arity for $name {
+                const ARITY: usize = 1;
+            }
+        )+
+    };
+}
+
+excl_markers!(
+    Ex0, Ex1, Ex2, Ex3, Ex4, Ex5, Ex6, Ex7, Ex8, Ex9, Ex10, Ex11, Ex12, Ex13, Ex14, Ex15, Ex16,
+    Ex17, Ex18, Ex19, Ex20, Ex21, Ex22, Ex23, Ex24, Ex25, Ex26, Ex27, Ex28, Ex29, Ex30, Ex31, Ex32,
+    Ex33, Ex34, Ex35, Ex36, Ex37, Ex38, Ex39,
+);
+
+/// The exclusion widths `leaf/exclusion_length` sweeps (BENCH-PLAN §2C). Groups of five, because
+/// bevy's tuple `Bundle` impls stop at 15 members and every width should be the same shape of
+/// iterator — only the group count moves.
+pub type Excl0 = ();
+pub type Excl5 = ((Ex0, Ex1, Ex2, Ex3, Ex4),);
+pub type Excl20 = (
+    (Ex0, Ex1, Ex2, Ex3, Ex4),
+    (Ex5, Ex6, Ex7, Ex8, Ex9),
+    (Ex10, Ex11, Ex12, Ex13, Ex14),
+    (Ex15, Ex16, Ex17, Ex18, Ex19),
+);
+pub type Excl40 = (
+    (Ex0, Ex1, Ex2, Ex3, Ex4),
+    (Ex5, Ex6, Ex7, Ex8, Ex9),
+    (Ex10, Ex11, Ex12, Ex13, Ex14),
+    (Ex15, Ex16, Ex17, Ex18, Ex19),
+    (Ex20, Ex21, Ex22, Ex23, Ex24),
+    (Ex25, Ex26, Ex27, Ex28, Ex29),
+    (Ex30, Ex31, Ex32, Ex33, Ex34),
+    (Ex35, Ex36, Ex37, Ex38, Ex39),
+);
+
+/// [`leaf_fixture`] for a bundle the library does not own: the same settled world, no slot blocks
+/// (the sweep times one fetch plus one typed `get` and nothing else).
+pub struct ExclFixture<B: Bundle> {
+    pub app: App,
+    pub actors: Vec<Entity>,
+    pub actor: Entity,
+    /// Members of `B` this world has a `ComponentId` for — what [`bundle_width`] counts. Compare it
+    /// with [`Arity::ARITY`] before quoting it as a width.
+    pub excl: usize,
+    pub view: QueryState<EntityRefExcept<'static, 'static, B>>,
+}
+
+pub fn excl_fixture<B: Bundle>(spec: &WorldSpec) -> ExclFixture<B> {
+    let mut app = spec.build_app();
+    // Same reason as in `leaf_fixture`: everything is still pending before this tick.
+    tick(&mut app);
+
+    let actors = actor_entities(app.world_mut());
+    assert!(
+        !actors.is_empty(),
+        "shape {} spawned no actor to read",
+        spec.shape_id()
+    );
+
+    // Query first, width second: building the query is what registers a marker component this world
+    // has never seen, and `bundle_width` can only count ids that exist.
+    let view = leaf_view_query::<B>(app.world_mut());
+    let excl = bundle_width::<B>(app.world());
+    let actor = actors[0];
+    ExclFixture {
+        app,
+        actors,
+        actor,
+        excl,
+        view,
+    }
 }
 
 /// Snapshots every actor's current values into a [`SlotBlock`]. Setup only: a resolver tick after
