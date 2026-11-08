@@ -131,7 +131,9 @@ fn current_of<T>(world: &World, actor: Entity) -> Option<f64>
 where
     T: Attribute<Property = Value>,
 {
-    world.get::<T>(actor).map(|attr| attr.current_value() as f64)
+    world
+        .get::<T>(actor)
+        .map(|attr| attr.current_value() as f64)
 }
 
 fn set_base_of<T>(world: &mut World, actor: Entity, value: f64)
@@ -185,8 +187,11 @@ pub struct WorldSpec {
     pub effects_per_actor: usize,
     pub modifiers_per_effect: usize,
     pub actors: usize,
-    /// Share of the actors left dirty at the end of the build, and the share [`mark_dirty_fraction`]
-    /// re-dirties per sample.
+    /// Share of the actors `mark_dirty_fraction` marks — *not* the share the built world is dirty on,
+    /// which is always all of it (see [`build_app_with`]), and not a per-sample thing either: nothing
+    /// clears the marks the spawn observers put there. A shape whose id has to mean what it says
+    /// settles the world first, which is what `floor::prepare_floor` and `recompute::recompute_shape`
+    /// are for.
     pub dirty_fraction: f32,
     /// Share of the effects built as periodic instead of permanent.
     pub ticking_fraction: f32,
@@ -266,8 +271,18 @@ pub fn seed_rng() -> StdRng {
     StdRng::seed_from_u64(SEED)
 }
 
-/// Builds the world and runs `Startup`, so the returned app holds live actors with their effects
-/// already applied. `attrs` must be at least `spec.attributes_per_actor` long.
+/// Builds the world and runs `Startup`, so the returned app holds live actors carrying their
+/// attributes and their effect instances. `attrs` must be at least `spec.attributes_per_actor` long.
+///
+/// What it does not hand back is the shape's `dirty_fraction`. `on_add_attribute` observes `Insert<T>`
+/// and triggers `MarkNodeDirty` for every attribute the bundle inserts, and `spawn` flushes its
+/// commands inline, so the returned world is dirty on every attribute of every actor and nothing has
+/// resolved yet — measured: a 3-attribute, 4-actor build carries 24 `Dirty<T>` markers when
+/// [`floor::clear_dirty`] walks it, actors and effect nodes alike. The [`mark_dirty_fraction`] call
+/// below therefore adds marks to a world that already has all of them, and no amount of ticking fixes
+/// it afterwards, because a resolve re-marks what it resolved. A shape that needs its `dirty=` field
+/// to be true has to clear markers itself — see `floor::prepare_floor` and
+/// `recompute::recompute_shape`; `test_recompute_ratio` pins the all-dirty build.
 pub fn build_app_with(spec: &WorldSpec, attrs: &'static [AttrSpec]) -> App {
     assert!(
         spec.attributes_per_actor <= attrs.len(),
@@ -295,11 +310,18 @@ pub fn build_app_with(spec: &WorldSpec, attrs: &'static [AttrSpec]) -> App {
     app.add_systems(Startup, prepare_world);
     app.update();
 
-    // Leave the shape's dirty share marked, so a steady-state run starts on the workload its id
-    // claims rather than on an accidentally clean world.
+    // Marks the shape's share on top of a world the spawn observers already made 100 % dirty, so this
+    // changes nothing observable for a fraction below 1.0 and is kept only so a shape that clears
+    // markers later can re-mark through the same seeded pick the id is quoted with.
     let mut rng = seed_rng();
     let actors = actor_entities(app.world_mut());
-    mark_dirty_fraction(app.world_mut(), attrs, &actors, spec.dirty_fraction, &mut rng);
+    mark_dirty_fraction(
+        app.world_mut(),
+        attrs,
+        &actors,
+        spec.dirty_fraction,
+        &mut rng,
+    );
     app
 }
 
@@ -381,8 +403,21 @@ pub fn current_values(world: &World, attrs: &[AttrSpec], actor: Entity) -> Vec<f
         .collect()
 }
 
-/// Marks every attribute of `round(fraction * actors.len())` actors dirty and returns how many.
-/// The pick is a seeded shuffle, so the count is exact and repeatable.
+/// Marks every attribute of `round(fraction * actors.len())` actors dirty and returns how many. The
+/// pick is a seeded shuffle, so the count is exact and repeatable.
+///
+/// The marks are visible when it returns, because it flushes: `AttrSpec::mark_dirty` is a
+/// `World::trigger` and the observer's `try_insert(Dirty<T>)`
+/// (`vitality_effects/src/systems.rs:31-42`) is a deferred command, so without the flush the caller is
+/// handed a count of marks it cannot read back — that is what `mark_dirty_fraction_marks_are_visible`
+/// failed on. Flushing costs one queue drain per sample and is not timed.
+///
+/// What the marks then do is the library's, not this function's: `on_change_notify_attribute_parents`
+/// (`vitality_effects/src/systems.rs:274-283`) re-triggers `MarkNodeDirty` off the write the next
+/// resolve makes, so a `run_fixed_tick` leaves the same attributes dirty forever. Measured on the
+/// tiny shape it does not *spread* — 2 of 4 actors marked stays 2 of 4 across two further ticks — but
+/// on a world this module built, where the build already marked everything, "never decays" is the
+/// whole story: it is dirty on every attribute of every actor for the rest of its life.
 pub fn mark_dirty_fraction(
     world: &mut World,
     attrs: &[AttrSpec],
@@ -402,5 +437,7 @@ pub fn mark_dirty_fraction(
             attr.mark_dirty(world, actors[index]);
         }
     }
+    // Without this the `Dirty<T>` inserts are still queued and the returned count is fiction.
+    world.flush();
     wanted
 }
