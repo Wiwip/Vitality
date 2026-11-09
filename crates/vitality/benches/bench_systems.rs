@@ -424,6 +424,10 @@ fn read_excl<B: Bundle>(fixture: &mut ExclFixture<B>) -> f64 {
     read_except(&view)
 }
 
+/// What the ratio table's skip line names: the table is not a criterion id, so a run that skips it has
+/// to say which check it skipped by hand.
+const RATIO_TABLE: &str = "recompute ratio table";
+
 /// Family B (BENCH-PLAN §2B): does the effect walk run once per attribute (T2)?
 ///
 /// One actor, A attributes, E permanent effects x 1 modifier, `b.iter` over [`run_fixed_tick`] on a
@@ -445,25 +449,39 @@ fn read_excl<B: Bundle>(fixture: &mut ExclFixture<B>) -> f64 {
 /// `Throughput` stays unset: the metric is ns/tick of one actor, and `Elements(A)` would invite a
 /// reading of these as ns/attribute, which is what the ratio exists to establish.
 ///
-/// ## Why the table hangs off [`guard::Ran`]
+/// ## Why every row hangs off [`guard::Ran`]
 ///
 /// [`recompute::print_ratios`] reads `estimates.json` from wherever criterion writes — `CARGO_TARGET_DIR`,
 /// else the nearest `target/criterion` it can see — and its only staleness check is "not older than this
-/// binary", so on a filtered run it prints a whole table of numbers this session never measured, made of
-/// whatever an earlier unfiltered run of the same binary left on disk. A filter decides which closures
-/// run, not which functions a group function calls, so the table hangs off the same evidence every other
-/// guard does: no id of this A bumped its counter means the run prints
-/// `guard skipped (recompute ratio table filtered out)` and no row.
-const RATIO_TABLE: &str = "recompute ratio table";
-
+/// binary", so a gate as coarse as "did anything under this A run" prints a whole table of numbers this
+/// session never measured: `--bench recompute/one_attr` times one side of each row and reads the other
+/// two off whatever an earlier run left on disk.
+///
+/// So the evidence is per side and per row, which is exactly what the loop already keeps: the three
+/// `Vec<Point>` and the three `Vec<bool>` of [`guard::Ran::guard`] hits are pushed by the same `match` in
+/// the same order, and a row reaches `print_ratios` only when all three of its sides bumped their counter.
+/// Filtering all three sides by that one predicate is what keeps the contract `print_ratios` asserts on —
+/// three equal lengths, one shape per row. A run with no complete row prints
+/// `guard skipped (recompute ratio table filtered out)` in place of the table; a run with some of them
+/// prints those rows and says nothing about the rest, because each row names the ids it read.
+///
+/// What no guard here can reach is which directory the helper reads. `print_ratios` resolves its own
+/// criterion root from `CARGO_TARGET_DIR` or the nearest ancestor's `target/criterion` and ignores
+/// `CRITERION_HOME` (`support/recompute.rs:205-218`), so a perfectly gated call can still pair this run's
+/// rows with files another run of a different `CRITERION_HOME` left in the tree it reads: the rows are
+/// measured, the tree they came from may be another session's. A foreign-path limitation, recorded rather
+/// than fixed.
 fn recompute_ratio(c: &mut Criterion) {
     for attributes in recompute::RECOMPUTE_ATTR_COUNTS {
         let mut none = Vec::new();
         let mut one = Vec::new();
         let mut all = Vec::new();
-        // Whether any id of this A timed a loop, which is the only honest answer to "did the numbers the
-        // table is made of get measured in this run?".
-        let mut measured = false;
+        // Whether the loop that built the point beside each flag timed anything, per side and per row: a
+        // row is only tabulated when all three of its sides ran, because a side that did not run has no
+        // `estimates.json` of its own to read.
+        let mut ran_none = Vec::new();
+        let mut ran_one = Vec::new();
+        let mut ran_all = Vec::new();
         // One side entirely before the other, so both estimate files of an A exist when its ratio
         // prints, and so the shapes of one side are built off the same cache state as each other.
         for dirtied in [
@@ -488,7 +506,7 @@ fn recompute_ratio(c: &mut Criterion) {
                         black_box(world.entities().len());
                     });
                 });
-                measured |= ran.guard(&format!("{group_name}/{bench_id}"), || {
+                let hit = ran.guard(&format!("{group_name}/{bench_id}"), || {
                     recompute::assert_dirty_attrs(
                         world,
                         pool,
@@ -499,17 +517,42 @@ fn recompute_ratio(c: &mut Criterion) {
                 });
                 let side = recompute::Point { spec, bench_id };
                 match dirtied {
-                    recompute::Dirtied::None => none.push(side),
-                    recompute::Dirtied::One => one.push(side),
-                    recompute::Dirtied::All => all.push(side),
+                    recompute::Dirtied::None => {
+                        none.push(side);
+                        ran_none.push(hit);
+                    }
+                    recompute::Dirtied::One => {
+                        one.push(side);
+                        ran_one.push(hit);
+                    }
+                    recompute::Dirtied::All => {
+                        all.push(side);
+                        ran_all.push(hit);
+                    }
                 }
             }
             group.finish();
         }
-        if measured {
-            recompute::print_ratios(attributes, &none, &one, &all);
-        } else {
+        // One flag per row of the E grid: all three sides of it timed a loop. Zipping the same flags into
+        // each side keeps the sides parallel, which is what `print_ratios` asserts on.
+        let measured = ran_none
+            .iter()
+            .zip(ran_one.iter())
+            .zip(ran_all.iter())
+            .map(|((none, one), all)| *none && *one && *all)
+            .collect::<Vec<_>>();
+        let timed = |points: Vec<recompute::Point>| -> Vec<recompute::Point> {
+            points
+                .into_iter()
+                .zip(measured.iter())
+                .filter_map(|(point, row_ran)| row_ran.then_some(point))
+                .collect()
+        };
+        let [none_side, one_side, all_side] = [timed(none), timed(one), timed(all)];
+        if none_side.is_empty() {
             println!("{}", guard::skip_line(RATIO_TABLE));
+        } else {
+            recompute::print_ratios(attributes, &none_side, &one_side, &all_side);
         }
     }
 }
@@ -722,11 +765,15 @@ fn dep_value<D: Attribute<Property = f32>>(world: &World, reader: Entity) -> f64
 /// carries that mean, so it could not be checked here anyway.
 ///
 /// Filtered runs have to carry every group whose post-loop output the run prints, and since C-2 that
-/// includes the ratio table: every `guard::Ran` guard and `recompute_ratio`'s table skip themselves with
-/// a printed reason when their own ids are filtered out, so no run asserts on — or tabulates estimates
-/// left in `target/criterion` by — work it did not do. The filter that keeps this group's rows *and*
-/// that table is `periodic/tick_scan|recompute`; a narrower one prints skip lines where those checks and
-/// that table would sit. That is a property of the guard style, not of this group.
+/// includes the ratio table: every `guard::Ran` guard skips itself with a printed reason when its own ids
+/// are filtered out, and `recompute_ratio` tabulates a row only when all three of its sides timed a loop
+/// in this run — a run with no such row prints the table's skip line instead — so no run asserts on, or
+/// tabulates a row from, work it did not do. The filter that keeps this group's rows *and* that table is
+/// `periodic/tick_scan|recompute`; a narrower one prints skip lines where those checks and that table
+/// would sit. What neither reaches is the directory the table reads: `print_ratios` ignores
+/// `CRITERION_HOME` (`support/recompute.rs:205-218`), so even a fully gated row can be paired with files
+/// another session left in the `target/criterion` it resolves ([`recompute_ratio`]'s last section). Both
+/// are properties of the guard style and of that helper, not of this group.
 ///
 /// Reproducible from this table: that the three ids exist, that ns/tick rises monotonically with A
 /// (2.8× from A=1 to A=20), and the rate figures above. What is **directional only** is the shape of that
