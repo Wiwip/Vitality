@@ -53,6 +53,8 @@ mod guard;
 mod identity;
 #[path = "support/leaf.rs"]
 mod leaf;
+#[path = "support/many_actors.rs"]
+mod many_actors;
 #[path = "support/periodic.rs"]
 mod periodic;
 #[path = "support/recompute.rs"]
@@ -186,7 +188,10 @@ fn app_update(c: &mut Criterion) {
 /// the caveat: the row is keyed on `st`/`static` (`BENCH-PLAN.md:146`), a build this crate cannot
 /// produce without a manifest edit (the dev-dependency bevy turns `multi_threaded` and
 /// `dynamic_linking` on for every bench, module doc above), so that 2× is one `mt`/`dyn` measurement
-/// held against a threshold set for a build nobody can measure here. D-22: the direction of the
+/// held against a threshold set for a build nobody can measure here. Decision D-36 measured the run-to-run
+/// spread of this harness on a same-code re-run: the slope moved ~3 %, the intercept 19 %, so treat
+/// ~10 % as the floor of what these numbers can say. Nothing below that is resolvable from them, and
+/// the four significant figures printed above are digits rather than resolution. D-22: the direction of the
 /// correction is not guessable, because a single-threaded executor removes work-stealing *and* any
 /// parallel execution of the six per-attribute systems. Two readings of the same five points matter
 /// for whoever acts on it. The marginal cost is convex — 3.1 µs/attr
@@ -701,6 +706,200 @@ fn dep_value<D: Attribute<Property = f32>>(world: &World, reader: Entity) -> f64
         .current_value() as f64
 }
 
+/// The group `recompute_many_actors` opens and whose guard skip lines it names.
+const MANY_GROUP: &str = "recompute/many_actors";
+
+/// Family B (BENCH-PLAN §2B): `recompute/many_actors` — resolver cost spread over many actors, the
+/// curve that says whether a resolver should shard by actor.
+///
+/// The shape and the reason it carries no effects are in [`many_actors`]; the gate guard is
+/// `tests/test_bench_many_actors.rs`, which pins the dirty fraction. Every sample is one
+/// [`run_fixed_tick`] — resolver only, no clock, no `Update` systems, no asset work, like every other
+/// `recompute/*` group — and `Throughput::Elements(actors)` makes criterion print actors/s.
+/// [`floor::prepare_floor`] is the only [`tick`] any setup call makes, and it is setup, so no number
+/// below includes whole-tick work.
+///
+/// The grid is {100, 1k, 10k} actors × {0, 1, 10, 100} % dirty × A ∈ {5, 20, 40} = 36 ids, and this
+/// run timed **all 36**: [`many_actors::price_setups`] builds and settles one world per (actors, A)
+/// pair first and prints the milliseconds, and its worst pair — a=40/actors=10000 — came in at
+/// **406 ms**, under [`many_actors::MANY_BUILD_BUDGET_MS`] (500 ms), so the time-box did not bite and
+/// no cell was left unmeasured. That is a near thing, not a comfortable one: the priced setups ran
+/// 2/6/18 ms (100 actors), 5/22/54 ms (1k) and 37/153/406 ms (10k) for A = 5/20/40, so on a machine
+/// 20 % slower the fallback would have run, and the fallback prints a `NOT TIMED` line per skipped
+/// cell carrying its measured setup price and a projected mark cost.)
+///
+/// Measured at this tip, `mt`/`dyn` (`multi_threaded` + `libbevy_dylib.so`, module doc), 10 samples
+/// per id (`--warm-up-time 0.5 --measurement-time 1 --sample-size 10`), one run of one binary,
+/// `/proc/loadavg` 4.30 before and 5.94 after on 8 cores. µs/tick is the mean of `run_fixed_tick`, ±
+/// is half its 95 % CI, σ is criterion's, actors/s is criterion's `Throughput::Elements(actors)`
+/// line. `actors/s` on a `dirty=0` row is **not** a throughput: it is the idle schedule divided by an
+/// actor count a clean tick never looks at, which is why 10 k clean actors "achieves" 234 M/s.
+/// Every cell is same-run with the cells in its own row and column; compared with any *other*
+/// group (including `floor/idle_tick`) it is directional only.
+///
+/// ```text
+/// actors  dirty   A    µs/tick       ±      σ    actors/s        actors  dirty   A    µs/tick       ±      σ    actors/s
+///    100     0 %  5      33.9     1.8     3.1   2 951 810        1 000     0 %  5      39.0     0.7     1.9  25 618 372
+///    100     0 % 20      91.7     1.0     2.2   1 090 759          1 000    0 % 20      89.5     1.6     3.6  11 178 116
+///    100     0 % 40     162.3     2.3     6.3     616 317          1 000    0 % 40     159.9     4.5     6.6   6 253 797
+///    100     1 %  5      41.3     1.6     2.9   2 420 100          1 000    1 %  5      63.9     1.9     3.2  15 659 888
+///    100     1 % 20     111.7     2.8     5.7     895 595          1 000    1 % 20     189.9     6.2    20.1   5 265 681
+///    100     1 % 40     206.7     7.1    10.7     483 695          1 000    1 % 40     348.7     9.5    12.9   2 868 048
+///    100    10 %  5      59.5     3.0     4.4   1 680 681          1 000   10 %  5     224.4     5.5    13.0   4 455 719
+///    100    10 % 20     185.8     7.3    13.0     538 320          1 000   10 % 20     824.6    15.5    40.2   1 212 658
+///    100    10 % 40     360.4    13.2    20.1     277 483          1 000   10 % 40   1 875.4    58.8   483.1     533 225
+///    100   100 %  5     222.7     9.1    11.5     448 995          1 000  100 %  5   1 714.6    69.4   162.8     583 215
+///    100   100 % 20     793.2    17.4    32.8     126 071          1 000  100 % 20   6 791.9   202.3   445.0     147 234
+///    100   100 % 40   1 628.6    47.5    75.8      61 402          1 000  100 % 40  13 805.9   440.5 1 463.9      72 433
+///
+///   10 000    0 %  5      42.8     1.0     2.6 233 648 585        10 000   10 %  5   1 779.5    45.0   211.7   5 619 586
+///   10 000    0 % 20      93.8     3.4     5.5 106 596 576        10 000   10 % 20   7 090.5   265.1   325.3   1 410 337
+///   10 000    0 % 40     173.0     5.8     8.4  57 791 728        10 000   10 % 40  14 629.6   321.5   418.0     683 546
+///   10 000    1 %  5     229.4     6.9    12.3  43 584 125        10 000  100 %  5  16 288.8   379.0   439.2     613 919
+///   10 000    1 % 20     895.1    21.9    32.0  11 172 427        10 000  100 % 20  63 438.0 1 580.0 2 761.9     157 634
+///   10 000    1 % 40   1 746.1    72.0   158.4   5 726 903        10 000  100 % 40 127 388.5 3 355.0 6 136.8      78 500
+/// ```
+///
+/// ## What the curve says: shard the dirty list, not the actors
+///
+/// Subtract each cell's own `dirty=0` level (the schedule floor, `floor/idle_tick`'s number spread
+/// over `actors` entities that a clean tick never looks at) and divide by `dirty_actors × A`:
+///
+/// ```text
+/// 10 k actors, 100 % dirty:  0.325 (A=5)  0.317 (A=20)  0.318 (A=40)  µs per dirty attribute
+///  1 k actors, 100 % dirty:  0.335 (A=5)  0.335 (A=20)  0.341 (A=40)
+///   100 actors, 100 % dirty: 0.378 (A=5)  0.351 (A=20)  0.367 (A=40)
+///  10 k actors,  10 % dirty: 0.347 (A=5)  0.350 (A=20)  0.361 (A=40)
+///  1 k actors,  10 % dirty:  0.371 (A=5)  0.368 (A=20)  0.429 (A=40)
+///   100 actors, 10 % dirty:  0.512 (A=5)  0.471 (A=20)  0.495 (A=40)
+///  1 k actors,   1 % dirty:  0.498 (A=5)  0.502 (A=20)  0.472 (A=40)
+///   100 actors,  1 % dirty:  1.480 (A=5)  1.000 (A=20)  1.110 (A=40)
+/// ```
+///
+/// The band is **0.32–0.43 µs per dirty (actor, attribute) pair per tick once a tick carries enough
+/// of them** — ≥10 % dirty at ≥1 k actors, where it is flat in `actors` and roughly flat in A. Drop to
+/// 100 actors at 10 % dirty and it is 0.47–0.51; drop to 1 % and a tick carries 1–4 pairs, so the same
+/// arithmetic gives **1.0–1.5 µs/pair**, ~4× the corner value, because the per-tick dispatch floor is
+/// amortised over almost nothing — that, not a per-pair cost, is what the sparse corner measures. Size
+/// a shard decision on the corner band, never on the sparse corner. The `dirty=0`
+/// column is flat in `actors` at A=20 and A=40 (+2.1 µs and +10.7 µs on a 100× world) but **not** at
+/// A=5: 33.9 → 42.8 µs is +26 %, CI-combined ±2.8, so a clean tick does grow a little with actor count
+/// at low A. So the resolver is already O(dirty × A) and
+/// **sharding by actor has nothing to shard**: splitting a 10 k-actor world into per-actor shards
+/// would move the same 0.32 µs of work between threads, and the actor count is not a cost driver
+/// anywhere in the grid. That is a measurement of single-threaded, effect-free shapes; the design
+/// inference one step beyond it — a per-actor shard would re-run the A-system walk per shard, i.e.
+/// multiply the `dirty=0` floor — is reasonable but is not what this grid measured. The shard boundary
+/// §2B asks for is on the *dirty set* — the work unit is a
+/// dirty (actor, attribute) pair, and A=40 costs about 2× A=20, which points at the per-attribute
+/// system walk (`floor/idle_tick`'s slope, T1) rather than at anything per-actor. Caveat on that
+/// comparison, which the module doc carries and the headline used to omit: A=40 draws from
+/// `floor::FLOOR_POOL` (`Flr0…Flr39`), not `common::ATTRIBUTE_POOL`, so A=5/20/40 are comparable in
+/// attribute *count* and not in absolute ns or attribute identity.
+///
+/// Read the ceiling as the practical number, though: 10 k actors with every attribute dirty is 66 ms
+/// (A=20) and 127 ms (A=40) of resolver for one fixed tick — 4× and 8× a 60 Hz frame. That is what
+/// the row is really worth: not that a resolver should shard, but that a game cannot afford to leave
+/// a 10 k-actor world dirty (`recompute.rs`'s "a resolve re-marks what it resolved" makes that the
+/// steady state, not an accident).
+///
+/// Two labels that belong on the numbers. The `dirty=0` column is a cross-check, directional only:
+/// this run filtered `floor/idle_tick` out, so 89.5 µs (A=20) and 159.9 µs (A=40) at 1000 actors sit
+/// 6.5 % and 4.4 % above that group's landed 84.0 and 153.2 µs — same order, different run, and both
+/// differences are below the 10 % spread D-36 measured for this harness, so neither is a finding.
+/// And the run-to-run spread here is real: a second run of this same binary (85 s, loadavg 4.78)
+/// gave 14.12 / 66.38 / 129.52 ms for the 10 k A=40 10 %, 10 k A=20 100 % and 10 k A=40 100 % cells,
+/// against this run's 14.63 / 63.44 / 127.39 ms — 1.6–4.4 % apart on identical code — while the
+/// widest σ/mean in the table is 26 % (1 000/10 %/A=40). Nothing in this table that is smaller than
+/// ~10 % is a difference.
+fn recompute_many_actors(c: &mut Criterion) {
+    let prices = many_actors::price_setups();
+    let cheap = many_actors::setups_are_cheap(&prices);
+    let cells = many_actors::many_cells();
+    println!(
+        "recompute/many_actors: {} cells in the §2B grid, {} ids this run will time, setup budget {} ms per \n  \
+         (actors, a) pair, all pairs under it = {cheap}. Priced setups (build + settle at dirty=0, \n  \
+         setup is never timed, ms):",
+        cells.len(),
+        if cheap {
+            cells.len()
+        } else {
+            many_actors::shipped_count()
+        },
+        many_actors::MANY_BUILD_BUDGET_MS,
+    );
+    for price in &prices {
+        println!("  {}", price.line());
+    }
+
+    let mut group = c.benchmark_group(MANY_GROUP);
+    let mut skipped = Vec::new();
+    // Measured mark cost per marked (actor, attribute) pair, keyed by (actors, dirty=): the A = 20 row
+    // of every such pair ships, so any skipped cell of that pair has a rate to be projected from.
+    let mut rates: Vec<(usize, f32, f64)> = Vec::new();
+    for cell in &cells {
+        if !(cheap || cell.is_shipped()) {
+            skipped.push(*cell);
+            continue;
+        }
+        let spec = cell.spec();
+        let mut shape = many_actors::many_shape(&spec);
+        let bench_id = many_actors::many_id(&spec, shape.dirty_actors);
+        let marks = (cell.dirty_actors() * cell.attributes).max(1);
+        rates.push((
+            cell.actors,
+            cell.fraction,
+            shape.mark_us as f64 / 1000.0 / marks as f64,
+        ));
+        // Setup, printed before the loop so a filtered run still says what its world cost.
+        println!(
+            "  setup {bench_id}: {} ms ({} ms of marks), {} dirty of {} actors, {} markers cleared",
+            shape.setup_ms,
+            shape.mark_us as f64 / 1000.0,
+            shape.dirty_actors,
+            cell.actors,
+            shape.markers_cleared,
+        );
+        group.throughput(Throughput::Elements(cell.actors as u64));
+        let pool = shape.app.world().resource::<HarnessWorld>().attrs();
+        let actors = shape.actors.clone();
+        let dirty_actors = shape.dirty_actors;
+        let world = shape.app.world_mut();
+        let ran = guard::Ran::new();
+        group.bench_function(bench_id.clone(), |b| {
+            b.iter(|| {
+                ran.bump();
+                run_fixed_tick(world);
+                black_box(world.entities().len());
+            });
+        });
+        // A resolve re-marks what it resolved and marks do not spread (`many_actors`), so a cell that
+        // ends its loop on a different dirty count has been timing some other workload than its id.
+        ran.guard(&format!("{MANY_GROUP}/{bench_id}"), || {
+            let now = many_actors::dirty_actors(world, pool, &actors);
+            assert_eq!(
+                now.len(),
+                dirty_actors,
+                "shape {} ended its timed loop dirty on {} actors, not the {dirty_actors} its id \n                 quotes: the samples resolved a different workload than the row reports",
+                spec.shape_id(),
+                now.len(),
+            );
+        });
+    }
+    group.finish();
+
+    // After the loop, so the projection below reads the whole run's measured rates.
+    for cell in &skipped {
+        let rate = rates
+            .iter()
+            .find(|(actors, fraction, _)| {
+                *actors == cell.actors && (*fraction - cell.fraction).abs() < f32::EPSILON
+            })
+            .map(|(_, _, rate)| *rate);
+        println!("{}", many_actors::omitted_line(*cell, &prices, rate));
+    }
+}
+
 /// Family E (BENCH-PLAN §2E): `periodic/tick_scan` — what a world of ticking effects costs a tick as
 /// the attribute count grows.
 ///
@@ -1042,6 +1241,7 @@ fn resolver_benches(c: &mut Criterion) {
     leaf_warm_cold(c);
     recompute_ratio(c);
     recompute_cross_actor(c);
+    recompute_many_actors(c);
     periodic_tick_scan(c);
     allocs_per_tick(c);
 }
