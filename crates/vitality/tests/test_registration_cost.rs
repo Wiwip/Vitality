@@ -5,15 +5,26 @@
 //! per attribute**. Both baselines are exactly those measured slopes — no headroom, so the next change
 //! to `init_core_attribute` moves a number here rather than a guess. The slope matches the 6 nodes per
 //! attribute `AUTO-REPORT-bench-2026-11-07.md` §1 quotes for the floor; that run's intercept sits 2
-//! nodes higher (22 at two attributes, 20 here), and this file chases neither — the per-attribute cost
-//! is the slope, and both runs agree on it.
+//! nodes higher (22 at two attributes, 20 here), and this file chases neither — the slope both runs
+//! agree on is the per-attribute cost, and the intercept pinned below is this file's own 8 nodes.
 //!
 //! Why those two intercepts differ, measured rather than assumed: `measure` counts before the app has
 //! ticked, and `systems_len` reads the schedule *graph* until the executor is built and the *executable*
 //! schedule afterwards (`bevy_ecs-0.20.1/src/schedule/schedule.rs:745-751`). One `app.update()` lifts
 //! the count by exactly 2 at both widths — 20 → 22 at a=2, 140 → 142 at a=22 — the auto-inserted
-//! `apply_deferred` nodes an executable schedule carries and a graph does not. The slope is 6 either
-//! way, so no number asserted below depends on when the count was taken.
+//! `apply_deferred` nodes an executable schedule carries and a graph does not. So the intercept pinned
+//! below is the never-run graph, `8 + 6a`: a `measure` that ticked the app first reads `10 + 6a` and
+//! the pin goes red on that +2, not on anything vitality changed. The slope is 6 either way.
+//!
+//! Slope and intercept are pinned separately because neither sees the other: one node added at plugin
+//! build time leaves `(141 - 21) / 20` at 6, and a change that only widens the per-attribute cost
+//! leaves the `a=2` count alone. Together they hold both halves of `cost = intercept + slope·A`.
+//!
+//! Every bound here is one-sided, so getting cheaper never goes red: a leaner `init_core_attribute`
+//! passes silently, and whoever cuts registration cost owns lowering these baselines in the same
+//! commit. The fixed half is pinned for `systems_len()` only — the fixed part of `components().len()`
+//! (120 of the 140 at two attributes) is `MinimalPlugins`/`AssetPlugin` infrastructure, which moves
+//! with the harness plugin set for reasons this file has nothing to do with.
 //!
 //! The shape is 1 actor, 0 effects and 0 modifiers on purpose: this prices *registration*, and every
 //! per-actor or per-effect component would be charged into the per-attribute slope. Both widths come
@@ -41,6 +52,10 @@ const STEP: usize = WIDE - NARROW;
 /// in the assert messages too.
 const SYSTEMS_PER_ATTR_BASELINE: usize = 6;
 const COMPONENTS_PER_ATTR_BASELINE: usize = 10;
+
+/// Fixed `FixedUpdate` nodes at zero attributes, i.e. the measured `20 - 2 * 6` of the never-run graph.
+/// The companion of the slope above: a node added at plugin build time is a +1 here, not a slope change.
+const SYSTEMS_INTERCEPT_BASELINE: usize = 8;
 
 fn spec(attributes: usize) -> WorldSpec {
     WorldSpec {
@@ -108,6 +123,20 @@ fn registration_cost_per_attribute_is_pinned() {
          (the floor report's 6 nodes per attribute)",
         narrow.systems,
         wide.systems,
+    );
+    // The companion pin: an extra node added at plugin build time is +1 at both widths, so the slope
+    // above still reads 6 (21 at 2, 141 at 22) and only this intercept moves.
+    let intercept = narrow
+        .systems
+        .saturating_sub(SYSTEMS_PER_ATTR_BASELINE * NARROW);
+    assert!(
+        intercept <= SYSTEMS_INTERCEPT_BASELINE,
+        "measured {intercept} fixed scheduled nodes: FixedUpdate systems_len() is {} at {NARROW} \
+         attributes, i.e. {SYSTEMS_PER_ATTR_BASELINE} per attribute plus a fixed {intercept}; the \
+         intercept baseline is {SYSTEMS_INTERCEPT_BASELINE} (the never-run graph, 8 + 6a), not the {} \
+         a compiled schedule counts",
+        narrow.systems,
+        SYSTEMS_INTERCEPT_BASELINE + 2,
     );
     assert!(
         components <= COMPONENTS_PER_ATTR_BASELINE,
