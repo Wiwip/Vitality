@@ -416,8 +416,10 @@ pub fn current_values(world: &World, attrs: &[AttrSpec], actor: Entity) -> Vec<f
 /// (`vitality_effects/src/systems.rs:274-283`) re-triggers `MarkNodeDirty` off the write the next
 /// resolve makes, so a `run_fixed_tick` leaves the same attributes dirty forever. Measured on the
 /// tiny shape it does not *spread* — 2 of 4 actors marked stays 2 of 4 across two further ticks — but
-/// on a world this module built, where the build already marked everything, "never decays" is the
-/// whole story: it is dirty on every attribute of every actor for the rest of its life.
+/// every actor a build marked stays dirty on every attribute of it for the rest of its life, and a
+/// shape carrying cross-actor modifiers does spread, one attribute at a time: a marked source
+/// attribute re-appears as `Dirty<Dep>` on each actor reading it and on no other attribute of any of
+/// them (`tests/test_dirty_spread.rs`).
 pub fn mark_dirty_fraction(
     world: &mut World,
     attrs: &[AttrSpec],
