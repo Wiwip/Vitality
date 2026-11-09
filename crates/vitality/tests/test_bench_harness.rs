@@ -485,6 +485,11 @@ fn test_recompute_ratio() {
 
     let actor = all.actor;
     let before = current_values(all.app.world(), pool, actor);
+    assert_eq!(
+        recompute::dirty_names(all.app.world(), pool, actor),
+        pool_names(pool),
+        "dirty=all must dirty every attribute"
+    );
     recompute::assert_dirty_attrs(
         all.app.world(),
         pool,
@@ -537,6 +542,12 @@ fn test_recompute_ratio() {
             );
         }
     }
+    // literal, since `pick` is also the oracle of `assert_dirty_attrs`
+    assert_eq!(
+        recompute::dirty_names(one.app.world(), pool, actor),
+        vec![pool[0].name],
+        "dirty=one must dirty exactly the pool's first attribute"
+    );
     recompute::assert_dirty_attrs(
         one.app.world(),
         pool,
@@ -748,4 +759,90 @@ fn estimate_parser_reads_mean_only() {
         .is_none(),
         "a quoted number is not an estimate"
     );
+}
+
+fn est(ns: f64, ci_half: f64) -> recompute::Estimate {
+    recompute::Estimate { ns, ci_half }
+}
+
+#[test]
+fn ratio_row_math_and_noise_guard() {
+    use recompute::RatioRow::{Noise, Ratios};
+    let none = est(100.0, 5.0);
+    // marginal = (all-none)/(a*(one-none)) = 300/(3*50), raw = all/(a*one) = 400/(3*150)
+    assert_eq!(
+        recompute::ratio_row(3, &none, &est(150.0, 5.0), &est(400.0, 5.0)),
+        Ratios {
+            raw: 400.0 / 450.0,
+            marginal: Some(2.0)
+        }
+    );
+    // gap of exactly the summed half-widths is still noise
+    assert_eq!(
+        recompute::ratio_row(3, &none, &est(110.0, 5.0), &est(400.0, 5.0)),
+        Noise
+    );
+    // all inside the floor's noise is noise too, the numerator needs a number as well
+    assert_eq!(
+        recompute::ratio_row(3, &none, &est(150.0, 5.0), &est(108.0, 5.0)),
+        Noise
+    );
+    // a dirty tick cheaper than the clean one outside noise has a raw but no marginal
+    assert_eq!(
+        recompute::ratio_row(2, &none, &est(50.0, 1.0), &est(300.0, 1.0)),
+        Ratios {
+            raw: 3.0,
+            marginal: None
+        }
+    );
+}
+
+#[test]
+fn ratios_in_words_uses_true_median() {
+    assert_eq!(
+        recompute::ratios_in_words(&[4.0, 1.0, 2.0, 3.0], 4),
+        "median 2.50 over 4 rows, min 1.00, max 4.00"
+    );
+    assert_eq!(
+        recompute::ratios_in_words(&[3.0, 1.0, 2.0], 3),
+        "median 2.00 over 3 rows, min 1.00, max 3.00"
+    );
+    assert!(recompute::ratios_in_words(&[1.0], 4).starts_with("no median"));
+}
+
+#[test]
+fn estimate_refuses_missing_and_stale_files() {
+    let root = std::env::temp_dir().join(format!("vitality-est-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(matches!(
+        recompute::estimate(&root, "g/x", "a/b"),
+        Err(recompute::Refusal::Missing(_))
+    ));
+
+    let dir = root.join("g_x").join("a_b").join("new");
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("estimates.json");
+    std::fs::write(
+        &file,
+        r#"{"mean":{"confidence_interval":{"lower_bound":100.0,"upper_bound":200.0},"point_estimate":150.0}}"#,
+    )
+    .unwrap();
+    // written just now, so younger than the test binary
+    let fresh = recompute::estimate(&root, "g/x", "a/b")
+        .ok()
+        .expect("fresh file is read");
+    assert_eq!((fresh.ns, fresh.ci_half), (150.0, 50.0));
+
+    let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1);
+    std::fs::File::options()
+        .write(true)
+        .open(&file)
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    assert!(matches!(
+        recompute::estimate(&root, "g/x", "a/b"),
+        Err(recompute::Refusal::Stale(_))
+    ));
+    let _ = std::fs::remove_dir_all(&root);
 }
