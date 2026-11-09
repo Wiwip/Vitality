@@ -8,6 +8,13 @@
 //! nodes higher (22 at two attributes, 20 here), and this file chases neither — the per-attribute cost
 //! is the slope, and both runs agree on it.
 //!
+//! Why those two intercepts differ, measured rather than assumed: `measure` counts before the app has
+//! ticked, and `systems_len` reads the schedule *graph* until the executor is built and the *executable*
+//! schedule afterwards (`bevy_ecs-0.20.1/src/schedule/schedule.rs:745-751`). One `app.update()` lifts
+//! the count by exactly 2 at both widths — 20 → 22 at a=2, 140 → 142 at a=22 — the auto-inserted
+//! `apply_deferred` nodes an executable schedule carries and a graph does not. The slope is 6 either
+//! way, so no number asserted below depends on when the count was taken.
+//!
 //! The shape is 1 actor, 0 effects and 0 modifiers on purpose: this prices *registration*, and every
 //! per-actor or per-effect component would be charged into the per-attribute slope. Both widths come
 //! from the default 24-deep [`common::ATTRIBUTE_POOL`], so no new attribute types are declared here.
