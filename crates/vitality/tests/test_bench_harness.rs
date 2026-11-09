@@ -598,6 +598,20 @@ fn test_recompute_ratio() {
         );
         run_fixed_tick(one.app.world_mut());
     }
+
+    // (c) nothing dirty: the floor both ratio marginals subtract. Literal again, for the same reason —
+    // `recompute_shape` marks from `pick` and `assert_dirty_attrs` expects from `pick`, so a `None` arm
+    // handing back a non-empty slice marks an attribute and agrees with itself, and every `dirty=none`
+    // bench id silently prices a one-attribute walk.
+    let none = recompute::recompute_shape(&spec, recompute::Dirtied::None);
+    let clean = recompute::dirty_names(none.app.world(), pool, none.actor);
+    assert_eq!(
+        clean,
+        Vec::<&'static str>::new(),
+        "dirty=none of shape {} must leave no attribute dirty, but {} carry {clean:?}",
+        spec.shape_id(),
+        clean.len(),
+    );
 }
 
 /// Every attribute name of a pool, in pool order — the same shape [`recompute::dirty_names`] returns,
