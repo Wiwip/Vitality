@@ -49,13 +49,15 @@ mod floor;
 mod identity;
 #[path = "support/leaf.rs"]
 mod leaf;
+#[path = "support/periodic.rs"]
+mod periodic;
 #[path = "support/recompute.rs"]
 mod recompute;
 
 use crate::alloc_count::{Calibration, Counts};
 use crate::common::{
-    Attr0, Attr4, Attr19, AttrSpec, HarnessWorld, WorldSpec, actor_entities, mark_dirty_fraction,
-    run_fixed_tick, seed_rng, tick,
+    Attr0, Attr4, Attr19, AttrSpec, HarnessWorld, WorldSpec, actor_entities, current_values,
+    mark_dirty_fraction, run_fixed_tick, seed_rng, tick,
 };
 use crate::cross_actor::{
     SourceMove, cascade_tick, cross_id, cross_shape, cross_spec, passes_line, passes_to_converge,
@@ -605,6 +607,143 @@ fn dep_value<D: Attribute<Property = f32>>(world: &World, reader: Entity) -> f64
         .current_value() as f64
 }
 
+/// Family E (BENCH-PLAN §2E): `periodic/tick_scan` — what a world of ticking effects costs a tick as
+/// the attribute count grows.
+///
+/// Three points on one axis: A ∈ {1, 5, 20} registered attributes on **one** actor that carries
+/// `periodic::PERIODIC_EFFECTS` = 120 effects of one `Add` modifier each, of which the seeded coin flip
+/// makes **T = 59** periodic — `EffectTicker` components counted on the actor, never read off
+/// `ticking_fraction`. Every period is drawn from 0.5–1.5 s = 32–96 fixed ticks, so no single instance
+/// can fire more than once every 32 ticks and "about one firing per tick" is an *aggregate* of those
+/// 59, not a property of any one of them. Measured over 512 ticks after a 128-tick warm-up on this very
+/// shape: **1.043 firings per tick** (Σ value delta 1.524/tick ÷ 1.461 mean firing amount), with a
+/// value moving on 337 of those 512 ticks (0.658). `periodic::probe` prints both per point, and
+/// `tests/test_bench_periodic.rs` re-measures them at a=1 and a=20 — it fails if the shape stops
+/// firing, fires on every tick, or fires twice as often as its id claims.
+///
+/// The multiplication this row is read for is in the system's signature: `init_effect_attribute`
+/// registers one `apply_periodic_effect::<T>` per attribute type (`vitality_effects/src/lib.rs:76-88`)
+/// and that system's effect query is not filtered by `T` (`vitality_effects/src/periodic.rs:12-30`), so
+/// every ticking effect entity is visited and tested with `just_finished()` **once per registered
+/// attribute**. Growth of ns/tick against A is therefore the same walk multiplication `recompute/*`
+/// measures on the modifier path, on a second code path — with the caveat that this shape also carries
+/// 61 permanent effects, whose fold per attribute rides in the same number (`e=120/tick=50` in the id).
+///
+/// ## The timed unit is a whole `app.update()`, and that is not negotiable
+///
+/// Every sample is [`tick`] — one `app.update()`, exactly one fixed tick under the
+/// `TimeUpdateStrategy::FixedTimesteps(1)` `common::build_app_with` installs. **It has to stay that
+/// way: [`run_fixed_tick`] is `World::run_schedule(FixedUpdate)`, it advances no `Time<Fixed>` and it
+/// does not run `tick_effect_tickers` (which lives in `Update`), so periodic effects cannot fire under
+/// it** (`common.rs:379-385`, `support/periodic.rs`). Re-pointing this group at the cheaper driver
+/// would leave a `periodic/…` id timing an idle scan, and the gate test goes red on exactly that edit.
+///
+/// The consequence is that ns/tick here is resolver **plus** timers **plus** bevy's own per-frame work
+/// (`AssetPlugin`, the `Main`-schedule bookkeeping `run_fixed_tick` skips). `floor/idle_tick` and
+/// `recompute/*` time `run_fixed_tick` — the resolver and nothing else — so their ns/tick and this
+/// group's are **not comparable**, and one must not be subtracted from the other to "isolate" the
+/// timer cost: they are different schedules over different sets, and this one contains that one. Only
+/// the slope *within* this group carries a claim.
+///
+/// `Throughput` stays unset: the metric is ns/tick of one actor and its T effects, and an
+/// `Elements(A)` line would have criterion print a ns-per-attribute figure that charges the T-wide scan
+/// to A.
+///
+/// ## Numbers
+///
+/// `mt` / `dyn`: this binary is criterion's default single-threaded harness (`mt` absent) and bevy
+/// dynamic (the repo never turns `dynamic` on). One run, 2026-11-08 19:01–19:10 EST, short flags
+/// `--warm-up-time 0.5 --measurement-time 1 --sample-size 10`, 10 samples per point (10k / 6655 / 3685
+/// iterations), `loadavg` 2.90 4.87 6.09 before the run and 6.12 4.66 5.35 after — another session was
+/// compiling on this box the whole time, so §6.1's quiet-machine rule was not met and σ runs to 10 %.
+///
+/// | A | mean ± σ ns/tick | median [95 % CI] ns | mean/A, ns per attribute |
+/// |---|---|---|---|
+/// | 1 | 101 888 ± 6 477 (6.4 %) | 102 308 [97 269 .. 106 299] | 101 888 |
+/// | 5 | 152 655 ± 15 547 (10.2 %) | 151 319 [144 183 .. 158 452] | 30 531 |
+/// | 20 | 284 437 ± 21 256 (7.5 %) | 284 374 [264 622 .. 295 057] | 14 222 |
+///
+/// No Δ column. §2A's Δ is `floor/idle_tick` at the same `tick=`, and two things stop it here: that row
+/// times `run_fixed_tick` while this one times `app.update()` (the paragraph above), and it was not in
+/// this session — the run below was filtered to `periodic/tick_scan` plus `recompute/cross_actor`, whose
+/// post-loop guard goes red when its own ids are filtered out. Quoting §2A's mean here, even as a "would
+/// read" figure, hands the reader the subtraction the paragraph above bans, and no artifact in this repo
+/// carries that mean, so it could not be checked here anyway.
+///
+/// Filtered runs have to carry every group whose post-loop guard needs its own iterations — today
+/// `recompute/cross_actor` plus this group's two guards, so the filter is
+/// `periodic/tick_scan|recompute/cross_actor`. That is a property of the guard style, not of this group.
+///
+/// Reproducible from this table: that the three ids exist, that ns/tick rises monotonically with A
+/// (2.8× from A=1 to A=20), and the rate figures above. What is **directional only** is the shape of that
+/// rise — 101.9 / 152.7 / 284.4 µs is 101.9 / 30.5 / 14.2 ns per attribute, cost per attribute *falling*
+/// as A grows, which reads as a per-tick fixed cost (frame, schedule, the 59 timer visits) dominating a
+/// per-attribute one. At σ up to 10 % and this load, one session gives the direction, not the slope; the
+/// §6.1 A/B form with `--noise-thresh 0.15` is what would put a number on it. Nothing here is a
+/// regression claim.
+fn periodic_tick_scan(c: &mut Criterion) {
+    let mut group = c.benchmark_group("periodic/tick_scan");
+    for attributes in periodic::PERIODIC_ATTRS {
+        let spec = periodic::periodic_spec(attributes);
+        // The probe world is where the rate is measured; its clock is used up by the windows, so the
+        // world timed below is a fresh build of the same spec, and the assert keeps the two shapes one
+        // shape.
+        let probed = periodic::probe(&spec);
+        println!(
+            "{}",
+            periodic::point_line(&spec, &probed.shape, &probed.firing)
+        );
+        let bench_id = periodic::periodic_id(&spec, probed.shape.ticking, &probed.firing);
+        let shape = periodic::periodic_shape(&spec);
+        assert_eq!(
+            shape.ticking, probed.shape.ticking,
+            "{bench_id}: the timed build carries {} ticking instances and the rate above was measured \
+             on {}",
+            shape.ticking, probed.shape.ticking,
+        );
+
+        let pool = shape.app.world().resource::<HarnessWorld>().attrs();
+        let actor = shape.actor;
+        let before = current_values(shape.app.world(), pool, actor);
+        let mut app = shape.app;
+        group.bench_function(bench_id, |b| {
+            b.iter(|| {
+                tick(&mut app);
+                // One read of the world the tick just ran on, so the result is consumed.
+                black_box(app.world().entities().len());
+            });
+        });
+
+        // Two guards against the loop having timed something other than the row's workload. Values can
+        // only climb here (every modifier is `ModOp::Add`), so a flat actor means no sample fired, and a
+        // clean one means nothing ever dirtied it — either way the ns/tick above is an idle tick with a
+        // `periodic` label.
+        let world = app.world();
+        let after = current_values(world, pool, actor);
+        let moved_up = before
+            .iter()
+            .zip(&after)
+            .all(|(was, now)| now >= was && *now != *was);
+        assert!(
+            moved_up,
+            "shape {} ended its timed loop on values {after:?}, started on {before:?}: every modifier \
+             in this shape is `ModOp::Add`, so an actor whose values did not all climb means no sample \
+             fired and the ns/tick above timed nothing",
+            periodic::periodic_id(&spec, probed.shape.ticking, &probed.firing),
+        );
+        let dirty = recompute::dirty_names(world, pool, actor);
+        assert_eq!(
+            dirty.len(),
+            pool.len(),
+            "shape {} ended its timed loop dirty on {dirty:?}, not on all {} attributes: the id says \
+             dirty=all, so most samples started on an actor nothing had marked",
+            periodic::periodic_id(&spec, probed.shape.ticking, &probed.firing),
+            pool.len(),
+        );
+    }
+    group.finish();
+}
+
 #[global_allocator]
 static ALLOC_COUNT: alloc_count::CountingAlloc = alloc_count::ALLOC;
 
@@ -788,6 +927,7 @@ fn resolver_benches(c: &mut Criterion) {
     leaf_warm_cold(c);
     recompute_ratio(c);
     recompute_cross_actor(c);
+    periodic_tick_scan(c);
     allocs_per_tick(c);
 }
 
