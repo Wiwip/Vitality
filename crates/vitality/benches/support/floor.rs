@@ -25,6 +25,7 @@ use crate::common::{
 };
 use bevy::ecs::component::ComponentId;
 use bevy::prelude::*;
+use vitality::actors::Actor;
 use vitality::prelude::*;
 
 /// Actors every floor shape spawns. An idle tick touches no actor at all, so this only has to be big
@@ -178,6 +179,74 @@ pub fn dirty_entity_count(world: &World) -> usize {
         })
         .map(|archetype| archetype.entities().len())
         .sum()
+}
+
+/// A dirty entity split by the kind of entity carrying the marker. [`dirty_entity_count`]'s bare
+/// number cannot tell an actor from the effect and modifier nodes under an actor, and the two need
+/// different words in a failure: a mark that will not leave an actor is the D-34 re-dirty bug, a mark
+/// left on a node means the graph walk never finished cleaning.
+pub struct DirtySplit {
+    pub actors: Vec<Entity>,
+    pub nodes: Vec<DirtyNode>,
+}
+
+/// One dirty non-actor entity, with the `Dirty<T>` names on it so a node that stays dirty says which
+/// attribute kept it.
+pub struct DirtyNode {
+    pub entity: Entity,
+    pub markers: Vec<String>,
+}
+
+impl DirtySplit {
+    /// The same world as [`dirty_entity_count`] sees it; a guard asserts the two agree so the split
+    /// cannot be quieter than the count it decomposes.
+    pub fn total(&self) -> usize {
+        self.actors.len() + self.nodes.len()
+    }
+
+    pub fn node_labels(&self) -> Vec<String> {
+        self.nodes
+            .iter()
+            .map(|node| format!("{:?}[{}]", node.entity, node.markers.join("+")))
+            .collect()
+    }
+}
+
+/// [`dirty_entity_count`] read per entity, so a guard can say *which* entities carry the markers.
+/// Same archetype walk, same `is_dirty_component` oracle, one entry per dirty entity whatever it
+/// carries.
+pub fn dirty_split(world: &World) -> DirtySplit {
+    let mut split = DirtySplit {
+        actors: Vec::new(),
+        nodes: Vec::new(),
+    };
+    for archetype in world.archetypes().iter() {
+        let markers: Vec<String> = archetype
+            .components()
+            .iter()
+            .copied()
+            .filter(|id| is_dirty_component(world, *id))
+            .filter_map(|id| world.components().get_name(id).map(|name| name.to_string()))
+            .collect();
+        if markers.is_empty() {
+            continue;
+        }
+        for slot in archetype.entities() {
+            let entity = slot.id();
+            if world.get::<Actor>(entity).is_some() {
+                split.actors.push(entity);
+            } else {
+                split.nodes.push(DirtyNode {
+                    entity,
+                    markers: markers.clone(),
+                });
+            }
+        }
+    }
+    // Archetype order is not stable across runs, and a guard message has to be comparable.
+    split.actors.sort();
+    split.nodes.sort_by_key(|node| node.entity.index());
+    split
 }
 
 /// The walk sees `Dirty<T>` by name, because a [`WorldSpec`] picks its attributes at run time and no
