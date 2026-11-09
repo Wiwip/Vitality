@@ -237,7 +237,8 @@ pub fn calibration_line(cal: Calibration) -> String {
 /// the gate rather than only by `cargo bench`.
 ///
 /// `touched` is the row's "entities touched" denominator: the dirty entity count the column starts
-/// from, read *before* the window because a resolving tick re-dirties as it goes.
+/// from, read *before* the window because since D-34 the counted ticks drain those marks, so the same
+/// count taken after them reads 0 whatever the column was marked with.
 ///
 /// `cal`, not `counts`, decides what the line may claim. A nonzero count is not a measurement: one
 /// `Box` anywhere in the process moves the counters while every `collect::<Vec<_>>()` in the tick stays

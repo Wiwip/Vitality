@@ -279,9 +279,10 @@ pub fn seed_rng() -> StdRng {
 /// commands inline, so the returned world is dirty on every attribute of every actor and nothing has
 /// resolved yet — measured: a 3-attribute, 4-actor build carries 24 `Dirty<T>` markers when
 /// [`floor::clear_dirty`] walks it, actors and effect nodes alike. The [`mark_dirty_fraction`] call
-/// below therefore adds marks to a world that already has all of them, and no amount of ticking fixes
-/// it afterwards, because a resolve re-marks what it resolved. A shape that needs its `dirty=` field
-/// to be true has to clear markers itself — see `floor::prepare_floor` and
+/// below therefore adds marks to a world that already has all of them. Ticking does drain them now —
+/// two ticks, one to write the fold the startup effects owe and one to find nothing left to write
+/// (`are_different` is `!=` since D-34) — but a shape that needs its `dirty=` field to be true clears
+/// markers itself rather than paying that work: see `floor::prepare_floor` and
 /// `recompute::recompute_shape`; `test_recompute_ratio` pins the all-dirty build.
 pub fn build_app_with(spec: &WorldSpec, attrs: &'static [AttrSpec]) -> App {
     assert!(
@@ -412,14 +413,16 @@ pub fn current_values(world: &World, attrs: &[AttrSpec], actor: Entity) -> Vec<f
 /// handed a count of marks it cannot read back — that is what `mark_dirty_fraction_marks_are_visible`
 /// failed on. Flushing costs one queue drain per sample and is not timed.
 ///
-/// What the marks then do is the library's, not this function's: `on_change_notify_attribute_parents`
-/// (`vitality_effects/src/systems.rs:274-283`) re-triggers `MarkNodeDirty` off the write the next
-/// resolve makes, so a `run_fixed_tick` leaves the same attributes dirty forever. Measured on the
-/// tiny shape it does not *spread* — 2 of 4 actors marked stays 2 of 4 across two further ticks — but
-/// every actor a build marked stays dirty on every attribute of it for the rest of its life, and a
-/// shape carrying cross-actor modifiers does spread, one attribute at a time: a marked source
-/// attribute re-appears as `Dirty<Dep>` on each actor reading it and on no other attribute of any of
-/// them (`tests/test_dirty_spread.rs`).
+/// What the marks then do is the library's, not this function's. Since D-34 a resolve writes only when
+/// the value it yields differs, so an actor marked through here is dirty for the tick that resolves it
+/// and clean after — `mark_dirty_fraction_marks_are_visible` pins that, and it is why a `dirty=N` id
+/// names the marks a shape is handed rather than a workload it keeps. A write that *does* move a value
+/// still re-marks through `on_change_notify_attribute_parents`
+/// (`vitality_effects/src/systems.rs:274-283`) for one further tick, and the fan-out is unchanged: on
+/// the tiny shape nothing *spreads* — 2 of 4 actors marked stays 2 of 4 — while a shape carrying
+/// cross-actor modifiers does spread, one attribute at a time: a marked source attribute re-appears as
+/// `Dirty<Dep>` on each actor reading it and on no other attribute of any of them
+/// (`tests/test_dirty_spread.rs`).
 pub fn mark_dirty_fraction(
     world: &mut World,
     attrs: &[AttrSpec],

@@ -23,9 +23,11 @@
 //! fraction afterwards with [`common::mark_dirty_fraction`] — which flushes, so the marks are on the
 //! entities before anything reads them. The count is then re-read off the world
 //! ([`dirty_actors`]) rather than trusted from the marking call, and `tests/test_bench_many_actors.rs`
-//! pins it at the grid's own fractions. Marks do not decay (a resolve re-marks what it resolved,
-//! `recompute.rs`) and do not spread, so the count the shape starts on is the count every sample
-//! runs on; the group's post-loop [`guard::Ran`] guard re-reads it after the timed loop.
+//! pins it at the grid's own fractions. Marks do not spread, and since D-34 they do not survive the
+//! loop either: the shape is settled and effect-free, so a mark resolves on the first sample with
+//! nothing to write, which raises no `Changed<T>` and re-marks nothing — it drains right there. The
+//! count the shape starts on is therefore what the first sample pays and every cell ends its timed loop
+//! at zero, which is what the group's post-loop [`guard::Ran`] guard now reads.
 //!
 //! No cell despawns anything, so the [`common::actor_entities`] list built here stays valid for the
 //! whole shape — no despawn means no rebuild, which is what that function's panic rule would

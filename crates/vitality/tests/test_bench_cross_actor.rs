@@ -31,10 +31,10 @@ mod floor;
 #[path = "../benches/support/identity.rs"]
 mod identity;
 
-use crate::common::{Attr0, Attr4, HarnessWorld};
+use crate::common::{Attr0, Attr4, AttrSpec, HarnessWorld, run_fixed_tick};
 use crate::cross_actor::{
-    CROSS_ATTRS, CROSS_READERS, SourceMove, cross_shape, cross_spec, dependent_count,
-    passes_to_converge, settled_on,
+    CROSS_ATTRS, CROSS_READERS, MAX_PASSES as HELPER_MAX_PASSES, SourceMove, cross_shape,
+    cross_spec, dependent_count, move_source, passes_to_converge, settled_on,
 };
 use bevy::prelude::*;
 use vitality::attributes::{Attribute, AttributeDependency, AttributeDependents};
@@ -56,6 +56,11 @@ const READERS: usize = 1;
 /// The number itself is pinned by `assert_eq!`, because a bound alone stays green while a library fix
 /// moves the count and every doc that quotes it goes stale.
 const MAX_PASSES: u32 = 3;
+
+/// Ticks this file gives a leftover mark to drain on its own. One is what D-34 measures — the reader
+/// resolves once, has nothing to write, and is clean — so the bound is the room a fix that needs a
+/// second tick would need, not a fudge over a mark that never leaves.
+const DRAIN_BOUND: u32 = 4;
 
 /// Finds the effect and modifier entities a reader carries, through the library's own relationship
 /// components, so the test reads what the cascade reads rather than what the builder remembered.
@@ -238,9 +243,52 @@ fn cross_actor_cascade_converges() {
     let base_before = src_attr.base_value();
     let value_before = dep_before.current_value();
     let write = passes_to_converge::<Attr0, Attr4>(&mut shape, SourceMove::Write);
+
+    // `passes_to_converge` stops on the tick the *values* agree on, not the tick the world goes quiet,
+    // so the reader still carries the `Dirty<Attr4>` its own write raised. Before D-34 that residue was
+    // invisible (everything stayed dirty); now it is a state the next measurement has to name, so drain
+    // it and pin that it drains.
+    let pool: &'static [AttrSpec] = shape.app.world().resource::<HarnessWorld>().attrs();
+    let dependent = &pool[pool.len() - 1];
+    let mut drained = None;
+    for tick in 1..=DRAIN_BOUND {
+        run_fixed_tick(shape.app.world_mut());
+        if !dependent.is_dirty(shape.app.world(), reader) {
+            drained = Some(tick);
+            break;
+        }
+    }
+    assert_eq!(
+        drained,
+        Some(1),
+        "the mark the reader re-raised by its own write took {drained:?} ticks to drain (bound \
+         {DRAIN_BOUND}); the second pass count below is measured on a drained shape and needs that to \
+         mean what the docs say",
+    );
+
     let marked = passes_to_converge::<Attr0, Attr4>(&mut shape, SourceMove::WriteThenMark);
     println!(
         "cross_actor {} passes_to_converge: write={write} write_then_mark={marked} (bound {MAX_PASSES})",
+        spec.shape_id()
+    );
+
+    // And now the same marked move on the state that measurement just left: the reader is carrying its
+    // own leftover mark again, because `passes_to_converge` stopped on the tick its value moved. Bounded
+    // loop instead of the helper, whose give-up bound is a panic and whose outcome here is a finding.
+    let third = move_source::<Attr0>(shape.app.world_mut(), source);
+    pool[0].mark_dirty(shape.app.world_mut(), source);
+    shape.app.world_mut().flush();
+    let mut converged = None;
+    for pass in 1..=HELPER_MAX_PASSES {
+        run_fixed_tick(shape.app.world_mut());
+        if settled_on::<Attr0, Attr4>(shape.app.world(), &shape.readers, source) {
+            converged = Some(pass);
+            break;
+        }
+    }
+    println!(
+        "cross_actor {} marked move on a shape still carrying its mark: converged={converged:?} \
+         (bound {HELPER_MAX_PASSES})",
         spec.shape_id()
     );
     assert_eq!(
@@ -272,23 +320,53 @@ fn cross_actor_cascade_converges() {
     let world = shape.app.world();
     let src_after = world.get::<Attr0>(source).expect("source attr");
     let dep_after = world.get::<Attr4>(reader).expect("reader attr");
+
+    // The finding, and it is a library bug rather than a D-34 flip: a `MarkNodeDirty` that arrives on an
+    // actor in the same command batch as the `try_remove::<Dirty<T>>` queued by that actor's own resolve
+    // is applied first and removed second, so the mark is dropped. `update_current_value_system` queues
+    // the removal (`crates/vitality_effects/src/systems.rs:80`), the cascade's insert is
+    // `mark_node_dirty_observer` (`systems.rs:37-40`), and both sit in one batch because every
+    // `update_current_value_system<T>` shares a deferred boundary. The observers prove the mark was
+    // raised — `MarkNodeDirty<Attr4>` fires on the effect and on the reader, and the modifier value does
+    // move — and the read below proves the reader does not keep it. Before D-34 the resolve re-marked
+    // every actor every tick, so the loss was hidden by the storm; now nothing ever tells this reader
+    // again. Invert the two asserts together once the mark/notify ordering changes (D-33's set reorder,
+    // `vitality_effects`), and fold the tick count back into the pins above.
     assert!(
-        settled_on::<Attr0, Attr4>(world, &shape.readers, source),
-        "shape {} did not converge: no tick left the reader's Attr4 equal to its base plus the \
-         source's Attr0 current value",
-        spec.shape_id()
+        converged.is_none(),
+        "the marked move of {third} on a shape still carrying its leftover mark converged on tick \
+         {converged:?}: the dropped-mark race below is fixed, so restore this to a pass count beside \
+         write={write} / write_then_mark={marked} and update the `Passes to converge` block of \
+         benches/support/cross_actor.rs. Today the reader never learns about {third}: the cascade runs \
+         (the modifier value moves) and its mark is removed in the same batch it was inserted \
+         (`systems.rs:80` after `systems.rs:37-40`)",
+    );
+    assert!(
+        !dependent.is_dirty(world, reader),
+        "the reader {reader} is still dirty on {} after {HELPER_MAX_PASSES} ticks of a source move it \
+         never picked up: a mark that survives is a slower cascade, and the assert above would have \
+         caught the value; a mark that survives *and* leaves the value stale is something else",
+        dependent.name,
+    );
+    assert!(
+        !settled_on::<Attr0, Attr4>(world, &shape.readers, source),
+        "shape {} converged after the marked move of {third} even though the reader was left clean by \
+         the dropped mark, so the asserts above are reading the wrong world",
+        spec.shape_id(),
     );
     assert_eq!(
         src_after.base_value(),
-        base_before + 2.0,
-        "the two source moves left the source's Attr0 base at {}, not two steps above {base_before}",
+        base_before + 3.0,
+        "the three source moves left the source's Attr0 base at {}, not three steps above \
+         {base_before}",
         src_after.base_value()
     );
     assert_eq!(
         dep_after.current_value(),
         value_before + 2.0,
-        "the reader's Attr4 moved by {} and not by exactly the two source steps: the modifier value \
-         and the source attribute are not the same number",
+        "the reader's Attr4 moved by {} and not by exactly the two source steps that reached it (the \
+         third, {third}, is the dropped mark above): the modifier value and the source attribute are \
+         not the same number",
         dep_after.current_value() - value_before
     );
 }

@@ -15,13 +15,17 @@
 //!   `dirty_fraction` is applied *on top* of the markers the `Insert<T>` observers already put
 //!   there), so the shape settles with a `tick` and then [`floor::clear_dirty`]. A shape that only
 //!   ticked would be timing all-A resolve work while its id says `dirty=one`.
-//! * an attribute that resolves re-dirties itself: `update_attribute` writes through `&mut T`
+//! * an attribute that resolves used to re-dirty itself: `update_attribute` writes through `&mut T`
 //!   (`vitality_core/src/attributes.rs:315`) and `on_change_notify_attribute_parents::<T>` in
-//!   `EffectsSet::Notify` (`vitality_effects/src/systems.rs:274`) reads that as a change and triggers
-//!   a fresh `MarkNodeDirty`. So `one_attr` is "one attribute *permanently* dirty" and `all_attrs` is
-//!   the realistic steady state — the ids say `dirty=one` / `dirty=all` with that meaning, and
-//!   [`assert_dirty_attrs`] after the timed loop is what keeps `dirty=one` from silently becoming
-//!   `dirty=all`.
+//!   `EffectsSet::Notify` (`vitality_effects/src/systems.rs:274`) read that as a change and triggered a
+//!   fresh `MarkNodeDirty`, because the old float `are_different` was true for equal values. That made
+//!   `one_attr` "one attribute *permanently* dirty" and `all_attrs` the realistic steady state. Since
+//!   D-34 `are_different` is `!=` (`crates/vitality_core/src/math.rs`), so a resolve that yields the
+//!   value the attribute already holds writes nothing and re-marks nothing: the two dirty ids hold their
+//!   marks for the tick that moves a value and drain to `Dirtied::None` on the next one. The ids still
+//!   say `dirty=one` / `dirty=all` — they name the marks the shape is handed, which is what the timed
+//!   unit resolves once — and [`assert_dirty_drained`] after the timed loop reads empty there, which is
+//!   the guard that fires first when those ids are re-rolled for the fixed resolver.
 
 use crate::common::{
     ATTRIBUTE_POOL, AttrSpec, HarnessWorld, WorldSpec, actor_entities, build_app_with,
@@ -167,7 +171,8 @@ pub fn dirty_names(world: &World, pool: &[AttrSpec], actor: Entity) -> Vec<&'sta
 }
 
 /// The dirty set on `actor` is exactly [`Dirtied::pick`]'s. Every call site names the moment it
-/// checks, because the same call runs before marking, after marking and after the timed loop.
+/// checks, because the same call runs before marking and after marking; after a timed loop the shape is
+/// drained instead, which is [`assert_dirty_drained`].
 pub fn assert_dirty_attrs(
     world: &World,
     pool: &[AttrSpec],
@@ -185,6 +190,36 @@ pub fn assert_dirty_attrs(
         got.len(),
         dirtied.tag(),
         expected,
+    );
+}
+
+/// The dirty set a timed loop leaves behind: empty, whatever the id says it was handed.
+///
+/// Since D-34 `are_different` is `!=`, so the mark a shape is handed resolves on the first sample, the
+/// write it causes re-marks it for one more, and the second sample has nothing to write (`test_recompute_ratio`
+/// pins 1 tick of `Dirtied::One` and empty from the next). Criterion runs hundreds of samples, so every
+/// cell ends drained and `dirty=one` / `dirty=all` name the marks the shape is *handed*, not the state it
+/// sits in. Anything non-empty here is the workload the id does not quote: a resolve re-marking itself
+/// (the pre-D-34 storm, which would make every sample after the first a full dirty walk), or a mark that
+/// spread to an attribute outside [`Dirtied::pick`]. A `dirty=none` cell carries the same expectation and
+/// the stricter meaning: it must never become dirty at all.
+pub fn assert_dirty_drained(
+    world: &World,
+    pool: &[AttrSpec],
+    actor: Entity,
+    dirtied: Dirtied,
+    when: &str,
+) {
+    let got = dirty_names(world, pool, actor);
+    assert!(
+        got.is_empty(),
+        "{when}: id `dirty={}` still holds {} dirty attribute(s) {got:?}. Every timed loop of this \
+         family ends drained since D-34 (the mark resolves, its write re-marks once, the next resolve has \
+         nothing to write), so a survivor is either the re-dirty storm or a mark that leaked outside the \
+         {} the id names, and the samples resolved some other workload than the row reports",
+        dirtied.tag(),
+        got.len(),
+        dirtied.tag(),
     );
 }
 

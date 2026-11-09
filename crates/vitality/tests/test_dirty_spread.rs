@@ -10,22 +10,24 @@
 //! ([`recompute::dirty_names`]), never as a world-level count, because a count is satisfied by the
 //! marked actor itself.
 //!
-//! Which half is which, in the D-34 sense (`.auto/decisions.md`, same split as B-4's module doc):
+//! Which half is which, since D-34 landed (`.auto/decisions.md`, same split as B-4's module doc):
 //!
-//! * *still marked at the horizon* is the bug and is expected to **flip**. Its assert says to invert
-//!   it rather than delete it, the way `test_dirty_lifetime.rs` words its own;
-//! * *the mark arrives across the edge* and *no edge, no mark* are the guarantees. If the arrival
-//!   assert goes red the cascade stopped crossing actors — a library regression, not a flip — and if
-//!   the bystander assert goes red something re-marked an actor that has no dependency edge to walk.
+//! * *still marked at the horizon* was the bug, and its assert was inverted in place rather than
+//!   deleted: the mark now arrives on tick 1, the reader's value follows it, and both actors are clean
+//!   by tick 3 — measured here, at the `HORIZON` of 4 the file reads at;
+//! * *the mark arrives across the edge* and *no edge, no mark* are the guarantees, and they held on
+//!   both versions. If the arrival assert goes red the cascade stopped crossing actors — a library
+//!   regression, not a flip — and if the bystander assert goes red something re-marked an actor that
+//!   has no dependency edge to walk.
 //!
 //! The mark rides with a write that moves the source ([`cross_actor::move_source`]) rather than a bare
 //! `MarkNodeDirty`: `update_attribute` only notifies dependents when the recomputed value differs
-//! (`vitality_core/src/attributes.rs:322-331`), and today `are_different` for floats is true for every
-//! pair of values (`vitality_core/src/math.rs:32-34`), so a bare mark fans the cascade out anyway. Once
-//! D-34 lands a bare mark would stop the fan-out at tick 1 and the assert that goes red would be the
-//! arrival one — the wrong half. Write-then-mark is `cross_actor::SourceMove::WriteThenMark`, the
-//! harness's own dirty path, and it is also why the reader carries the mark on tick 1 instead of
-//! tick 2 ("Passes to converge" in `benches/support/cross_actor.rs`).
+//! (`vitality_core/src/attributes.rs:322-331`), and since D-34 `are_different` for floats is `!=`
+//! (`crates/vitality_core/src/math.rs`), so a bare mark on a value that does not move stops the fan-out
+//! at the source — that is `test_dirty_noop_resolve.rs`, and it is why this file keeps the write in
+//! front of the mark. Write-then-mark is `cross_actor::SourceMove::WriteThenMark`, the harness's own
+//! dirty path, and it is still why the reader carries the mark on tick 1 instead of tick 2 ("Passes to
+//! converge" in `benches/support/cross_actor.rs`).
 //!
 //! The world is [`cross_actor::cross_shape`]'s plus [`spawn_bystander`], the one actor that shape has
 //! no field for, and it is settled twice over — once by the shape, once after the spawn — because
@@ -278,19 +280,18 @@ fn marks_cross_a_cross_actor_edge_and_stop_there() {
     let world = shape.app.world();
     let still = dirty_names(world, pool, reader);
     assert!(
-        still.contains(&DEPENDENT_ATTR),
-        "B-4b never decays: {HORIZON} ticks after one marked source move the reader {reader:?} reads \
-         {still:?} and not {DEPENDENT_ATTR}. This is the half D-34 is approved to flip \
-         (`.auto/decisions.md`, and the same split `test_dirty_lifetime.rs` documents): when marks \
-         finally decay, invert this assert — the reader should be clean by the horizon — rather than \
-         delete it, and leave the arrival assert above green, because a mark that stops arriving is a \
-         broken cascade rather than a fixed one",
+        still.is_empty(),
+        "B-4b never decays came back: {HORIZON} ticks after one marked source move the reader \
+         {reader:?} still reads {still:?}. Since D-34 the mark crosses on tick 1, the reader's \
+         {DEPENDENT_ATTR} resolves to the moved source value, and because nothing moves after that the \
+         reader is clean by tick 3 — measured. Read it with the arrival assert above: a mark that never \
+         arrives is a broken cascade, a mark that never leaves is the storm D-34 removed",
     );
-    assert_eq!(
-        still,
-        [DEPENDENT_ATTR],
+    assert!(
+        !still.contains(&DEPENDENT_ATTR),
         "B-4b never spreads: at tick {HORIZON} the reader {reader:?} carries {still:?}, and \
-         {DEPENDENT_ATTR} is the only attribute of it that has an edge to {SOURCE_ATTR}",
+         {DEPENDENT_ATTR} is the only attribute of it with an edge to {SOURCE_ATTR} — anything else on \
+         this list arrived without one",
     );
 }
 

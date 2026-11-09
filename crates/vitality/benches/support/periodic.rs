@@ -427,14 +427,15 @@ pub fn mean_firing_amount(plan: &[EffectPlan]) -> f64 {
 /// suffixes, the way `cross_actor.rs` carries `readers=` (a `WorldSpec` field is not an option — a
 /// foreign test writes full struct literals of it):
 ///
-/// * `dirty=all` replaces `dirty=0`, in the same move `recompute::dirtied_id` makes. The world is
-///   settled to zero dirty at setup, and a resolve re-marks what it resolved (`recompute.rs`), so the
-///   dirty set ramps up rather than decaying — measured first full set on tick 33 (A=1), 43 (A=5), 85
-///   (A=20) — so `all` is the post-first-firing steady state nearly every sample starts on, not the
-///   world's starting state. The ramp is accumulation, not spread: marks do not move sideways onto
-///   attributes that never fired, which is what B-4's landed `marks_never_decay_and_never_spread`
-///   asserts. Both places that use the claim re-read the set after the fact — the gate test at the end
-///   of its firing window, the group's post-loop guard at the end of the timed loop;
+/// * `dirty=all` replaces `dirty=0`, in the same move `recompute::dirtied_id` makes. Since D-34 that
+///   field names the marks the shape is *handed* at setup, not what it keeps: a resolve writes only when
+///   the value it yields differs (`recompute.rs`), so the old ramp (measured first full set on tick
+///   33/43/85 for A=1/5/20, then every attribute dirty forever) is gone — the residue at the end of a
+///   firing window is only the attributes the last firings moved, measured 3 of 20 at a=20. What still
+///   holds is that the marks do not move sideways onto attributes that never fired, which is what B-4's
+///   `marks_decay_and_never_spread` asserts. The gate test re-reads both halves: the residue after the
+///   firing window, and an all-marked shape of the same spec draining to zero inside
+///   [`QUIET_TICKS`], where no timer can have fired;
 /// * `app_update` names the driver, because the group's premise is that it is not `run_fixed_tick`;
 /// * `periodic=T` and `fire=X.XX` are the measured T and the measured firing rate of this exact shape;
 /// * `mt-dyn` is the build every number here comes from (D-22).

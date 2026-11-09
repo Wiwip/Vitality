@@ -21,7 +21,8 @@
 //!   ticks. The window is proved live rather than empty — the ticking instances are on the actor, their
 //!   timers advanced across it, and the same world fires the moment the window ends;
 //! * **the id means what it says**: `T` is counted off `EffectTicker` entities on the actor, and the
-//!   dirty set after the firing window is the `/dirty=all` the id claims.
+//!   `/dirty=all` of the id is read for what it is since D-34 — the marks the shape is handed at setup,
+//!   which a quiet window drains to nothing, not a steady state the timed ticks pay for.
 
 #[path = "../benches/support/common.rs"]
 mod common;
@@ -175,21 +176,63 @@ fn periodic_tick_scan_fires_about_once_per_tick() {
             shape.ticking,
         );
 
-        // The `/dirty=all` the id claims: a resolve re-marks what it resolved (`common.rs` and
-        // `recompute.rs` say why), so the dirty set ramps up and stays — first full set on tick 33/43/85
-        // for A=1/5/20. A world that ends clean means the firing window never dirtied anything.
+        // The `/dirty=all` of the id is the marks the shape is *handed*, not what it keeps. The old
+        // `are_different` re-marked every resolve, so the set ramped up and stayed (first full set on
+        // tick 33/43/85 for A=1/5/20, and all of them at the end of this window). Since D-34 a mark only
+        // lives as long as the write that re-raised it, so the residue here is whatever the last firings
+        // moved — measured 3 of 20 at a=20. Read it, then pin the half the old count stood in for: a
+        // window in which nothing can fire drains every mark the shape was given.
         let dirty: Vec<&str> = pool
             .iter()
             .filter(|attr| attr.is_dirty(world, shape.actor))
             .map(|attr| attr.name)
             .collect();
-        assert_eq!(
-            dirty.len(),
-            pool.len(),
-            "shape {} ends its firing window dirty on {dirty:?}, not on all {} of its attributes: \
-             the id says dirty=all, so most of the timed ticks would be idling",
+        println!(
+            "periodic/tick_scan {} ends its firing window dirty on {dirty:?} of {}",
             spec.shape_id(),
             pool.len(),
+        );
+        let mut marked = periodic::periodic_shape(&spec);
+        let marked_pool: &'static [crate::common::AttrSpec] =
+            marked.app.world().resource::<HarnessWorld>().attrs();
+        for attr in marked_pool {
+            attr.mark_dirty(marked.app.world_mut(), marked.actor);
+        }
+        marked.app.world_mut().flush();
+        assert_eq!(
+            marked_pool
+                .iter()
+                .filter(|attr| attr.is_dirty(marked.app.world(), marked.actor))
+                .count(),
+            marked_pool.len(),
+            "shape {} was handed {} marks and reads back {}, so the quiet drain below would be a mark \
+             that never landed rather than a mark that decayed",
+            spec.shape_id(),
+            marked_pool.len(),
+            marked_pool
+                .iter()
+                .filter(|attr| attr.is_dirty(marked.app.world(), marked.actor))
+                .count(),
+        );
+        for _ in 1..=periodic::QUIET_TICKS {
+            common::tick(&mut marked.app);
+        }
+        let drained: Vec<&str> = marked_pool
+            .iter()
+            .filter(|attr| attr.is_dirty(marked.app.world(), marked.actor))
+            .map(|attr| attr.name)
+            .collect();
+        assert!(
+            drained.is_empty(),
+            "shape {} is still dirty on {drained:?} after {} ticks in which nothing can fire (the \
+             shortest period is {} fixed ticks): a resolve that yields the value it already holds has \
+             nothing to write since D-34, so it re-marks nothing and the `/dirty=all` of the id has to \
+             drain on the first of them. If this is red the re-dirty storm is back and every \
+             `periodic/*` id is pricing {} permanent walks",
+            spec.shape_id(),
+            periodic::QUIET_TICKS,
+            periodic::MIN_PERIOD_TICKS,
+            marked_pool.len(),
         );
 
         println!(

@@ -1,31 +1,33 @@
-//! B-4: how long a `Dirty<T>` lives — a **characterization** test. Every assert here pins what the
-//! resolver does *today*, not what it should do, and the two halves are judged differently once the
-//! re-mark is fixed: *never decays* is the bug and is expected to **flip** (the `still dirty` asserts
-//! go red, and should then be inverted rather than deleted), while *never spreads* is expected to keep
-//! holding. The library fix itself is out of scope (`.auto/decisions.md` D-24), and this file lives on
-//! its own because `test_bench_harness.rs` was foreign when B-4 was written (D-23). See
-//! `AUTO-REPORT-bench-2026-11-07.md` §2 for the probe that settled it.
+//! B-4: how long a `Dirty<T>` lives. Both halves were written as characterization of the old resolver
+//! and both are now read the same way: *never spreads* still holds, and *never decays* was the bug
+//! D-34 removed (`.auto/decisions.md`, one line at `crates/vitality_core/src/math.rs`), so the
+//! `still dirty` asserts here were inverted in place rather than deleted — see
+//! `AUTO-REPORT-bench-2026-11-07.md` §2 for the probe that settled the old behaviour.
 //!
-//! The mechanism, in the order it fires:
+//! The mechanism the old version had, in the order it fired:
 //!
-//! * `AbsDiff::are_different` for floats is `self.abs_diff(rhs) > Self::Output::MIN`
-//!   (`crates/vitality_core/src/math.rs:32-33`), and `MIN` for `f32` is `f32::MIN` — negative — so the
-//!   comparison is true for every pair of values except a NaN operand;
-//! * so `update_attribute` (`crates/vitality_core/src/attributes.rs:326`) calls `set_current_value`
-//!   even when the recomputed value equals the current one;
-//! * that write makes `on_change_notify_attribute_parents::<T>` see `Changed<T>`
+//! * `AbsDiff::are_different` for floats was `self.abs_diff(rhs) > Self::Output::MIN` and `MIN` for
+//!   `f32` is `f32::MIN` — negative — so the comparison was true for every pair of values, equal ones
+//!   included (only a NaN operand made it false);
+//! * so `update_attribute` (`crates/vitality_core/src/attributes.rs:326`) called `set_current_value`
+//!   even when the recomputed value equalled the current one;
+//! * that write made `on_change_notify_attribute_parents::<T>` see `Changed<T>`
 //!   (`crates/vitality_effects/src/systems.rs:274-283`) and trigger a fresh `MarkNodeDirty<T>`, whose
-//!   observer (`vitality_effects/src/systems.rs:31-42`) puts `Dirty<T>` back on the actor.
+//!   observer (`vitality_effects/src/systems.rs:31-42`) put `Dirty<T>` back on the actor — every tick,
+//!   forever.
 //!
-//! Net effect: an actor once marked is never idle again. What makes that bearable is that the mark
-//! stays on the actor that got it — `mark_node_dirty_observer` walks up `EffectTarget` from the entity
-//! that changed, so an unmarked actor in the same world has nothing to receive, and that is the half
-//! this file is really guarding: a fix that makes the marks decay must not make them leak sideways.
+//! With `!=` the loop is broken at its first step: a resolve that yields the value the attribute
+//! already holds writes nothing, so no `Changed<T>`, no re-mark, and a marked actor is idle again one
+//! tick after it resolves (measured: clean at tick 1, and still clean at tick 22 here). What that does
+//! *not* change is the half this file is really guarding — a mark still only rides the `EffectTarget`
+//! chain from the entity that changed, so an unmarked actor in this world has nothing to receive, and a
+//! decay that leaked sideways would go red on the `never spreads` assert.
+//!
 //! "Nothing to receive" is about *this* shape, though: its four actors carry effects on themselves
 //! only. Probed on `cross_actor`'s shape (one source, one reader, one `EffectSubject::Source`
-//! modifier), a mark on the source alone puts `Dirty<Attr4>` on the reader on the next tick — which is
-//! the cascade doing its job — and that mark then never decays either, for the same reason as the
-//! source's.
+//! modifier), a mark on the source alone still puts `Dirty<Attr4>` on the reader on the next tick — the
+//! cascade doing its job — and since D-34 that mark decays too once the reader's value stops moving
+//! (`test_dirty_spread.rs`).
 //!
 //! The shape is settled with [`floor::prepare_floor`] — one tick, [`floor::clear_dirty`], one idle
 //! tick and an assert that nothing survived — because `build_app_with` hands back a world the spawn
@@ -116,8 +118,8 @@ fn report(label: &str, world: &World, pool: &[AttrSpec], actors: &[Entity]) {
     );
 }
 
-/// Both halves, re-read at one point in time: every unmarked actor is still clean, and the dirty set
-/// is still exactly the marked one. The spread check comes first so a leak sideways names itself
+/// Both halves, re-read at one point in time: every unmarked actor is still clean, and the marked
+/// actors' own marks have drained. The spread check comes first so a leak sideways names itself
 /// rather than showing up as a mismatched dirty list.
 fn assert_both_halves(
     world: &World,
@@ -153,16 +155,19 @@ fn assert_both_halves(
 
     let dirty = dirty_by_actor(world, pool, actors);
     let dirty_actors: Vec<Entity> = dirty.iter().map(|(actor, _)| *actor).collect();
-    assert_eq!(
-        dirty_actors, marked,
-        "never decays: {when} the dirty actors are {dirty_actors:?} and not the marked \
-         {marked:?} — if a resolver fix made the marks decay, invert this assert rather than delete \
-         it (the module docs say that is the expected flip)",
+    assert!(
+        dirty_actors.is_empty(),
+        "never decays came back: {when} the dirty actors are {dirty_actors:?}, and the marked ones \
+         ({marked:?}) should be idle by now. Since D-34 a bare mark resolves once and, because the \
+         value it yields is the one the attribute already held, writes nothing and re-marks nothing \
+         (`are_different` is `!=`, not the old always-true `abs_diff > f32::MIN`). Read together with \
+         the spread loop above: an actor that stays dirty forever is the storm, an actor that is dirty \
+         and was never marked is the leak",
     );
 }
 
 #[test]
-fn marks_never_decay_and_never_spread() {
+fn marks_decay_and_never_spread() {
     let spec = b4_spec();
     let mut app = build_app_with(&spec, common::ATTRIBUTE_POOL);
     let cleared = prepare_floor(&mut app);
@@ -240,10 +245,10 @@ fn marks_never_decay_and_never_spread() {
         &marked_actors,
         "two ticks after the mark",
     );
-    assert_eq!(
-        dirty_by_actor(app.world(), pool, &actors),
-        baseline,
-        "the marks themselves moved within the first two ticks, not just their actors",
+    assert!(
+        dirty_by_actor(app.world(), pool, &actors).is_empty(),
+        "the marks themselves survived the first two ticks: {baseline:?} was the list at the mark, and \
+        the whole thing should be gone by tick 1",
     );
 
     for _ in 1..=EXTRA_TICKS {
@@ -262,10 +267,10 @@ fn marks_never_decay_and_never_spread() {
         &marked_actors,
         &format!("{} ticks after the mark", 2 + EXTRA_TICKS),
     );
-    assert_eq!(
-        dirty_by_actor(app.world(), pool, &actors),
-        baseline,
-        "the marks themselves moved over {} ticks, not just their actors",
+    assert!(
+        dirty_by_actor(app.world(), pool, &actors).is_empty(),
+        "the marks survived {} ticks: {baseline:?} was the list at the mark and nothing should re-raise \
+         it once no value moves",
         2 + EXTRA_TICKS,
     );
 }

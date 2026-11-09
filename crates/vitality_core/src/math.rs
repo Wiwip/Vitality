@@ -29,8 +29,9 @@ macro_rules! impl_abs_diff_for_floats {
                 fn abs_diff(self, rhs: $t) -> $t {
                     (self - rhs).abs()
                 }
+                // No epsilon, and `NaN != NaN`, so a NaN resolve always reads as changed and fans out.
                 fn are_different(self, rhs: $t) -> bool {
-                    self.abs_diff(rhs) > Self::Output::MIN
+                    self != rhs
                 }
             }
         )*

@@ -66,7 +66,8 @@ use crate::common::{
     mark_dirty_fraction, run_fixed_tick, seed_rng, tick,
 };
 use crate::cross_actor::{
-    SourceMove, cascade_tick, cross_id, cross_shape, cross_spec, passes_line, passes_to_converge,
+    MAX_DRAIN_TICKS, SourceMove, cascade_tick, cross_id, cross_shape, cross_spec, drain_marks,
+    passes_line, passes_to_converge,
 };
 use crate::leaf::{
     Arity, Excl0, Excl5, Excl20, Excl40, ExclFixture, LeafFixture, excl_fixture, leaf_bench_spec,
@@ -112,8 +113,8 @@ fn app_update(c: &mut Criterion) {
         b.iter_batched_ref(
             || {
                 let mut app = spec.build_app();
-                // Clean before the fraction, or `dirty=25` describes nothing: a built world is dirty on
-                // everything and a resolve re-marks itself, so ticking is not how you get there.
+                // Clean before the fraction, or `dirty=25` describes nothing. Ticking does drain a built
+                // world now (two ticks, since D-34), but that is resolve work the shape would pay for.
                 floor::prepare_floor(&mut app);
                 let attrs = app.world().resource::<HarnessWorld>().attrs();
                 let actors = actor_entities(app.world_mut());
@@ -158,9 +159,10 @@ fn app_update(c: &mut Criterion) {
 /// evicts the caches the tick would run on). The same world is ticked hundreds of times here, which
 /// is only sound because it stays idle — [`floor::prepare_floor`] clears the dirty markers and
 /// asserts one idle tick later that nothing re-marked itself, and the assert below re-checks that
-/// after the loop. Ticking alone does not reach that state: a resolve hands out `&mut T`, which
-/// `EffectsSet::Notify` reads as a change and answers with a fresh `MarkNodeDirty`, so a world with
-/// markers left in it re-resolves every attribute of every actor forever.
+/// after the loop. Since D-34 ticking does reach the same state (`are_different` is `!=`, so the second
+/// resolve of an unmoving attribute writes nothing and re-marks nothing — two ticks on a built world),
+/// but it spends a real resolve to get there; before the fix a world with markers left in it re-resolved
+/// every attribute of every actor forever.
 ///
 /// `run_fixed_tick` is `World::run_schedule(FixedUpdate)`, not `app.update()`: it runs the resolver
 /// and nothing else. It also does not advance `Time<Fixed>` (`common.rs`), which is harmless for a
@@ -445,14 +447,21 @@ const RATIO_TABLE: &str = "recompute ratio table";
 /// ids (criterion 0.8 stores each benchmark as it finishes, so the `one_attr` file is on disk before
 /// the `all_attrs` one of the same A is read).
 ///
-/// What each side really times, per the asserts in `support/recompute.rs` and
-/// `test_recompute_ratio`: a resolve re-marks itself (`update_attribute` takes `&mut T`,
-/// `on_change_notify_attribute_parents::<T>` in `EffectsSet::Notify` answers that with a fresh
-/// `MarkNodeDirty`), so `recompute/one_attr` is *one attribute permanently dirty* — the same
-/// attribute, the same actor, every sample — and `recompute/all_attrs` is the realistic steady state
-/// of this design rather than a worst case. The ids say `dirty=one` / `dirty=all`, and the assert
-/// after each timed loop re-reads the dirty set per attribute so a shape cannot drift into the other
-/// one's workload mid-run.
+/// What each side really times, per the asserts in `support/recompute.rs` and `test_recompute_ratio`:
+/// since D-34 `are_different` is `!=`, so a resolve writes only when the value it yields differs and the
+/// write is what re-marks it (`on_change_notify_attribute_parents::<T>` in `EffectsSet::Notify` answers
+/// the write, not the resolve). `recompute/one_attr` is therefore *one attribute dirty for the tick that
+/// moves its value* and idle from the next — the same attribute, the same actor, every sample — and
+/// `recompute/all_attrs` is the same shape with A of them dirty. Before the fix both ids were permanent:
+/// the re-mark fired whatever the resolve computed, so `one_attr` was one attribute permanently dirty and
+/// `all_attrs` was the steady state of that bug rather than of the design.
+///
+/// The ids still say `dirty=one` / `dirty=all`, and the assert after each timed loop still re-reads the
+/// dirty set per attribute. Since D-34 it re-reads it *empty* (`recompute::assert_dirty_drained`): the
+/// marks are what the shape is handed, and they drain on the second sample. That is the premise these
+/// numbers were taken on, and it went stale rather than the guard becoming decorative — re-rolling these
+/// ids (and the `dirty=` field of their ids) is a bench-loop decision, not something this run quietly
+/// edits.
 ///
 /// `Throughput` stays unset: the metric is ns/tick of one actor, and `Elements(A)` would invite a
 /// reading of these as ns/attribute, which is what the ratio exists to establish.
@@ -520,7 +529,7 @@ fn recompute_ratio(c: &mut Criterion) {
                     });
                 });
                 let hit = ran.guard(&format!("{group_name}/{bench_id}"), || {
-                    recompute::assert_dirty_attrs(
+                    recompute::assert_dirty_drained(
                         world,
                         pool,
                         actor,
@@ -668,6 +677,11 @@ fn cross_actor_point<S, D>(
     let spec = cross_spec(attributes, readers);
     let mut shape = cross_shape::<S, D>(&spec, src_name, dep_name);
     let write = passes_to_converge::<S, D>(&mut shape, SourceMove::Write);
+    // The count above stops on the tick the values agree on, which leaves the reader holding the
+    // `Dirty<Dep>` its own write just raised, and a second move from that state never converges at all
+    // (`cross_actor.rs` module docs). So the second count is taken on a drained world, and the drain's
+    // own bound is what says the shape goes quiet on its own.
+    let drain = drain_marks(&mut shape);
     let marked = passes_to_converge::<S, D>(&mut shape, SourceMove::WriteThenMark);
     // A probe, printed before the loop and so for filtered ids too: the pass counts are measured on the
     // shape, not on the samples, and the line says so rather than reading as a row.
@@ -675,8 +689,14 @@ fn cross_actor_point<S, D>(
         "probe, not a measurement: {}",
         passes_line(&shape, write, marked)
     );
-    // Back to a world at rest: the pass counting leaves every actor dirty, and the first samples would
-    // otherwise price a cascade the shape's id does not claim.
+    println!(
+        "probe, not a measurement: {} drained its leftover marks in {drain} idle tick(s) \
+         (bound {})",
+        cross_id(&spec),
+        MAX_DRAIN_TICKS
+    );
+    // Back to a world at rest: the second count stops with the reader holding its own mark, and the
+    // first samples would otherwise price a cascade the shape's id does not claim.
     floor::prepare_floor(&mut shape.app);
     let source = shape.source;
     let reader_list = shape.readers.clone();
@@ -820,8 +840,9 @@ const MANY_GROUP: &str = "recompute/many_actors";
 /// Read the ceiling as the practical number, though: 10 k actors with every attribute dirty is 63.4 ms
 /// (A=20) and 127 ms (A=40) of resolver for one fixed tick — 3.8× and 7.6× a 60 Hz frame. That is what
 /// the row is really worth: not that a resolver should shard, but that a game cannot afford to leave
-/// a 10 k-actor world dirty (`recompute.rs`'s "a resolve re-marks what it resolved" makes that the
-/// steady state, not an accident).
+/// a 10 k-actor world dirty — and since D-34 it stops being dirty on its own: the marks drain on the
+/// first resolve that has nothing to write, so the row above is the cost of one all-dirty tick, not of a
+/// state the world sits in.
 ///
 /// Two labels that belong on the numbers. The `dirty=0` column is a cross-check, directional only:
 /// this run filtered `floor/idle_tick` out, so 89.5 µs (A=20) and 159.9 µs (A=40) at 1000 actors sit
@@ -893,16 +914,27 @@ fn recompute_many_actors(c: &mut Criterion) {
                 black_box(world.entities().len());
             });
         });
-        // A resolve re-marks what it resolved and marks do not spread (`many_actors`), so a cell that
-        // ends its loop on a different dirty count has been timing some other workload than its id.
+        // Marks do not spread (`many_actors`), and since D-34 they also do not survive: this shape is
+        // settled (`prepare_floor`) and effect-free (`many_spec`), and the marks come from
+        // `mark_dirty_fraction`, which writes no value — so a mark resolves on the first sample, writes
+        // nothing, raises no `Changed<T>` and is gone. The number below is therefore 0 for a `dirty=0`
+        // cell and for a `dirty=10000` one alike, and a non-empty set is either the pre-D-34 re-dirty
+        // storm (every sample after the first resolved the full set, which is what the row's µs/tick
+        // would then be reporting) or a mark on an actor this cell never marked.
         ran.guard(&format!("{MANY_GROUP}/{bench_id}"), || {
             let now = many_actors::dirty_actors(world, pool, &actors);
             assert_eq!(
                 now.len(),
-                dirty_actors,
-                "shape {} ended its timed loop dirty on {} actors, not the {dirty_actors} its id \n                 quotes: the samples resolved a different workload than the row reports",
+                0,
+                "shape {} ({} dirty actors in its id) ended its timed loop dirty on {} actors {:?}: \
+                 since D-34 a marked attribute of this settled, effect-free shape drains on the first \
+                 sample, so this is the re-dirty storm or a mark that leaked onto an actor this cell \
+                 never marked, and in both cases the samples resolved a different workload than the row \
+                 reports",
                 spec.shape_id(),
+                dirty_actors,
                 now.len(),
+                &now[..now.len().min(5)],
             );
         });
     }
@@ -1142,8 +1174,9 @@ fn allocs_per_tick(c: &mut Criterion) {
     let mut group = c.benchmark_group(ALLOC_GROUP);
     for spec in alloc_shapes() {
         let mut app = spec.build_app();
-        // The idle column has to be made, not waited for: a built world is dirty on every attribute of
-        // every actor, and a resolve re-marks what it resolved.
+        // The idle column is still made rather than waited for: a built world is dirty on every
+        // attribute of every actor, and draining it by ticking spends the resolve work the column is
+        // meant to price the absence of.
         floor::prepare_floor(&mut app);
         let pool = app.world().resource::<HarnessWorld>().attrs();
         let actors = actor_entities(app.world_mut());
@@ -1194,8 +1227,8 @@ fn alloc_column(
     } else {
         0
     };
-    // Read before the window: a resolving tick re-dirties itself, so the row's denominator is the set
-    // the tick starts on, which is also all the id's `dirty=` field claims.
+    // Read before the window: since D-34 the samples drain the marks as they run, so the row's
+    // denominator is the set the tick starts on, which is also all the id's `dirty=` field claims.
     let touched = floor::dirty_entity_count(world);
     assert_eq!(
         touched,
@@ -1228,15 +1261,23 @@ fn alloc_column(
         alloc_count::line(&id, counts, ALLOC_TICKS, touched, cal)
     );
 
-    // The guard the other groups run too: a column whose world drifted into the other column's
-    // workload reports the wrong thing, and here it would also move the row's denominator.
+    // The guard the other groups run too. What a column's identity rests on changed with D-34: its
+    // dirty state is now a thing it is handed and drains inside its own samples, so the start of the
+    // column is pinned by the `touched == marked` assert above and the end is the same empty world for
+    // both columns. Anything else here is a resolve that keeps writing, which is the workload neither
+    // id quotes and which also moves the row's denominator.
     ran.guard(&format!("{ALLOC_GROUP}/{id}"), || {
         let left = floor::dirty_entity_count(world);
         if fraction > 0.0 {
-            assert!(
-                left > 0,
-                "shape {} ended its dirty column on a clean world ({left} dirty entities): the window \
-                 above was idling, so its line is an idle number wearing a `dirty=` label",
+            assert_eq!(
+                left,
+                0,
+                "shape {} started its dirty column on {touched} marked entities and ended it on {left}, \
+                 not drained: since D-34 a mark of this settled shape resolves on the first sample with \
+                 nothing to write, so a survivor is the pre-D-34 re-dirty storm (`are_different` is not \
+                 `!=` any more) or a mark that leaked onto an entity this column never marked. Either \
+                 way the timed loop and the counted window above resolved every tick, and the line \
+                 printed for it is a storm number wearing a `dirty=` label",
                 spec.shape_id()
             );
         } else {

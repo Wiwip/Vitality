@@ -425,11 +425,13 @@ const BASE_DELTA: f64 = 7.0;
 /// whichever attributes must change get `set_base(+BASE_DELTA)` before the single `run_fixed_tick` the
 /// benches loop over.
 ///
-/// The dirty set is asserted per attribute at every step, including *after* the tick. A resolve writes
-/// through `&mut T`, `Notify` reads that as a change and re-marks, so the tick that removes `Dirty<T>`
-/// puts it back. If that fan-out ever reached a second attribute, a `dirty=one` id would be timing an
-/// all-dirty world and its ratio would be 1/A of the truth; the asserts after the tick are what catch
-/// it.
+/// The dirty set is asserted per attribute at every step, including *after* the tick. A resolve that
+/// moves `current_value` writes through `&mut T`, `Changed<T>` sees that write and re-marks, so in (a)
+/// the tick that resolves every attribute leaves every attribute dirty again. Since D-34 a resolve that
+/// yields the value it already holds writes nothing and re-marks nothing, which is why (b) drains to
+/// clean one tick after its write lands. If a re-mark ever reached an attribute nobody had written, a
+/// `dirty=one` id would be timing an all-dirty world and its ratio would be 1/A of the truth; the
+/// asserts after the tick are what catch it.
 #[test]
 fn test_recompute_ratio() {
     let spec = recompute::recompute_spec(RECOMPUTE_ATTRIBUTES, RECOMPUTE_EFFECTS);
@@ -585,15 +587,21 @@ fn test_recompute_ratio() {
         );
     }
 
-    // The trap the ids have to be honest about: the resolve re-marked `moved` and re-marks it on every
-    // later tick, so `dirty=one` means "one attribute *permanently* dirty". It only stays that way if
-    // the fan-out stops at the attribute that resolved, which is what repeats here rather than once.
+    // What `dirty=one` buys since D-34: the mark moves its attribute's current value on the first tick,
+    // the write re-marks it for one more, and from there the resolve yields what it already holds, so the
+    // attribute is clean and the id's workload is over. Repeat it, because the old behaviour was a
+    // permanent one-attribute walk and a single clean tick would not tell that from a fluke.
     for tick_number in 1..=3 {
+        let expected = if tick_number == 1 {
+            recompute::Dirtied::One
+        } else {
+            recompute::Dirtied::None
+        };
         recompute::assert_dirty_attrs(
             one.app.world(),
             pool,
             actor,
-            recompute::Dirtied::One,
+            expected,
             &format!("(b) {tick_number} tick(s) in"),
         );
         run_fixed_tick(one.app.world_mut());
@@ -649,10 +657,11 @@ fn dirty_by_actor(
 /// What the shape starts from matters: a built world is dirty on *every* attribute of *every* actor
 /// (`test_recompute_ratio` pins that), so dirtiness is only attributable to this call on a settled,
 /// proved-clean world — hence `floor::prepare_floor`. The other thing pinned here is that the marks
-/// never decay: a resolve writes `&mut T` and `on_change_notify_attribute_parents::<T>`
-/// (`vitality_effects/src/systems.rs:274-283`) answers that write with a fresh `MarkNodeDirty`, so
-/// the tick that removes a `Dirty<T>` puts it straight back. They also do not spread: exactly the
-/// marked actors are still dirty two ticks later, never their neighbours.
+/// drain: a resolve with nothing to write re-marks nothing (`on_change_notify_attribute_parents::<T>`
+/// (`vitality_effects/src/systems.rs:274-283`) answers a `Changed<T>` write, and since D-34 an
+/// unchanged resolve makes no write at all), so the tick that removes a `Dirty<T>` leaves it removed and
+/// both ticks below read an empty world. They also do not spread: exactly the marked actors are readable
+/// as dirty, never their neighbours.
 #[test]
 fn mark_dirty_fraction_marks_are_visible() {
     let spec = WorldSpec {
@@ -709,14 +718,20 @@ fn mark_dirty_fraction_marks_are_visible() {
         );
     }
 
-    // The workload a `dirty=N` id claims has to survive the ticks that run it.
+    // What a `dirty=N` id pays for: since D-34 the marks it counts are a state the shape is *handed*,
+    // not one it holds. Each marked attribute resolves once and, with nothing to write (`are_different`
+    // is `!=`), is clean on the next tick — so the id is a one-tick resolve, not a steady workload, and
+    // a dirty set that survives here is the old re-dirty storm coming back.
     for tick_number in 1..=2 {
         run_fixed_tick(app.world_mut());
-        assert_eq!(
+        assert!(
+            dirty_by_actor(app.world(), pool, &actors).is_empty(),
+            "the dirty set survived tick {tick_number} after mark_dirty_fraction: {:#?}, and the \
+             marks above should have drained on the first resolve. Nothing leaked sideways either way \
+             ({} actors were marked, none of the other {} were ever dirty)",
             dirty_by_actor(app.world(), pool, &actors),
-            dirty,
-            "the dirty set changed on tick {tick_number} after mark_dirty_fraction: the shape is \
-             drifting out of its own id",
+            marked,
+            spec.actors - marked,
         );
     }
 }

@@ -24,21 +24,21 @@
 //! ## What the timed tick is, and why it is a write
 //!
 //! [`cascade_tick`] — one base write that moves the source, then one [`run_fixed_tick`] — is the unit
-//! the group times. A mark alone is not, but not because a mark fans nothing out: for floats
-//! `are_different` is `self.abs_diff(rhs) > Self::Output::MIN`, and `MIN` is `f32::MIN`/`f64::MIN`, so
-//! an unchanged value still compares different (`vitality_core/src/math.rs:32-34` →
-//! `vitality_core/src/attributes.rs:322-331` → `systems.rs:209-225`). D-34 parks that as a library
-//! bug, and it is why the obvious reading of `should_notify_observers` is wrong here. A permanently
-//! dirty-but-unchanged source is therefore not idle: it fans out the whole K-wide cascade on every tick
-//! it is resolved, one tick behind the write that dirtied it — a source held at 11.078125 was still
-//! notifying and still re-triggering `RecalculateExpression` three ticks later. A "dirty source" column
-//! built on a bare mark would price that fan-out of a value that never moves, which is not the workload
-//! `cross=src-write` names, and it is the same mechanism that makes [`floor::prepare_floor`] rip
-//! `Dirty<T>` out by hand instead of letting the world settle. Every sample therefore moves the source
-//! — not to start the fan-out, which a mark would start anyway, but to keep the loop in the steady state
-//! the row is about: the fan-out a sample triggers is resolved by a later sample, so µs/tick is the
-//! per-tick cost of a source that moves every tick with K readers hanging off it, not the cost of one
-//! lucky tick.
+//! the group times, and a mark alone is not. That is now the plain reading: `are_different` for floats is
+//! `self != rhs` (`crates/vitality_core/src/math.rs`, D-34), so a resolve that yields the value the
+//! attribute already holds writes nothing, `should_notify_observers`
+//! (`vitality_core/src/attributes.rs:322-331`) is false, and nothing reaches
+//! `AttributeDependents<Src>` (`systems.rs:209-225`) — a bare mark on an unmoving source is one local
+//! resolve and then an idle world (`tests/test_dirty_noop_resolve.rs` pins it). Before the fix the float
+//! arm was `self.abs_diff(rhs) > Self::Output::MIN` with `MIN` = `f32::MIN`/`f64::MIN`, which is true for
+//! equal values, so a dirty-but-unchanged source fanned the whole K-wide cascade out on every tick it was
+//! resolved and a "dirty source" column built on a bare mark priced a value that never moves.
+//!
+//! Every sample therefore moves the source, to keep the loop in the steady state the row is about: the
+//! fan-out a sample triggers is resolved by a later sample, so µs/tick is the per-tick cost of a source
+//! that moves every tick with K readers hanging off it, not the cost of one lucky tick. Writing is also
+//! what keeps the marks in the shape at all — with `!=` a shape nobody writes drains, which is the same
+//! reason [`floor::prepare_floor`] can leave a world at zero and stay there.
 //!
 //! `WorldSpec` has no field for any of this — the source actor, the K cross effects and the
 //! write-inside-the-timed-unit — and adding one is not allowed (`test_bench_harness.rs` writes full
@@ -66,6 +66,17 @@
 //!
 //! The nine-id bench run at this tip printed `write=3 write_then_mark=2` on every point visible in the
 //! captured output, so the count is a property of the schedule rather than of the guard shape.
+//!
+//! Both counts are measured from a shape that has gone quiet, and that qualifier is load-bearing since
+//! D-34: `passes_to_converge` stops on the tick the *values* agree on, which leaves the reader holding
+//! the `Dirty<Dep>` its own write just raised, and a second move issued from that state no longer
+//! converges at all. `drain_marks` is the step between the two counts, and its bound is the premise
+//! guard: one idle tick is the measured drain, so a shape that needs more has the re-dirty storm back. The cascade does run — the modifier value moves and `MarkNodeDirty<Dep>` fires on
+//! the effect and on the reader — but the reader's resolve queued `try_remove::<Dirty<Dep>>`
+//! (`vitality_effects/src/systems.rs:80`) in the same command batch the cascade's `try_insert`
+//! (`systems.rs:37-40`) landed in, and the removal is applied second, so the mark is dropped and nothing
+//! ever tells that reader again. The old `are_different` hid this by re-marking every actor every tick.
+//! `cross_actor_cascade_converges` pins both halves.
 //!
 //! ## Measured µs/tick at this tip
 //!
@@ -128,11 +139,10 @@ const SOURCE_BASE: f32 = 10.0;
 /// needs more than this has stopped converging and the row would be timing a livelock.
 pub const MAX_PASSES: u32 = 32;
 
-/// How the source is moved for a pass count. Both variants write: a bare mark would fan the cascade out
-/// just as well, because `are_different` never reports "unchanged" for floats (module doc, D-34), but it
-/// would be counting the ticks of a value that never moves. The second variant also triggers the
-/// library's dirty event, which is what [`common::AttrSpec::mark_dirty`](crate::common::AttrSpec) does
-/// and skips the notify round trip.
+/// How the source is moved for a pass count. Both variants write, because since D-34 a bare mark on a
+/// value that does not move fans nothing out at all (module doc) and would be counting the ticks of a
+/// cascade that never starts. The second variant also triggers the library's dirty event, which is what
+/// [`common::AttrSpec::mark_dirty`](crate::common::AttrSpec) does and skips the notify round trip.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SourceMove {
     /// A plain `DerefMut` base write — the unit the bench times.
@@ -416,6 +426,10 @@ where
 ///
 /// The count is §2B's deliverable beside µs/tick — "passes > 1 means per-tick staleness" — so it is a
 /// function the gate can call rather than a number in a log; the module doc carries what it measured.
+///
+/// Issue the move on a world with no leftover mark ([`drain_marks`]). From a shape still carrying the
+/// `Dirty<Dep>` its last resolve raised, the next cascade's mark is dropped in the batch that inserts it
+/// (module docs), the reader never resolves again, and this gives up at `MAX_PASSES`.
 pub fn passes_to_converge<S, D>(shape: &mut CrossShape, dirty: SourceMove) -> u32
 where
     S: Attribute<Property = f32>,
@@ -438,10 +452,49 @@ where
             return pass;
         }
     }
+    let left = floor::dirty_split(world);
     panic!(
         "shape {} never settled within {MAX_PASSES} ticks of moving its source to {moved}: the \
-         cascade is not converging, so there is no pass count to report",
-        shape.spec.shape_id()
+         cascade is not converging, so there is no pass count to report. Since D-34 the way to reach \
+         this on a healthy cascade is a move issued on a shape that still carried its own mark \
+         ({} dirty entities left, {:?} of them nodes): the reader's resolve removes that mark in the \
+         same batch the cascade inserts a new one, so nothing tells it again. Call `drain_marks` first.",
+        shape.spec.shape_id(),
+        left.total(),
+        left.node_labels().len(),
+    )
+}
+
+/// How many ticks [`drain_marks`] spends before it calls the shape stuck. One is what D-34 measures: the
+/// reader resolves, has nothing to write, and is clean.
+pub const MAX_DRAIN_TICKS: u32 = 4;
+
+/// Ticks until the world carries no `Dirty<T>` at all, returning how many it took.
+///
+/// [`passes_to_converge`] stops on the tick the *values* agree on, not the tick the world goes quiet, so
+/// the reader is left holding the mark its own write raised — and a second move from that state never
+/// converges (module docs, pinned by `cross_actor_cascade_converges`, which measures this drain at 1). A
+/// point therefore drains between its two pass counts. The bound is the guard: with `are_different` as
+/// `!=` an idle resolve always clears its mark, so a mark that survives four idle ticks is the re-dirty
+/// storm back, and both counts would be measured on a world that never stops resolving.
+pub fn drain_marks(shape: &mut CrossShape) -> u32 {
+    for tick in 1..=MAX_DRAIN_TICKS {
+        let world = shape.app.world_mut();
+        run_fixed_tick(world);
+        if floor::dirty_entity_count(world) == 0 {
+            return tick;
+        }
+    }
+    let split = floor::dirty_split(shape.app.world());
+    panic!(
+        "shape {} still carried {} dirty entities (actors {:?}, nodes {:?}) after {MAX_DRAIN_TICKS} \
+         idle ticks: since D-34 a mark whose resolve has nothing to write is gone on the next tick, so \
+         a survivor means something is re-marking itself and neither pass count of this point is \
+         measuring a cascade that ends",
+        shape.spec.shape_id(),
+        split.total(),
+        split.actors,
+        split.node_labels(),
     )
 }
 

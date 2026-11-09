@@ -10,14 +10,17 @@
 //! nothing, and that is the scheduling floor T1 asks about — BENCH-PLAN §3 collapses the topology
 //! when its slope reaches 2 µs/attr/tick.
 //!
-//! [`floor_shape`] builds the shape, and it has to clear the dirty markers rather than tick them
-//! away. A world from `build_app_with` comes back dirty and unresolved, and ticking it does not
-//! settle it into zero-dirty: a resolve takes `AttributeQueryData<T>` (a `&mut T`), so `T` counts as
-//! changed for the rest of the tick, and `on_change_notify_attribute_parents::<T>` — which runs in
-//! `EffectsSet::Notify`, after the resolve — turns that into a fresh `MarkNodeDirty`. Measured on a
-//! 3-attribute, 5-actor, zero-effect world: every tick triggers 5 `MarkNodeDirty` and inserts 5
-//! `Dirty<T>` while every value stays put, so it is dirty forever. [`clear_dirty`] removes the
-//! markers, and a world with none stays at zero because nothing resolves and so nothing is marked.
+//! [`floor_shape`] builds the shape, and it clears the dirty markers instead of ticking them away.
+//! A world from `build_app_with` comes back dirty and unresolved: the first resolve has a real fold to
+//! write (the modifiers `Startup` applied are not in `current_value` yet), and the write is what
+//! `on_change_notify_attribute_parents::<T>` — which runs in `EffectsSet::Notify`, after the resolve —
+//! reads as a change, so the marks survive one more tick. Since D-34 that is the end of it: the second
+//! resolve yields what the attribute already holds, `are_different` (`crates/vitality_core/src/math.rs`)
+//! says "unchanged", and nothing re-marks. Measured on this file's 3-attribute, 5-actor, zero-effect
+//! world: 5 dirty entities at the build, 5 after tick 1, 0 from tick 2 on. Before the fix the same world
+//! triggered 5 `MarkNodeDirty` and re-inserted 5 `Dirty<T>` on every tick while every value stayed put,
+//! so it was dirty forever. [`clear_dirty`] is still what the shapes use: it reaches zero in one step and
+//! without spending resolve work that a timed tick would then be paying for.
 
 use crate::common::{
     ATTRIBUTE_POOL, AttrSpec, POOL_LEN, WorldSpec, actor_entities, build_app_with, run_fixed_tick,
@@ -141,9 +144,9 @@ pub fn prepare_floor(app: &mut App) -> usize {
     cleared
 }
 
-/// Removes every `Dirty<T>` from the world and returns how many components came off. This is the
-/// only way the module knows to a genuinely idle tick — see the module docs for why ticking does not
-/// get there.
+/// Removes every `Dirty<T>` from the world and returns how many components came off. Ticking gets to
+/// the same place in two ticks now (module docs), but this reaches it in one step and without the
+/// resolve work the first of those ticks has to spend.
 pub fn clear_dirty(world: &mut World) -> usize {
     // Collected first: removing a component moves its entity to another archetype.
     let mut marked: Vec<(Entity, ComponentId)> = Vec::new();
