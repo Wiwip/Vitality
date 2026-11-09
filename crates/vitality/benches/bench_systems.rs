@@ -43,6 +43,8 @@ mod common;
 mod cross_actor;
 #[path = "support/floor.rs"]
 mod floor;
+#[path = "support/guard.rs"]
+mod guard;
 // Declared, not called: no group staggers yet, and rule 2 of tests/test_bench_wiring.rs needs every
 // support module wired here so the gate compiles it.
 #[path = "support/identity.rs"]
@@ -193,7 +195,10 @@ fn app_update(c: &mut Criterion) {
 /// machinery and only the remainder is the `FixedUpdate` walk itself. `floor_spec(0, 1000)` is the
 /// point that would split the two.
 fn floor_idle_tick(c: &mut Criterion) {
-    let mut group = c.benchmark_group("floor/idle_tick");
+    // The guard below reports the full criterion id, group included, so a skip line names the id it
+    // skipped rather than a shape that several groups share.
+    let group_name = "floor/idle_tick";
+    let mut group = c.benchmark_group(group_name);
     for attributes in floor::FLOOR_COUNTS {
         let spec = floor::floor_spec(attributes, floor::FLOOR_ACTORS);
         let mut shape = floor::floor_shape(&spec, floor::floor_pool(attributes));
@@ -205,21 +210,26 @@ fn floor_idle_tick(c: &mut Criterion) {
         );
         group.throughput(Throughput::Elements(attributes as u64));
         let world = shape.app.world_mut();
-        group.bench_function(format!("{}/run_fixed_tick", spec.shape_id()), |b| {
+        let bench_id = format!("{}/run_fixed_tick", spec.shape_id());
+        let ran = guard::Ran::new();
+        group.bench_function(bench_id.clone(), |b| {
             b.iter(|| {
+                ran.bump();
                 run_fixed_tick(world);
                 // One read of the world the tick just ran on, so the result is consumed.
                 black_box(world.entities().len());
             });
         });
-        assert_eq!(
-            floor::dirty_entity_count(world),
-            0,
-            "shape {} ended its timed loop with {} dirty entities: the samples after the first one \
-             were resolving, not idling",
-            spec.shape_id(),
-            floor::dirty_entity_count(world)
-        );
+        ran.guard(&format!("{group_name}/{bench_id}"), || {
+            assert_eq!(
+                floor::dirty_entity_count(world),
+                0,
+                "shape {} ended its timed loop with {} dirty entities: the samples after the first one \
+                 were resolving, not idling",
+                spec.shape_id(),
+                floor::dirty_entity_count(world)
+            );
+        });
     }
     group.finish();
 }
@@ -444,7 +454,8 @@ fn recompute_ratio(c: &mut Criterion) {
             recompute::Dirtied::One,
             recompute::Dirtied::All,
         ] {
-            let mut group = c.benchmark_group(dirtied.group());
+            let group_name = dirtied.group();
+            let mut group = c.benchmark_group(group_name);
             for effects in recompute::RECOMPUTE_EFFECT_COUNTS {
                 let spec = recompute::recompute_spec(attributes, effects);
                 let bench_id = format!("{}/run_fixed_tick", recompute::dirtied_id(&spec, dirtied));
@@ -452,19 +463,23 @@ fn recompute_ratio(c: &mut Criterion) {
                 let pool = shape.app.world().resource::<HarnessWorld>().attrs();
                 let actor = shape.actor;
                 let world = shape.app.world_mut();
+                let ran = guard::Ran::new();
                 group.bench_function(&bench_id, |b| {
                     b.iter(|| {
+                        ran.bump();
                         run_fixed_tick(world);
                         black_box(world.entities().len());
                     });
                 });
-                recompute::assert_dirty_attrs(
-                    world,
-                    pool,
-                    actor,
-                    dirtied,
-                    &format!("{bench_id} after its timed loop"),
-                );
+                ran.guard(&format!("{group_name}/{bench_id}"), || {
+                    recompute::assert_dirty_attrs(
+                        world,
+                        pool,
+                        actor,
+                        dirtied,
+                        &format!("{bench_id} after its timed loop"),
+                    );
+                });
                 let side = recompute::Point { spec, bench_id };
                 match dirtied {
                     recompute::Dirtied::None => none.push(side),
@@ -477,6 +492,10 @@ fn recompute_ratio(c: &mut Criterion) {
         recompute::print_ratios(attributes, &none, &one, &all);
     }
 }
+
+/// The group `recompute_cross_actor` opens and `cross_actor_point` reports its guard against: a
+/// guard skip line has to name the group, and criterion gives a `BenchmarkGroup` no id to read back.
+const CROSS_GROUP: &str = "recompute/cross_actor";
 
 /// The one place a grid point's attribute types and the pool slot names they must sit in are written
 /// together, so the `stringify!` [`cross_shape`] asserts with cannot drift from the types it builds with.
@@ -539,7 +558,7 @@ macro_rules! cross_actor_point {
 /// `Throughput` stays unset: the metric is µs/tick of one source and its readers, and an `Elements(K)`
 /// line would price readers a tick only reaches through the cascade.
 fn recompute_cross_actor(c: &mut Criterion) {
-    let mut group = c.benchmark_group("recompute/cross_actor");
+    let mut group = c.benchmark_group(CROSS_GROUP);
     for readers in cross_actor::CROSS_READERS {
         // The dependent modifier sits on the shape's last attribute, so `a=1` is the point where the
         // attribute read and the attribute written are one type, and `a=20` is the widest the default
@@ -581,22 +600,28 @@ fn cross_actor_point<S, D>(
         .map(|&reader| dep_value::<D>(world, reader))
         .collect();
 
+    let ran = guard::Ran::new();
     group.bench_function(cross_id(&spec), |b| {
-        b.iter(|| black_box(cascade_tick::<S>(world, source)));
+        b.iter(|| {
+            ran.bump();
+            black_box(cascade_tick::<S>(world, source))
+        });
     });
 
     // A flat reader is the one way this group can quietly time the idle walk. The source only ever
     // moves up, so every reader's dependent value has to move up too.
-    for (&reader, &was) in reader_list.iter().zip(&before) {
-        let now = dep_value::<D>(world, reader);
-        assert!(
-            now > was,
-            "shape {} ended its timed loop with a reader whose dependent attribute never moved past \
-             {was}: no sample carried a source change to it, so the µs/tick above is the idle walk \
-             wearing a cross_actor label",
-            cross_id(&spec)
-        );
-    }
+    ran.guard(&format!("{CROSS_GROUP}/{}", cross_id(&spec)), || {
+        for (&reader, &was) in reader_list.iter().zip(&before) {
+            let now = dep_value::<D>(world, reader);
+            assert!(
+                now > was,
+                "shape {} ended its timed loop with a reader whose dependent attribute never moved past \
+                 {was}: no sample carried a source change to it, so the µs/tick above is the idle walk \
+                 wearing a cross_actor label",
+                cross_id(&spec)
+            );
+        }
+    });
 }
 
 /// One reader's dependent value, read the way the row is about.
@@ -682,7 +707,8 @@ fn dep_value<D: Attribute<Property = f32>>(world: &World, reader: Entity) -> f64
 /// §6.1 A/B form with `--noise-thresh 0.15` is what would put a number on it. Nothing here is a
 /// regression claim.
 fn periodic_tick_scan(c: &mut Criterion) {
-    let mut group = c.benchmark_group("periodic/tick_scan");
+    let group_name = "periodic/tick_scan";
+    let mut group = c.benchmark_group(group_name);
     for attributes in periodic::PERIODIC_ATTRS {
         let spec = periodic::periodic_spec(attributes);
         // The probe world is where the rate is measured; its clock is used up by the windows, so the
@@ -706,8 +732,10 @@ fn periodic_tick_scan(c: &mut Criterion) {
         let actor = shape.actor;
         let before = current_values(shape.app.world(), pool, actor);
         let mut app = shape.app;
-        group.bench_function(bench_id, |b| {
+        let ran = guard::Ran::new();
+        group.bench_function(bench_id.clone(), |b| {
             b.iter(|| {
+                ran.bump();
                 tick(&mut app);
                 // One read of the world the tick just ran on, so the result is consumed.
                 black_box(app.world().entities().len());
@@ -718,28 +746,30 @@ fn periodic_tick_scan(c: &mut Criterion) {
         // only climb here (every modifier is `ModOp::Add`), so a flat actor means no sample fired, and a
         // clean one means nothing ever dirtied it — either way the ns/tick above is an idle tick with a
         // `periodic` label.
-        let world = app.world();
-        let after = current_values(world, pool, actor);
-        let moved_up = before
-            .iter()
-            .zip(&after)
-            .all(|(was, now)| now >= was && *now != *was);
-        assert!(
-            moved_up,
-            "shape {} ended its timed loop on values {after:?}, started on {before:?}: every modifier \
-             in this shape is `ModOp::Add`, so an actor whose values did not all climb means no sample \
-             fired and the ns/tick above timed nothing",
-            periodic::periodic_id(&spec, probed.shape.ticking, &probed.firing),
-        );
-        let dirty = recompute::dirty_names(world, pool, actor);
-        assert_eq!(
-            dirty.len(),
-            pool.len(),
-            "shape {} ended its timed loop dirty on {dirty:?}, not on all {} attributes: the id says \
-             dirty=all, so most samples started on an actor nothing had marked",
-            periodic::periodic_id(&spec, probed.shape.ticking, &probed.firing),
-            pool.len(),
-        );
+        ran.guard(&format!("{group_name}/{bench_id}"), || {
+            let world = app.world();
+            let after = current_values(world, pool, actor);
+            let moved_up = before
+                .iter()
+                .zip(&after)
+                .all(|(was, now)| now >= was && *now != *was);
+            assert!(
+                moved_up,
+                "shape {} ended its timed loop on values {after:?}, started on {before:?}: every modifier \
+                 in this shape is `ModOp::Add`, so an actor whose values did not all climb means no sample \
+                 fired and the ns/tick above timed nothing",
+                periodic::periodic_id(&spec, probed.shape.ticking, &probed.firing),
+            );
+            let dirty = recompute::dirty_names(world, pool, actor);
+            assert_eq!(
+                dirty.len(),
+                pool.len(),
+                "shape {} ended its timed loop dirty on {dirty:?}, not on all {} attributes: the id says \
+                 dirty=all, so most samples started on an actor nothing had marked",
+                periodic::periodic_id(&spec, probed.shape.ticking, &probed.firing),
+                pool.len(),
+            );
+        });
     }
     group.finish();
 }
@@ -804,12 +834,15 @@ fn alloc_shapes() -> [WorldSpec; 2] {
 /// only the *comparison* of the two columns is a claim about the tick — [`alloc_count::pair_line`] prints
 /// that comparison and never a total — and installing the wrapper costs one relaxed load per allocation
 /// on the off path, which the duration column of every group in this target now pays.
+/// [`alloc_column`] reports its guard against the same group name the target opens.
+const ALLOC_GROUP: &str = "allocs_per_tick";
+
 fn allocs_per_tick(c: &mut Criterion) {
     // Once per run: the probe is a property of the process, not of the shape, and every line below is
     // rendered against its answer.
     let cal = alloc_count::calibrate();
     println!("{}", alloc_count::calibration_line(cal));
-    let mut group = c.benchmark_group("allocs_per_tick");
+    let mut group = c.benchmark_group(ALLOC_GROUP);
     for spec in alloc_shapes() {
         let mut app = spec.build_app();
         // The idle column has to be made, not waited for: a built world is dirty on every attribute of
@@ -877,8 +910,10 @@ fn alloc_column(
     );
 
     let id = format!("{}/run_fixed_tick", spec.shape_id());
+    let ran = guard::Ran::new();
     group.bench_function(&id, |b| {
         b.iter(|| {
+            ran.bump();
             run_fixed_tick(world);
             black_box(world.entities().len());
         });
@@ -898,23 +933,25 @@ fn alloc_column(
 
     // The guard the other groups run too: a column whose world drifted into the other column's
     // workload reports the wrong thing, and here it would also move the row's denominator.
-    let left = floor::dirty_entity_count(world);
-    if fraction > 0.0 {
-        assert!(
-            left > 0,
-            "shape {} ended its dirty column on a clean world ({left} dirty entities): the window \
-             above was idling, so its line is an idle number wearing a `dirty=` label",
-            spec.shape_id()
-        );
-    } else {
-        assert_eq!(
-            left,
-            0,
-            "shape {} ended its idle column with {left} dirty entities: the samples after the first \
-             were resolving, and the line printed for it is a dirty number wearing a `dirty=0` label",
-            spec.shape_id()
-        );
-    }
+    ran.guard(&format!("{ALLOC_GROUP}/{id}"), || {
+        let left = floor::dirty_entity_count(world);
+        if fraction > 0.0 {
+            assert!(
+                left > 0,
+                "shape {} ended its dirty column on a clean world ({left} dirty entities): the window \
+                 above was idling, so its line is an idle number wearing a `dirty=` label",
+                spec.shape_id()
+            );
+        } else {
+            assert_eq!(
+                left,
+                0,
+                "shape {} ended its idle column with {left} dirty entities: the samples after the first \
+                 were resolving, and the line printed for it is a dirty number wearing a `dirty=0` label",
+                spec.shape_id()
+            );
+        }
+    });
     (id, counts, touched)
 }
 
