@@ -18,8 +18,10 @@ impl<B: Bundle> ActorRead for EntityRefExcept<'_, '_, B> {
     fn id(&self) -> Entity {
         EntityRefExcept::id(self)
     }
+    // the query state resolved the bundle's ids into `access` once; the inherent `get` looks every
+    // one of them up in `Components` again on each read
     fn get<C: Component>(&self) -> Option<&C> {
-        EntityRefExcept::get(self)
+        FilteredEntityRef::from(self).get::<C>()
     }
 }
 

@@ -249,8 +249,10 @@ fn floor_idle_tick(c: &mut Criterion) {
 /// Setup is [`leaf_fixture`]: build the world, tick it once so the resolver has actually run,
 /// snapshot the slot blocks, resolve the `ComponentId` and the view `QueryState`. Measured is one
 /// `read_*` call per iteration — for path (i) that is
-/// `QueryState::get` (the per-actor handle fetch the library does before it touches any leaf) plus
-/// the typed `get` whose bundle scan is what T3 blames, so (i) is an upper bound on the scan alone.
+/// `QueryState::get` (the per-actor handle fetch the library does before it touches any leaf) plus the
+/// `ActorRead::get` that `Attribute::at()` makes, so (i) is an upper bound on the read alone. L-2 made
+/// that read consult the `Access` the query state resolved from the exclusion bundle once; pre-L-2 it
+/// re-resolved every member's id in `Components` per call, which is the scan T3 blamed.
 fn leaf_access_paths(c: &mut Criterion) {
     let spec = leaf_bench_spec();
 
@@ -310,9 +312,11 @@ fn leaf_access_paths(c: &mut Criterion) {
 }
 
 /// Family C (BENCH-PLAN §2C): what one component in the exclusion bundle costs. Same leaf read, in
-/// `EntityRefExcept<B>` for bundles of 0, 5, 20 and 40 throwaway marker components, so the slope of
-/// ns/read against the width is the price of `bundle_contains_component` walking one more type — and
-/// the number "shrink the exclusion bundle" has to be argued from.
+/// `EntityRefExcept<B>` for bundles of 0, 5, 20 and 40 throwaway marker components. Pre-L-2 the slope
+/// of ns/read against the width was `bundle_contains_component` walking one more type on every read
+/// (~23 ns/member); the fixed read asks the query state's `Access` instead, so the same slope is now
+/// what that read still charges per member — flat is the result the re-run was for, and it is still the
+/// number "shrink the exclusion bundle" has to be argued from.
 ///
 /// Cold, i.e. an `App` build per sample, the way `leaf/access_paths` measures, so a width's cost is
 /// the same kind of number as (i)'s — though the sweep's shape carries `m=2` (see
@@ -354,23 +358,26 @@ fn excl_width<B: Bundle + Arity>(group: &mut BenchmarkGroup<'_, WallTime>, spec:
     );
 }
 
-/// Family C: whether the ratio §3 keys on is a cache-miss number, and what the exclusion scan costs
+/// Family C: whether the ratio §3 keys on is a cache-miss number, and what the exclusion check costs
 /// once nothing else is being re-warmed.
 ///
 /// `cold` repeats `leaf/access_paths/path_i_except_get`: `iter_batched_ref` setup is a whole `App`
 /// build plus a tick per sample — milliseconds of allocation the reported number does not include,
-/// but which is exactly what evicts the caches around a read that has measured 572–695 ns at this
-/// tip (`mt`/`dyn`, for both
+/// but which is exactly what evicts the caches around a read that measures 220–250 ns post-L-2 at
+/// this tip (`mt`/`dyn`, for both
 /// `leaf/access_paths/a=8/e=2/m=1/actors=10/dirty=0/tick=0/path_i_except_get/excl=9` and its
-/// `leaf/warm_cold/a=8/e=2/m=1/actors=10/dirty=0/tick=0/cold_except_get/excl=9` twin). `warm` is one
-/// already-built fixture read back to back, so nothing evicts anything.
+/// `leaf/warm_cold/a=8/e=2/m=1/actors=10/dirty=0/tick=0/cold_except_get/excl=9` twin). Pre-L-2 those
+/// two ids measured 572–695 ns, so any §3 row quoted from them prices the read that walked the bundle.
+/// `warm` is one already-built fixture read back to back, so nothing evicts anything.
 ///
 /// The rows this feeds are ratios, not levels: BENCH-PLAN §3 fixes leaf access first when
 /// `leaf/access_paths` gives (i) ≥ 3× (iii), and calls `(i)/(iii)` in (1×, 3×) ambiguous with only
 /// the cheap exclusion-bundle shrink on offer; §2C prices that shrink as ns against exclusion-list
 /// length, with no µs threshold attached. `warm_except_get/excl=0/arity=0` is the zero-width
 /// reference — the same read through a bundle with nothing to scan — so the warm price of a narrower
-/// bundle is a subtraction inside this group instead of an inference from the cold column.
+/// bundle is a subtraction inside this group instead of an inference from the cold column. Post-L-2 that
+/// subtraction is all the width is worth: 18.0 ns at `excl=9` against 7.1 ns at `excl=0` (`mt`/`dyn`),
+/// where pre-L-2 the same pair read 41.9 against 5.8.
 fn leaf_warm_cold(c: &mut Criterion) {
     // Same shape, same read and same setup as `leaf/access_paths/path_i_except_get`, so the cold
     // column here is that id and the ratio is between two runs of one thing.

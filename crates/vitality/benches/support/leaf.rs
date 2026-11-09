@@ -22,6 +22,7 @@ use vitality::effect::{
     AppliedEffects, Effect, EffectDuration, EffectSource, EffectSources, EffectTarget,
     EffectTicker, EffectsRef,
 };
+use vitality_core::view::ActorRead;
 
 /// The leaf all four paths read: slot 0 of the default pool.
 pub type LeafAttr = crate::common::Attr0;
@@ -293,10 +294,13 @@ where
         .unwrap_or_else(|err| panic!("no leaf view on {actor:?}: {err}"))
 }
 
-/// (i) `EntityRefExcept::get::<LeafAttr>()` — the path `Attribute::at()` takes, so it pays the
-/// `Components` lookup and the linear scan of the exclusion bundle.
+/// (i) `ActorRead::get::<LeafAttr>()` on the library's own view — the call `Attribute::at()` makes, so
+/// it pays the `Components` lookup and the exclusion check, whatever that check costs (L-2 made it the
+/// `Access` the query state resolved once, from the bundle ids). `view.get::<LeafAttr>()` would be
+/// `EntityRefExcept`'s own inherent `get`, which re-resolves the bundle's ids on every read and is
+/// what the `leaf/*` numbers meant before L-2.
 pub fn read_except<B: Bundle>(view: &EntityRefExcept<'_, '_, B>) -> f64 {
-    view.get::<LeafAttr>()
+    ActorRead::get::<LeafAttr>(view)
         .expect("the leaf attribute is in no exclusion bundle")
         .current_value() as f64
 }
