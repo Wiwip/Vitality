@@ -611,20 +611,21 @@ pub fn print_ratios(a: usize, none: &[Point], one: &[Point], all: &[Point]) {
             "  {id}: none={:.0}±{:.0} one={:.0}±{:.0} all={:.0}±{:.0}",
             none_ns.ns, none_ns.ci_half, one_ns.ns, one_ns.ci_half, all_ns.ns, all_ns.ci_half
         );
-        let (raw_text, marginal_text) = if one_ns.indistinguishable_from(&none_ns) {
-            (String::from("noise"), String::from("noise"))
-        } else {
-            let walk = one_ns.ns - none_ns.ns;
-            let raw = all_ns.ns / (a as f64 * one_ns.ns);
-            raws.push(raw);
-            let marginal = if walk <= 0.0 {
-                String::from("no ratio (a dirty tick cost less than the clean one, outside noise)")
-            } else {
-                let ratio = (all_ns.ns - none_ns.ns) / (a as f64 * walk);
-                marginals.push(ratio);
-                format!("{ratio:.2}")
-            };
-            (format!("{raw:.2}"), marginal)
+        let (raw_text, marginal_text) = match ratio_row(a, &none_ns, &one_ns, &all_ns) {
+            RatioRow::Noise => (String::from("noise"), String::from("noise")),
+            RatioRow::Ratios { raw, marginal } => {
+                raws.push(raw);
+                let marginal_text = match marginal {
+                    Some(ratio) => {
+                        marginals.push(ratio);
+                        format!("{ratio:.2}")
+                    }
+                    None => String::from(
+                        "no ratio (a dirty tick cost less than the clean one, outside noise)",
+                    ),
+                };
+                (format!("{raw:.2}"), marginal_text)
+            }
         };
         println!("  {id}: raw={raw_text} marginal={marginal_text}");
     }
@@ -643,10 +644,31 @@ pub fn print_ratios(a: usize, none: &[Point], one: &[Point], all: &[Point]) {
     );
 }
 
+/// One row of the ratio table, before it is printed.
+#[derive(Debug, PartialEq)]
+pub enum RatioRow {
+    /// `one` or `all` is within the combined CI of `none`, so the subtraction carries no number.
+    Noise,
+    /// `marginal` is `None` when a dirty tick cost less than the clean one.
+    Ratios { raw: f64, marginal: Option<f64> },
+}
+
+/// Pure row math of `print_ratios`, split out so the noise guard and both formulas can be pinned.
+pub fn ratio_row(a: usize, none: &Estimate, one: &Estimate, all: &Estimate) -> RatioRow {
+    if one.indistinguishable_from(none) || all.indistinguishable_from(none) {
+        return RatioRow::Noise;
+    }
+    let walk = one.ns - none.ns;
+    RatioRow::Ratios {
+        raw: all.ns / (a as f64 * one.ns),
+        marginal: (walk > 0.0).then(|| (all.ns - none.ns) / (a as f64 * walk)),
+    }
+}
+
 /// `median 0.07 over 4 rows, min 0.06, max 0.12` — or the reason there is no number. Rows that came
 /// back `noise` or `ERROR` are not in the list, and a median over part of the grid is a number the run
 /// did not measure.
-fn ratios_in_words(ratios: &[f64], rows: usize) -> String {
+pub fn ratios_in_words(ratios: &[f64], rows: usize) -> String {
     if ratios.len() != rows {
         return format!(
             "no median ({} of {rows} rows carried a number; the rest are noise or ERROR above)",
@@ -655,9 +677,14 @@ fn ratios_in_words(ratios: &[f64], rows: usize) -> String {
     }
     let mut sorted = ratios.to_vec();
     sorted.sort_by(|x, y| x.partial_cmp(y).expect("ratio of two positive durations"));
+    let mid = sorted.len() / 2;
+    let median = if sorted.len() % 2 == 0 {
+        (sorted[mid - 1] + sorted[mid]) / 2.0
+    } else {
+        sorted[mid]
+    };
     format!(
-        "median {:.2} over {rows} rows, min {:.2}, max {:.2}",
-        sorted[sorted.len() / 2],
+        "median {median:.2} over {rows} rows, min {:.2}, max {:.2}",
         sorted[0],
         sorted[sorted.len() - 1]
     )
