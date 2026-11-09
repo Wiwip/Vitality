@@ -38,8 +38,7 @@ protected = crates/*/Cargo.toml
 protected = scripts/**
 ```
 
-`scripts/gate.sh` mirrors the repo to `/tmp/vitality-build` and runs `cargo test --offline --workspace --lib --tests`
-there, with `CARGO_HOME=/tmp/ch`. It has to: this sandbox mounts `Cargo.toml`, `Cargo.lock` and
-`~/.cargo/registry` read-only with no network, so cargo cannot resolve or build in the repo itself.
-The first run pays one cold dependency build (minutes); later runs only rebuild this crate. To check
-one thing without the mirror, `cd /tmp/vitality-build && cargo check --offline --lib`.
+`scripts/gate.sh` runs `cargo test --offline --locked --workspace --lib --tests` in the repo. Cargo.toml and
+Cargo.lock are read-only in the sandbox, but `--locked` needs no writes, and sccache is shared, so no mirror or
+second `CARGO_HOME` is needed. Never write a wrapper script to get around the read-only mounts: if
+`--locked` fails, the lockfile is out of date; report it and stop.
