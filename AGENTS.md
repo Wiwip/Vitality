@@ -25,7 +25,7 @@ Vitality: Bevy gameplay-attribute framework (attributes, effects, abilities).
 A sprint is a branch `sprint/<date>` on which an agent works through the owner's `SPRINT-TODO.md`, one item at a time and test first. It commits each finished item only with `~/.pi/agent/sprint/land.sh`, which reads the block below from the base branch, refuses the protected paths, runs the gate, and commits with the hooks `core.hooksPath` names (none if it is unset). An agent in a sprint never runs `git commit`, `push`, `reset`, `rebase`, `stash` or a branch deletion, never passes `--no-verify`, and never edits a protected path or adds a dependency. The owner reviews the branch before anything is merged.
 
 ```sprint
-base      = auto/2026-11-07
+base      = auto/2026-11-09
 gate      = scripts/gate.sh
 max_items = 4
 max_hours = 6
@@ -38,7 +38,7 @@ protected = crates/*/Cargo.toml
 protected = scripts/**
 ```
 
-`scripts/gate.sh` runs `cargo test --offline --locked --workspace --lib --tests` in the repo. Cargo.toml and
+`scripts/gate.sh` runs `cargo test --offline --locked --workspace --lib --tests` and then `--doc` per package in the repo. Cargo.toml and
 Cargo.lock are read-only in the sandbox, but `--locked` needs no writes, and sccache is shared, so no mirror or
 second `CARGO_HOME` is needed. Never write a wrapper script to get around the read-only mounts: if
 `--locked` fails, the lockfile is out of date; report it and stop.

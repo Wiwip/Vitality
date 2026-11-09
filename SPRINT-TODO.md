@@ -105,3 +105,85 @@ Evidence for every line below was read from `../hfsm-rs` and from the pinned `be
 - test: the same `ability_walks_ready_active_recovery_ready`, both directions measured this session in `/tmp/vitality-build`. On the clean tip the strengthened test passes (`5 passed`). With `src/ability/ability_state.rs:255` changed to `Duration::from_millis(new_cooldown as u64)` — i.e. the seconds/millis unit error, which for `COOLDOWN = 0.25` (`tests/test_ability_machine.rs:31`) truncates to a **zero** timer — today's suite is fully green (`cargo test --offline --lib --tests` prints `5 + 5 + 1 passed`, measured), while the strengthened test fails at the new assert (`panicked at tests/test_ability_machine.rs: … half of the 0.25s cooldown must not leave Recovery`). For contrast the other direction is already caught: `Duration::from_secs_f32(new_cooldown * 1000.0)` fails the existing "the cooldown of 0.25s expires" assert.
 - origin: scout
 - status: done
+
+## B-1: pin registration cost per attribute as a gate test
+- change: BENCH-PLAN §2G (P-4). Add `crates/vitality/tests/test_registration_cost.rs`: build the harness app with 2 and with 22 attributes (`common::build_app_with` with a spec of that width, the support modules pulled in with `#[path]` as `tests/test_bench_harness.rs` does) and assert `(systems_len(22) - systems_len(2)) / 20 <= BASELINE`, where `BASELINE` is the value measured at the tip when the test lands (floor report: 6 `FixedUpdate` nodes per attribute), plus the same bound for component count per attribute. Print the measured numbers in the assert message.
+- test: the file is the test. Negative control: register one extra system per attribute in `crates/vitality_core/src/lib.rs:120`'s plugin path (in the mirror only) and the test fails; revert it.
+- origin: owner
+- status: done (611539d)
+
+## B-2: churn bench: dirty storm and the no-op write
+- change: BENCH-PLAN §2D (P-8), `churn/dirty_storm` and `churn/no_op_write` only. New `crates/vitality/benches/support/churn.rs` wired through `benches/bench_systems.rs` (no new `[[bench]]`, `Cargo.toml` is protected). Reuse `recompute::recompute_shape` style settling (`floor::clear_dirty`), mark via `mark_dirty_fraction` with its `flush()`. First confirm in code, as the plan says, that a `DerefMut` write fires `Changed<T>` and that a fire triggers a full walk. Ids carry `mt`/`dyn` (D-22) and `dirty=` as in P-13.
+- after: B-1
+- test: add to `tests/test_bench_harness.rs` a test that each shape's dirty set before the timed tick is the literal expected one (storm: every attribute of every actor; no-op: written value equals the old one), as `test_recompute_ratio` does after the P-6 fix. Mutation: change the shape's dirty pick and the test must fail.
+- origin: owner
+- status: parked behind D-34 (are_different is always true for floats, so no_op_write cannot be measured as the plan describes)
+
+## B-3: periodic tick_scan bench
+- change: BENCH-PLAN §2E (P-9), `periodic/tick_scan` only: T ticking effects with about one firing per tick, A in {1,5,20}, reported as ns/tick against A. New `benches/support/periodic.rs` wired through `bench_systems.rs`. Subtract the in-shape idle floor the way `recompute::ratio_row` does and reuse its noise guard rather than writing a second one.
+- after: B-2
+- test: harness test that exactly the intended number of effects fires in the timed tick (count the applied results, not the config), plus a stale/noise case for any new ratio row going through `ratio_row`.
+- origin: owner
+- status: done (5cc9569)
+
+## B-4: characterization test for "dirtiness never decays and never spreads"
+- change: AUTO-REPORT-bench-2026-11-07.md §2.1 (settled by probe). Add a test to `tests/test_bench_harness.rs` that, on a world cleared with `floor::clear_dirty`, marks 2 of 4 actors, ticks twice, and asserts the same 2 actors (and only them) are still dirty per attribute. It documents today's behaviour, not a wanted one: the comment says the assert is expected to flip when the resolver is fixed.
+- test: the test itself; mutation: skip the `flush()` in the marking helper and it must fail.
+- origin: owner
+- status: done (2fdef8d)
+
+## Owner, before the run (not sprint work)
+- Decide the open branch: `auto/2026-11-08` (tip 403a793, 35 commits over main) is judged but unmerged and unpushed. The sprint block in AGENTS.md still says `base = auto/2026-11-07`; point it at the branch the next run starts from.
+- Commit `BENCH-PLAN.md` (untracked, cited by three landed bench groups) and this file and the report edit.
+- D-22: a `multi_threaded` feature and `dynamic_linking` out of the dev bevy dep, or no `st`/`static` number will exist. P-10 stays parked until then.
+- D-34: record the decision in `.auto/decisions.md`; B-2 and the dirty-forever resolver fix wait on it.
+- Add `--doc` to `scripts/gate.sh`.
+
+## Next batch (from verdict-2026-11-08-5 and .auto/REPORT.md queue)
+## B-7: literal `dirty=none` assert
+- change: `tests/test_bench_harness.rs` `test_recompute_ratio`: assert `recompute::dirty_names(none world, pool, actor)` is empty, next to the one/all asserts, since `Dirtied::pick` is also the oracle of `assert_dirty_attrs`.
+- test: the assert itself; mutation: `Dirtied::None => &pool[..1]` in `benches/support/recompute.rs` must fail it.
+- origin: judge
+- status: todo
+
+## D-34: `are_different` is always true for floats
+- change: `crates/vitality_core/src/math.rs:32-34` compares against `MIN` (`f32::MIN`), so every float resolve looks changed. Fix with `!=` or a real epsilon, and say what NaN does (today it is the only value that looks unchanged). Re-pin B-4's never-decays test (it flips) and re-measure the numbers that assume re-dirtying.
+- needs: owner decision recorded in `.auto/decisions.md` D-34 before the run (library change, observable behaviour).
+- origin: owner
+- status: todo
+
+## D-22: `st`/`static` bench numbers (owner manifest edit, not sprint work)
+- change: add a `multi_threaded` feature and drop `dynamic_linking` from the dev bevy dep (`Cargo.toml` is protected). P-10 stays parked until then.
+- origin: owner
+- status: todo
+
+## B-6: close the `assert_head` guard blind spots
+- change: `panic!` after a loop, asserts inside called helpers, and guard-id drift still slip past the guard rule (`.auto/REPORT.md` queue item 1). Add a test per hole to the guard's own test file and fix the rule until each fails.
+- test: one mutation per hole must fail its test.
+- origin: judge
+- status: todo
+
+## B-1b: pin registration's fixed half
+- change: B-1 is slope-only, so a fixed cost passes (mutation M4: +1 node in the base plugin, `.auto/LOG.md:469`). Assert the intercept (systems at 2 attributes) as well.
+- test: the M4 mutation must fail it.
+- after: B-6
+- origin: judge
+- status: todo
+
+## B-4b: spread guard across a real cross-actor edge
+- change: B-4 pins lifetime inside one shape only; `common.rs:420` still claims a cross-actor mark lasts "for the rest of its life". Pin it with the reviewer's probe numbers from `.auto/LOG.md:436`.
+- test: the test itself; mutation: drop the cross-actor edge and it must fail.
+- origin: judge
+- status: todo
+
+## B-4c: effect-node dirtiness and NaN
+- change: assert effect-node dirtiness, and characterize NaN, the one value where a mark can decay (D-34 addendum). Expected to flip once D-34 is fixed.
+- test: the test itself.
+- origin: judge
+- status: todo
+
+## P-12: expression tree vs typemap cost
+- change: BENCH-PLAN P-12. State the ~10 % floor (D-36) in the group doc before any number, and re-derive every quoted number from the table in the same doc comment.
+- test: harness test per the usual rule; bench compile check `cargo bench --offline --locked --no-run`.
+- origin: owner
+- status: todo

@@ -62,7 +62,7 @@ impl EffectBuilder {
     ///
     /// # Example
     /// ```
-    /// # use vitality::prelude::*;
+    /// # use vitality_effects::prelude::*;
     /// attribute!(Health, u32);
     /// attribute!(Damage, u32);
     ///
@@ -101,8 +101,8 @@ impl EffectBuilder {
     /// # Examples
     ///
     /// ```
-    /// # use vitality::prelude::*;
-    /// # use vitality::condition::ChanceCondition;
+    /// # use vitality_effects::prelude::*;
+    /// # use vitality_effects::conditions::ChanceCondition;
     /// attribute!(Health, f32);
     /// attribute!(Damage, f32);
     ///

@@ -1,9 +1,9 @@
 # AUTO-REPORT — implement BENCH-PLAN.md
 
-Loop ran 2026-11-07 17:27 → (still running) on `auto/2026-11-07`, sprint branches `sprint/2026-11-07`
+Loop ran 2026-11-07 17:27 → 00:00 on `auto/2026-11-07`, sprint branches `sprint/2026-11-07`
 (items P-1, P-2, P-3, P-5) and `sprint/2026-11-07-2` (P-6, P-13). Base branch `workspace-split`. Every
 commit came from `~/.pi/agent/sprint/land.sh` after a reviewer verdict; nothing was pushed and nothing
-merged — the owner reviews and merges.
+merged — the owner reviews and merges. Stopped at `max_cycles`, six items landed, no open child.
 
 **Five items landed, all bench/test-only** (`crates/vitality/benches/**`, `crates/vitality/tests/**`):
 
@@ -14,6 +14,7 @@ merged — the owner reviews and merges.
 | P-3 exclusion-bundle scaling | `5ba12fa` | the bundle scan is **87 % of a warm leaf read** (5.79 ns → 43.0 ns at width 9) |
 | P-5 idle floor | `458faac` | **4.0 µs per attribute per tick** with nothing dirty; 6 `FixedUpdate` nodes per attribute |
 | P-6 recompute ratio | `12a52a1` | floor-subtracted ratio **≈ 1.0 at A=1/5/20** — each attribute pays for its own walk |
+| P-13 truthfulness pass | `79ef3f0` | `mt`/`dyn` labels, flushed dirty marks, a ratio printer that refuses stale and sub-CI rows |
 
 Gate (`bash scripts/gate.sh`, mirrored build) green at every landing; `cargo bench --offline --no-run`
 green at every landing; `crates/vitality/tests/test_bench_harness.rs` now holds 5 tests, each of which
@@ -64,14 +65,24 @@ actors inside one attribute-agnostic resolver; the actor dimension is where inde
    tree pins this. Consequence: the "idle floor" is not the steady state for anyone who changes a stat
    once — you re-resolve that attribute every tick for the life of the entity. This is the single
    highest-value fix in the list and it is a correctness issue before it is a performance one.
+   Scope of the bug, settled by probe: dirtiness **never decays and never spreads**. `MarkNodeDirty` is
+   `auto_propagate` along `&'static EffectTarget` (effect → target), so a mark triggered on an actor
+   propagates nowhere; a flushed mark on 2 of 4 actors is still exactly those 2 after two ticks. Say
+   "once dirty, always dirty", not "infects clean actors". The one caveat: a world built by
+   `build_app_with` is already dirty on every attribute of every actor, so in the harness's own shapes
+   "never decays" is indistinguishable from "everything is dirty".
 2. **`bundle_contains_component` has no early exit** and does a `TypeId` hash lookup per excluded member,
    so leaf reads scale with the exclusion list (23–31 ns per member cold, ~4.2 ns warm). The expression
    leaf path is the one that pays it.
 
-Also found in the harness (bench-side, being fixed in P-13): `common.rs` documented `dirty_fraction` as
-the share left dirty at end of build when the build leaves *everything* dirty, and
-`mark_dirty_fraction`'s marks were deferred (a `World::trigger` whose observer insert sits in the
-deferred queue without a `flush()`), so it returned a count it had not observably marked.
+Also found in the harness, and fixed in P-13: `common.rs` documented `dirty_fraction` as the share left
+dirty at end of build when the build leaves *everything* dirty (measured: 24 `Dirty<T>` markers on a
+3-attribute × 4-actor build); `mark_dirty_fraction`'s marks were deferred (a `World::trigger` whose
+observer insert sits in the deferred queue without a `flush()`), so it returned a count it had not
+observably marked. Worst of the two: the shipped `harness/app_update/<shape>` id carried `dirty=25` while
+timing a **100 % dirty** world — settled and honestly marked, that shape is **284.7 µs ± 15.2** where it
+had printed **1.38 ms ± 27.5** (`mt`/`dyn`, loadavg 5.3). If you quoted that id from before P-13, you
+quoted a fully-dirty world.
 
 ## 3. What the owner has to decide
 
@@ -80,6 +91,17 @@ deferred queue without a `flush()`), so it returned a count it had not observabl
   row, keyed on `st`/`static`, cannot be satisfied in-repo today, and (b) the shipped labels said `st`
   until P-13 corrects them to `mt`/`dyn`. A `bench-threads`-style feature and dropping
   `dynamic_linking` from the dev dep are both one-line manifest changes I was not allowed to make.
+- **Two edits are sitting in your working tree that are not mine to resolve.** `scripts/gate.sh` gained
+  three lines (`CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_PROFILE_DEV_OPT_LEVEL=0`,
+  mtime 23:20) — it is a protected path and no worker or reviewer in this loop authored it (the P-13
+  session log has no trace of those variables), so I left it untouched and listed it in
+  `.git/sprint-foreign` so `land.sh` would not commit it. Keep it or drop it, but know it is there: it
+  makes the gate build unoptimized, and the P-13 gate ran under it (`Finished test profile [unoptimized]`).
+  Second: this file was first written to `AUTO-REPORT.md`, which is **tracked** — your earlier `/auto`
+  loop committed its own report there at 13:59, and my write clobbered it in the working tree. It is
+  restored byte-for-byte (`git checkout --`); mine now lives at this path. Its 129 lines also got swept
+  into `79ef3f0` by `land.sh` before I renamed it, so if you want `sprint/2026-11-07-2` bench-only,
+  `git rm --cached AUTO-REPORT-bench-2026-11-07.md` is the one-line fix.
 - **`scripts/**` is protected**, so `scripts/bench.sh` (P-11) was skipped and the run commands live in the
   bench target's module doc instead. `scripts/gate.sh` had lost its executable bit (`644`, invisible to
   `git status` because `core.fileMode=false`), which made every `land.sh` exit 14; restored with
@@ -93,8 +115,11 @@ deferred queue without a `flush()`), so it returned a count it had not observabl
 
 ## 4. Limits on these numbers — read before quoting
 
-- Everything is **`mt`/`dyn`** (see above). Micro-cost numbers (P-2/P-3) are not materially affected; the
-  floor is, and the direction of the correction is unknown — do not extrapolate it to a static build.
+- Everything is **`mt`/`dyn`** (see above) — `cargo tree --edges normal -e features -p vitality` counts
+  **zero** `multi_threaded`, so the library alone is `st` and only the test/bench profile is `mt`. That is
+  why the row cannot be met without a manifest change. Micro-cost numbers (P-2/P-3) are not materially
+  affected; the floor is, and the direction of the correction is unknown — do not extrapolate it to a
+  static build.
 - Absolute ns values track box load (loadavg 2.4–8.6 during the run); **ratios are the stable signal**.
 - The raw P-6 ratio (`all/(A×one)`: 1.01 / 0.26 / 0.07) is **not** the result; at A=20 the denominator is
   95 % idle schedule. Only the floor-subtracted marginal means what §2B intended.
