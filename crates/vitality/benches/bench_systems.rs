@@ -374,6 +374,11 @@ fn leaf_warm_cold(c: &mut Criterion) {
     // column here is that id and the ratio is between two runs of one thing.
     let spec = leaf_bench_spec();
     let excl = leaf_fixture(&spec).excl;
+    // Both probe worlds are built here, before the first timed loop, and not next to the id they
+    // name: `excl_fixture` asserts on the world it just built, and a build that asserts between two
+    // benchmarks is a check no filter can be trusted to have run.
+    let sweep_spec = leaf_sweep_spec();
+    let probe = excl_fixture::<Excl0>(&sweep_spec);
 
     let mut group = c.benchmark_group("leaf/warm_cold");
     group.bench_function(
@@ -399,8 +404,6 @@ fn leaf_warm_cold(c: &mut Criterion) {
     // The floor of the width sweep, warm, so 9-wide-vs-zero is two numbers from one group. On the
     // sweep's shape (one more permanent modifier per effect than the two ids above) because that is
     // the world `leaf/exclusion_length` measures, and its slope is what this reference is for.
-    let sweep_spec = leaf_sweep_spec();
-    let probe = excl_fixture::<Excl0>(&sweep_spec);
     group.bench_function(
         format!(
             "{}/warm_except_get/excl={}/arity={}",
@@ -487,6 +490,10 @@ fn recompute_ratio(c: &mut Criterion) {
         let mut ran_none = Vec::new();
         let mut ran_one = Vec::new();
         let mut ran_all = Vec::new();
+        // The table is a post-loop check like the guards beside each point: it reads the
+        // `estimates.json` these loops leave and asserts the three sides line up, so it carries its
+        // own ran-flag, bumped by the same timed closures.
+        let table = guard::Ran::new();
         // One side entirely before the other, so both estimate files of an A exist when its ratio
         // prints, and so the shapes of one side are built off the same cache state as each other.
         for dirtied in [
@@ -507,6 +514,7 @@ fn recompute_ratio(c: &mut Criterion) {
                 group.bench_function(&bench_id, |b| {
                     b.iter(|| {
                         ran.bump();
+                        table.bump();
                         run_fixed_tick(world);
                         black_box(world.entities().len());
                     });
@@ -554,11 +562,15 @@ fn recompute_ratio(c: &mut Criterion) {
                 .collect()
         };
         let [none_side, one_side, all_side] = [timed(none), timed(one), timed(all)];
-        if none_side.is_empty() {
-            println!("{}", guard::skip_line(RATIO_TABLE));
-        } else {
-            recompute::print_ratios(attributes, &none_side, &one_side, &all_side);
-        }
+        table.guard(RATIO_TABLE, || {
+            // Both ways this run can have no row to show print the same line: no loop of this group
+            // ran (the guard's own skip), or loops ran but no row had all three sides (C-2).
+            if none_side.is_empty() {
+                println!("{}", guard::skip_line(RATIO_TABLE));
+            } else {
+                recompute::print_ratios(attributes, &none_side, &one_side, &all_side);
+            }
+        });
     }
 }
 
