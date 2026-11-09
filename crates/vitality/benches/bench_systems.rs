@@ -725,7 +725,8 @@ const MANY_GROUP: &str = "recompute/many_actors";
 /// **406 ms**, under [`many_actors::MANY_BUILD_BUDGET_MS`] (500 ms), so the time-box did not bite and
 /// no cell was left unmeasured. That is a near thing, not a comfortable one: the priced setups ran
 /// 2/6/18 ms (100 actors), 5/22/54 ms (1k) and 37/153/406 ms (10k) for A = 5/20/40, so on a machine
-/// 20 % slower the fallback would have run, and the fallback prints a `NOT TIMED` line per skipped
+/// 23 % slower the fallback would have run (the branch flips at 500/406 = +23.2 %), and the fallback
+/// prints a `NOT TIMED` line per skipped
 /// cell carrying its measured setup price and a projected mark cost.)
 ///
 /// Measured at this tip, `mt`/`dyn` (`multi_threaded` + `libbevy_dylib.so`, module doc), 10 samples
@@ -774,15 +775,22 @@ const MANY_GROUP: &str = "recompute/many_actors";
 ///   100 actors, 10 % dirty:  0.512 (A=5)  0.471 (A=20)  0.495 (A=40)
 ///  1 k actors,   1 % dirty:  0.498 (A=5)  0.502 (A=20)  0.472 (A=40)
 ///   100 actors,  1 % dirty:  1.480 (A=5)  1.000 (A=20)  1.110 (A=40)
+///  10 k actors, 1 % dirty:   0.373 (A=5)  0.401 (A=20)  0.393 (A=40)
 /// ```
 ///
 /// The band is **0.32–0.43 µs per dirty (actor, attribute) pair per tick once a tick carries enough
-/// of them** — ≥10 % dirty at ≥1 k actors, where it is flat in `actors` and roughly flat in A. Drop to
-/// 100 actors at 10 % dirty and it is 0.47–0.51; drop to 1 % and a tick carries 1–4 pairs, so the same
-/// arithmetic gives **1.0–1.5 µs/pair**, ~4× the corner value, because the per-tick dispatch floor is
-/// amortised over almost nothing — that, not a per-pair cost, is what the sparse corner measures. Size
+/// of them** — ≥10 % dirty at ≥1 k actors, where it is flat in `actors` and roughly flat in A. (The
+/// 100-actor 100 % row, 0.35–0.38, sits inside that band but outside the rule; it is quoted above so the
+/// reader can see it.) Drop to 100 actors at 10 % dirty and it is 0.47–0.51. The sparse corner is not a
+/// per-pair cost at all: at **100 actors and 1 % dirty** a tick carries a single dirty actor — 5, 20 or
+/// 40 pairs — and the arithmetic gives **1.0–1.5 µs/pair**, ~4× the corner value, because the per-tick
+/// dispatch floor is amortised over almost nothing; the same 1 % at 1 k actors is 0.47–0.50 and at 10 k it
+/// is 0.37–0.40, so a `dirty=1` label spans 0.37 to 1.48 µs/pair across the grid — read `dirty_actors=`,
+/// never `dirty=`. Size
 /// a shard decision on the corner band, never on the sparse corner. The `dirty=0`
-/// column is flat in `actors` at A=20 and A=40 (+2.1 µs and +10.7 µs on a 100× world) but **not** at
+/// column is flat in `actors` at A=20 (+2.1 µs) and, under this doc's ~10 % rule, at A=40 (+10.7 µs =
+/// 6.6 %, though it does exceed the CI-combined ±8.1 the A=5 case is judged by — the two yardsticks
+/// disagree here and the looser one is used) but **not** at
 /// A=5: 33.9 → 42.8 µs is +26 %, CI-combined ±2.8, so a clean tick does grow a little with actor count
 /// at low A. So the resolver is already O(dirty × A) and
 /// **sharding by actor has nothing to shard**: splitting a 10 k-actor world into per-actor shards
@@ -797,8 +805,8 @@ const MANY_GROUP: &str = "recompute/many_actors";
 /// `floor::FLOOR_POOL` (`Flr0…Flr39`), not `common::ATTRIBUTE_POOL`, so A=5/20/40 are comparable in
 /// attribute *count* and not in absolute ns or attribute identity.
 ///
-/// Read the ceiling as the practical number, though: 10 k actors with every attribute dirty is 66 ms
-/// (A=20) and 127 ms (A=40) of resolver for one fixed tick — 4× and 8× a 60 Hz frame. That is what
+/// Read the ceiling as the practical number, though: 10 k actors with every attribute dirty is 63.4 ms
+/// (A=20) and 127 ms (A=40) of resolver for one fixed tick — 3.8× and 7.6× a 60 Hz frame. That is what
 /// the row is really worth: not that a resolver should shard, but that a game cannot afford to leave
 /// a 10 k-actor world dirty (`recompute.rs`'s "a resolve re-marks what it resolved" makes that the
 /// steady state, not an accident).
