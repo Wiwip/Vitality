@@ -45,8 +45,10 @@ mod cross_actor;
 mod floor;
 #[path = "support/guard.rs"]
 mod guard;
-// Declared, not called: no group staggers yet, and rule 2 of tests/test_bench_wiring.rs needs every
-// support module wired here so the gate compiles it.
+// Called: `cross_shape` staggers its readers before it applies, so every `recompute/cross_actor` point
+// runs `stagger_actors`. `assert_distinguishable` is the half no group calls — only
+// tests/test_bench_identity.rs does. Rule 2 of tests/test_bench_wiring.rs needs the module wired here
+// either way, so the gate compiles it.
 #[path = "support/identity.rs"]
 mod identity;
 #[path = "support/leaf.rs"]
@@ -442,11 +444,26 @@ fn read_excl<B: Bundle>(fixture: &mut ExclFixture<B>) -> f64 {
 ///
 /// `Throughput` stays unset: the metric is ns/tick of one actor, and `Elements(A)` would invite a
 /// reading of these as ns/attribute, which is what the ratio exists to establish.
+///
+/// ## Why the table hangs off [`guard::Ran`]
+///
+/// [`recompute::print_ratios`] reads `estimates.json` from wherever criterion writes — `CARGO_TARGET_DIR`,
+/// else the nearest `target/criterion` it can see — and its only staleness check is "not older than this
+/// binary", so on a filtered run it prints a whole table of numbers this session never measured, made of
+/// whatever an earlier unfiltered run of the same binary left on disk. A filter decides which closures
+/// run, not which functions a group function calls, so the table hangs off the same evidence every other
+/// guard does: no id of this A bumped its counter means the run prints
+/// `guard skipped (recompute ratio table filtered out)` and no row.
+const RATIO_TABLE: &str = "recompute ratio table";
+
 fn recompute_ratio(c: &mut Criterion) {
     for attributes in recompute::RECOMPUTE_ATTR_COUNTS {
         let mut none = Vec::new();
         let mut one = Vec::new();
         let mut all = Vec::new();
+        // Whether any id of this A timed a loop, which is the only honest answer to "did the numbers the
+        // table is made of get measured in this run?".
+        let mut measured = false;
         // One side entirely before the other, so both estimate files of an A exist when its ratio
         // prints, and so the shapes of one side are built off the same cache state as each other.
         for dirtied in [
@@ -471,7 +488,7 @@ fn recompute_ratio(c: &mut Criterion) {
                         black_box(world.entities().len());
                     });
                 });
-                ran.guard(&format!("{group_name}/{bench_id}"), || {
+                measured |= ran.guard(&format!("{group_name}/{bench_id}"), || {
                     recompute::assert_dirty_attrs(
                         world,
                         pool,
@@ -489,7 +506,11 @@ fn recompute_ratio(c: &mut Criterion) {
             }
             group.finish();
         }
-        recompute::print_ratios(attributes, &none, &one, &all);
+        if measured {
+            recompute::print_ratios(attributes, &none, &one, &all);
+        } else {
+            println!("{}", guard::skip_line(RATIO_TABLE));
+        }
     }
 }
 
@@ -588,7 +609,12 @@ fn cross_actor_point<S, D>(
     let mut shape = cross_shape::<S, D>(&spec, src_name, dep_name);
     let write = passes_to_converge::<S, D>(&mut shape, SourceMove::Write);
     let marked = passes_to_converge::<S, D>(&mut shape, SourceMove::WriteThenMark);
-    println!("{}", passes_line(&shape, write, marked));
+    // A probe, printed before the loop and so for filtered ids too: the pass counts are measured on the
+    // shape, not on the samples, and the line says so rather than reading as a row.
+    println!(
+        "probe, not a measurement: {}",
+        passes_line(&shape, write, marked)
+    );
     // Back to a world at rest: the pass counting leaves every actor dirty, and the first samples would
     // otherwise price a cascade the shape's id does not claim.
     floor::prepare_floor(&mut shape.app);
@@ -695,9 +721,12 @@ fn dep_value<D: Attribute<Property = f32>>(world: &World, reader: Entity) -> f64
 /// read" figure, hands the reader the subtraction the paragraph above bans, and no artifact in this repo
 /// carries that mean, so it could not be checked here anyway.
 ///
-/// Filtered runs have to carry every group whose post-loop guard needs its own iterations — today
-/// `recompute/cross_actor` plus this group's two guards, so the filter is
-/// `periodic/tick_scan|recompute/cross_actor`. That is a property of the guard style, not of this group.
+/// Filtered runs have to carry every group whose post-loop output the run prints, and since C-2 that
+/// includes the ratio table: every `guard::Ran` guard and `recompute_ratio`'s table skip themselves with
+/// a printed reason when their own ids are filtered out, so no run asserts on — or tabulates estimates
+/// left in `target/criterion` by — work it did not do. The filter that keeps this group's rows *and*
+/// that table is `periodic/tick_scan|recompute`; a narrower one prints skip lines where those checks and
+/// that table would sit. That is a property of the guard style, not of this group.
 ///
 /// Reproducible from this table: that the three ids exist, that ns/tick rises monotonically with A
 /// (2.8× from A=1 to A=20), and the rate figures above. What is **directional only** is the shape of that
@@ -715,8 +744,10 @@ fn periodic_tick_scan(c: &mut Criterion) {
         // world timed below is a fresh build of the same spec, and the assert keeps the two shapes one
         // shape.
         let probed = periodic::probe(&spec);
+        // A probe, printed before the loop and so for filtered ids too: the rate is measured on the
+        // probe world, not on the samples, and the line says so rather than reading as a row.
         println!(
-            "{}",
+            "probe, not a measurement: {}",
             periodic::point_line(&spec, &probed.shape, &probed.firing)
         );
         let bench_id = periodic::periodic_id(&spec, probed.shape.ticking, &probed.firing);

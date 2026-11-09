@@ -15,7 +15,10 @@
 //! `b.iter…(` or `bencher.iter…(`), every statement that *starts* with an assert-ish name — an
 //! identifier containing `assert`, bare (`assert!`, `assert_eq!`) or as the last segment of a path
 //! (`recompute::assert_dirty_attrs(`) — that sits after the first such bench call must be inside the
-//! text region of one of the two sanctioned idioms:
+//! text region of one of the two sanctioned idioms. That name is read off the *callee*, the text up to
+//! the call's own `(`: taking the last `::` segment of the whole line instead would read
+//! `assert!(identity::distinguishable(w) == 3)` as a call to `w`, and a one-line path-carrying assert
+//! after a timed loop — the exact shape this rule exists to catch — would be invisible to it.
 //!
 //! * the bench call itself, i.e. the assert rides inside the closure, which is what
 //!   `harness/app_update` (in its `iter_batched_ref` setup) and the `leaf/*` groups do; or
@@ -29,12 +32,13 @@
 //! ## What the rule cannot see
 //!
 //! It reads text, so it misses: an assert that does not have `assert` in its name (`panic!`,
-//! `unreachable!()`, a helper called `check_shape`) or one a macro expands into, and anything inside
-//! a `macro_rules!` body or inside `benches/support/*.rs` — a support helper is covered only through
-//! the name of its call site, which is why `assert_dirty_attrs` counts. It cannot see a *deleted*
-//! guard, only the `guard_regions` tripwire below notices the drop. It assumes the `|b|` receiver
-//! naming this file uses everywhere: a bencher bound to another name reads as "no bench loop here",
-//! which fails in the safe direction (an in-closure assert then gets flagged, a guard is never
+//! `unreachable!()`, a helper called `check_shape`) or one a macro expands into, one that only *starts*
+//! inside another macro's argument list (`warn!(assert_eq!(a, b))` reads as a call to `warn`), and
+//! anything inside a `macro_rules!` body or inside `benches/support/*.rs` — a support helper is covered
+//! only through the name of its call site, which is why `assert_dirty_attrs` counts. It cannot see a
+//! *deleted* guard, only the `guard_regions` tripwire below notices the drop. It assumes the `|b|`
+//! receiver naming this file uses everywhere: a bencher bound to another name reads as "no bench loop
+//! here", which fails in the safe direction (an in-closure assert then gets flagged, a guard is never
 //! waived). And it cannot tell whether the condition a guard asserts is the one its id claims — only
 //! that a filter cannot reach it unguarded.
 
@@ -173,7 +177,9 @@ fn is_bump(line: &str) -> bool {
 /// string that merely mentions an assert does not.
 fn assert_head(line: &str) -> Option<String> {
     let trimmed = line.trim_start();
-    let mut head = trimmed;
+    // The callee only: an assert whose arguments name a path would otherwise be read as a call to the
+    // last segment of that argument, and drop out of rule 1 entirely.
+    let mut head = trimmed.split('(').next().unwrap_or(trimmed);
     while let Some((_, tail)) = head.split_once("::") {
         head = tail;
     }
@@ -375,9 +381,10 @@ fn every_guard_is_bumped_from_inside_its_own_timed_loop() {
     );
 }
 
-/// The rule's bite, on a source this file owns: an assert after a `bencher.iter` loop — bare, or
-/// tucked inside an iterator `for` loop — must be reported, and both sanctioned idioms must not be.
-/// Without this the real-file rule above could rot into a scan that matches nothing.
+/// The rule's bite, on a source this file owns: an assert after a `bencher.iter` loop — bare, tucked
+/// inside an iterator `for` loop, or one whose arguments name a path — must be reported, and both
+/// sanctioned idioms must not be. Without this the real-file rule above could rot into a scan that
+/// matches nothing.
 #[test]
 fn the_rule_bites_a_bare_assert_after_a_timed_loop() {
     let bare = r#"
@@ -400,13 +407,22 @@ fn cascade(c: &mut Criterion) {
         assert!(value(reader) > was);
     }
 }
+
+fn names_a_path(c: &mut Criterion) {
+    group.bench_function("w", |b| {
+        b.iter(|| tick(world));
+    });
+    assert!(identity::distinguishable(world) == 3);
+    debug_assert_eq!(recompute::dirty_names(world, pool, actor), names);
+}
 "#;
     let violations = audit(bare).violations;
     assert_eq!(
         violations.len(),
-        2,
-        "a bare post-loop assert and one hidden in an iterator loop must both read as violations, \
-         found {violations:#?}",
+        4,
+        "a bare post-loop assert, one hidden in an iterator loop and the two path-carrying forms \
+         (`assert!(a::b() == x)`, `debug_assert_eq!(a::…, x)`) must all read as violations, found \
+         {violations:#?}",
     );
 
     let sanctioned = r#"
