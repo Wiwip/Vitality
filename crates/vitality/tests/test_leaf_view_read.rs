@@ -12,6 +12,7 @@ mod leaf;
 
 use bevy::ecs::bundle::Bundle;
 use bevy::ecs::component::{Component, ComponentId};
+use bevy::ecs::query::QueryState;
 use bevy::ecs::world::EntityRefExcept;
 use bevy::prelude::*;
 use common::{HarnessWorld, WorldSpec, current_values};
@@ -19,34 +20,57 @@ use std::any::{TypeId, type_name};
 use vitality::attributes::Attribute;
 use vitality::effect::modifier::ModifierOf;
 use vitality::effect::{
-    AppliedEffects, Effect, EffectDuration, EffectSource, EffectSources, EffectTarget,
-    EffectTicker, EffectsRef,
+    AppliedEffects, Effect, EffectDuration, EffectSource, EffectSources, EffectTarget, EffectTicker,
 };
 use vitality_core::view::ActorRead;
 
-/// One entry per attribute of the width `leaf_bench_spec` builds, in pool order, so the guard reads
-/// every leaf the shape carries rather than only slot 0.
-type ViewRead = fn(&EffectsRef<'_, '_>) -> Option<f64>;
+/// One read per attribute of the width `leaf_bench_spec` builds, so the guard covers every leaf the
+/// shape carries rather than only slot 0.
+const LEAF_READ_COUNT: usize = 8;
 
-const LEAF_READS: &[(&str, ViewRead)] = &[
-    ("Attr0", read_attr::<common::Attr0>),
-    ("Attr1", read_attr::<common::Attr1>),
-    ("Attr2", read_attr::<common::Attr2>),
-    ("Attr3", read_attr::<common::Attr3>),
-    ("Attr4", read_attr::<common::Attr4>),
-    ("Attr5", read_attr::<common::Attr5>),
-    ("Attr6", read_attr::<common::Attr6>),
-    ("Attr7", read_attr::<common::Attr7>),
-];
+/// The same eight reads, in pool order, in a table *built* generic in the view. `fn(&V)` with a bare
+/// `V` has no inherent methods, so every `get` this table runs is `ActorRead::get`; a
+/// `&[(&str, fn(&EffectsRef<'_, '_>))]` table could only be filled by a call site already holding a
+/// concrete view, which is the bypass R-2 closes (review ddf32ffc).
+fn leaf_reads<V: ActorRead>() -> [(&'static str, fn(&V) -> Option<f64>); LEAF_READ_COUNT] {
+    [
+        ("Attr0", read_attr::<V, common::Attr0>),
+        ("Attr1", read_attr::<V, common::Attr1>),
+        ("Attr2", read_attr::<V, common::Attr2>),
+        ("Attr3", read_attr::<V, common::Attr3>),
+        ("Attr4", read_attr::<V, common::Attr4>),
+        ("Attr5", read_attr::<V, common::Attr5>),
+        ("Attr6", read_attr::<V, common::Attr6>),
+        ("Attr7", read_attr::<V, common::Attr7>),
+    ]
+}
 
-/// `read_attr` for the pool's `f32` attributes, through the trait and not through `EntityRefExcept`'s
-/// own inherent `get`: on a concrete view type `view.get::<T>()` picks the inherent method, which is
-/// not the call `Attribute::at()` makes.
-fn read_attr<T>(view: &EffectsRef<'_, '_>) -> Option<f64>
+/// One pool attribute, read through the trait: generic in the view like [`through_view`], so it cannot
+/// pick up `EntityRefExcept`'s inherent `get`.
+fn read_attr<V, T>(view: &V) -> Option<f64>
 where
+    V: ActorRead,
     T: Attribute<Property = f32>,
 {
     through_view::<_, T>(view).map(|attr| attr.current_value() as f64)
+}
+
+/// The only fetch this file makes, and the reason its reads are pinned instead of merely generic: the
+/// return type hides the concrete view, so no call site can hold one. `EntityRefExcept`'s inherent
+/// `get` (`world/entity_access/except.rs:67`, the per-call bundle re-resolve L-2 replaced) takes
+/// `&EntityRefExcept`, so at a [`pinned_view`] site the inherent spelling is `E0308` and the only `get`
+/// that compiles is `ActorRead::get`, the call `Attribute::at()` makes. R-2 review ddf32ffc: fetched
+/// through `leaf::leaf_view` directly, a temporary needed no binding and the unfixed read stayed one
+/// line away at both exclusion checks.
+fn pinned_view<'w, 's, B: Bundle>(
+    world: &'w World,
+    query: &'s mut QueryState<EntityRefExcept<'static, 'static, B>>,
+    actor: Entity,
+) -> impl ActorRead + 's
+where
+    'w: 's,
+{
+    leaf::leaf_view(world, query, actor)
 }
 
 /// The library's leaf read, and the only place this file spells it. Generic in the *view* rather than
@@ -61,6 +85,24 @@ where
     T: Component,
 {
     view.get::<T>()
+}
+
+/// The exclusion verdict, spelled once, in a body generic over the *view* like [`through_view`], and
+/// only ever fed a [`pinned_view`], so bevy's inherent `get` can be written at neither exclusion check
+/// (R-1 review 23467152: with a concrete parameter, both could; R-2 review ddf32ffc: so could their
+/// callers). `B` only names the excluded bundle in the message now.
+fn assert_refused<B, M, V>(view: &V, actor: Entity)
+where
+    B: Bundle,
+    M: Component,
+    V: ActorRead,
+{
+    assert!(
+        through_view::<_, M>(view).is_none(),
+        "{} lives on {actor:?} and is a member of {}, so the view must answer None for it",
+        type_name::<M>(),
+        type_name::<B>()
+    );
 }
 
 #[test]
@@ -87,23 +129,13 @@ fn every_attribute_agrees(spec: &WorldSpec) {
     let pool = fixture.app.world().resource::<HarnessWorld>().attrs();
     assert_eq!(
         pool.len(),
-        LEAF_READS.len(),
-        "shape {} builds {} attributes and LEAF_READS covers {}, so this guard no longer reads \
+        LEAF_READ_COUNT,
+        "shape {} builds {} attributes and the read table covers {}, so this guard no longer reads \
          every attribute the benches time",
         spec.shape_id(),
         pool.len(),
-        LEAF_READS.len()
+        LEAF_READ_COUNT
     );
-    for (slot, (attr, (name, _))) in pool.iter().zip(LEAF_READS).enumerate() {
-        assert_eq!(
-            attr.name,
-            *name,
-            "slot {slot} of shape {} is {}, not {name}: the table would read a different attribute \
-             than the one the bench times",
-            spec.shape_id(),
-            attr.name
-        );
-    }
 
     let actors = fixture.actors.clone();
     let probe = actors[0];
@@ -132,8 +164,20 @@ fn every_attribute_agrees(spec: &WorldSpec) {
 
     for &actor in actors.iter() {
         let expected = current_values(fixture.app.world(), pool, actor);
-        let view = leaf::leaf_view(fixture.app.world(), &mut fixture.view, actor);
-        for (slot, (name, read)) in LEAF_READS.iter().enumerate() {
+        let view = pinned_view(fixture.app.world(), &mut fixture.view, actor);
+        let reads = leaf_reads();
+        // The table has to be the one the reads below run, so the order check sits here with them.
+        for (slot, (attr, (name, _))) in pool.iter().zip(reads.iter()).enumerate() {
+            assert_eq!(
+                attr.name,
+                *name,
+                "slot {slot} of shape {} is {}, not {name}: the table would read a different \
+                 attribute than the one the bench times",
+                spec.shape_id(),
+                attr.name
+            );
+        }
+        for (slot, (name, read)) in reads.iter().enumerate() {
             let got = read(&view)
                 .unwrap_or_else(|| panic!("{name} is not readable through the view on {actor:?}"));
             assert_eq!(
@@ -163,7 +207,7 @@ fn every_width_agrees<B: Bundle + leaf::Arity>(spec: &WorldSpec, width: usize) {
 
     for &actor in fixture.actors.iter() {
         let expected = current_values(world, pool, actor)[leaf::LEAF_SLOT as usize];
-        let view = leaf::leaf_view(world, &mut fixture.view, actor);
+        let view = pinned_view(world, &mut fixture.view, actor);
         let got = through_view::<_, leaf::LeafAttr>(&view).unwrap_or_else(|| {
             panic!(
                 "{} excludes the leaf attribute on {actor:?}",
@@ -186,18 +230,18 @@ fn bundle_members_stay_unreadable(spec: &WorldSpec) {
     let registered = fixture.excl;
     for &actor in fixture.actors.iter() {
         let world = fixture.app.world();
-        let view = leaf::leaf_view(world, &mut fixture.view, actor);
+        let view = pinned_view(world, &mut fixture.view, actor);
         let mut ids = Vec::new();
         let mut carried = Vec::new();
-        refused::<leaf::LeafBundle, ChildOf>(&view, world, actor, &mut ids, &mut carried);
-        refused::<leaf::LeafBundle, ModifierOf>(&view, world, actor, &mut ids, &mut carried);
-        refused::<leaf::LeafBundle, Effect>(&view, world, actor, &mut ids, &mut carried);
-        refused::<leaf::LeafBundle, EffectDuration>(&view, world, actor, &mut ids, &mut carried);
-        refused::<leaf::LeafBundle, EffectTicker>(&view, world, actor, &mut ids, &mut carried);
-        refused::<leaf::LeafBundle, EffectSource>(&view, world, actor, &mut ids, &mut carried);
-        refused::<leaf::LeafBundle, EffectTarget>(&view, world, actor, &mut ids, &mut carried);
-        refused::<leaf::LeafBundle, AppliedEffects>(&view, world, actor, &mut ids, &mut carried);
-        refused::<leaf::LeafBundle, EffectSources>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, ChildOf, _>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, ModifierOf, _>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, Effect, _>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, EffectDuration, _>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, EffectTicker, _>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, EffectSource, _>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, EffectTarget, _>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, AppliedEffects, _>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, EffectSources, _>(&view, world, actor, &mut ids, &mut carried);
         ids.sort();
         // The list above is hand-written and only `AppliedEffects` and `EffectSources` of its nine
         // members are carried by an actor, so the checks it runs cannot notice a dropped line. The
@@ -243,20 +287,15 @@ where
         "{name} never landed on {actor:?}, so nothing below can show it is excluded",
         name = type_name::<M>()
     );
-    let view = leaf::leaf_view(world, &mut fixture.view, actor);
-    assert!(
-        through_view::<_, M>(&view).is_none(),
-        "{} lives on {actor:?} and is a member of {}, so the view must answer None for it",
-        type_name::<M>(),
-        type_name::<B>()
-    );
+    let view = pinned_view(world, &mut fixture.view, actor);
+    assert_refused::<B, M, _>(&view, actor);
 }
 
 /// One member of `B` on one actor: `None` through the view if the entity carries it, its id in
 /// `checked` so the caller can compare the walk with what the bundle declares, and a note in `carried`
 /// so the caller can prove the loop had something to check.
-fn refused<B, M>(
-    view: &EntityRefExcept<'_, '_, B>,
+fn refused<B, M, V>(
+    view: &V,
     world: &World,
     actor: Entity,
     checked: &mut Vec<ComponentId>,
@@ -264,6 +303,7 @@ fn refused<B, M>(
 ) where
     B: Bundle,
     M: Component,
+    V: ActorRead,
 {
     let id = world.components().get_id(TypeId::of::<M>()).unwrap_or_else(|| {
         panic!(
@@ -277,11 +317,6 @@ fn refused<B, M>(
     checked.push(id);
     if world.get::<M>(actor).is_some() {
         carried.push(type_name::<M>());
-        assert!(
-            through_view::<_, M>(view).is_none(),
-            "{} lives on {actor:?} and is a member of {}, so the view must answer None for it",
-            type_name::<M>(),
-            type_name::<B>()
-        );
+        assert_refused::<B, M, V>(view, actor);
     }
 }
