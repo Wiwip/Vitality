@@ -25,10 +25,10 @@ Vitality: Bevy gameplay-attribute framework (attributes, effects, abilities).
 A sprint is a branch `sprint/<date>` on which an agent works through the owner's `SPRINT-TODO.md`, one item at a time and test first. It commits each finished item only with `~/.pi/agent/sprint/land.sh`, which reads the block below from the base branch, refuses the protected paths, runs the gate, and commits with the hooks `core.hooksPath` names (none if it is unset). An agent in a sprint never runs `git commit`, `push`, `reset`, `rebase`, `stash` or a branch deletion, never passes `--no-verify`, and never edits a protected path or adds a dependency. The owner reviews the branch before anything is merged.
 
 ```sprint
-base      = auto/2026-11-09
+base      = main
 gate      = scripts/gate.sh
-max_items = 4
-max_hours = 6
+max_items = 6
+max_hours = 8
 protected = .cargo/**
 protected = rust-toolchain.toml
 protected = .agent-sandbox
