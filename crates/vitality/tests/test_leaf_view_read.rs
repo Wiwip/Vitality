@@ -11,11 +11,11 @@ mod common;
 mod leaf;
 
 use bevy::ecs::bundle::Bundle;
-use bevy::ecs::component::Component;
+use bevy::ecs::component::{Component, ComponentId};
 use bevy::ecs::world::EntityRefExcept;
 use bevy::prelude::*;
 use common::{HarnessWorld, WorldSpec, current_values};
-use std::any::type_name;
+use std::any::{TypeId, type_name};
 use vitality::attributes::Attribute;
 use vitality::effect::modifier::ModifierOf;
 use vitality::effect::{
@@ -46,16 +46,21 @@ fn read_attr<T>(view: &EffectsRef<'_, '_>) -> Option<f64>
 where
     T: Attribute<Property = f32>,
 {
-    through_view::<leaf::LeafBundle, T>(view).map(|attr| attr.current_value() as f64)
+    through_view::<_, T>(view).map(|attr| attr.current_value() as f64)
 }
 
-/// The library's leaf read, spelled so it cannot silently bind to the inherent method.
-fn through_view<'v, B, T>(view: &'v EntityRefExcept<'_, '_, B>) -> Option<&'v T>
+/// The library's leaf read, and the only place this file spells it. Generic in the *view* rather than
+/// in the bundle: a bare type parameter has no inherent methods, so the `get` below can only be
+/// `ActorRead::get`. Spell the same read on a concrete `EntityRefExcept` and `view.get::<T>()` binds
+/// bevy's inherent method, which re-resolves every member of the exclusion bundle through `Components`
+/// on each call — the read L-2 replaced. Both answer `None` for a bundle member, so no value this file
+/// compares could tell them apart (L-2 review, f64114df); the unfixed read is simply not nameable here.
+fn through_view<V, T>(view: &V) -> Option<&T>
 where
-    B: Bundle,
+    V: ActorRead,
     T: Component,
 {
-    ActorRead::get::<T>(view)
+    view.get::<T>()
 }
 
 #[test]
@@ -159,7 +164,7 @@ fn every_width_agrees<B: Bundle + leaf::Arity>(spec: &WorldSpec, width: usize) {
     for &actor in fixture.actors.iter() {
         let expected = current_values(world, pool, actor)[leaf::LEAF_SLOT as usize];
         let view = leaf::leaf_view(world, &mut fixture.view, actor);
-        let got = through_view::<B, leaf::LeafAttr>(&view).unwrap_or_else(|| {
+        let got = through_view::<_, leaf::LeafAttr>(&view).unwrap_or_else(|| {
             panic!(
                 "{} excludes the leaf attribute on {actor:?}",
                 type_name::<B>()
@@ -178,19 +183,40 @@ fn every_width_agrees<B: Bundle + leaf::Arity>(spec: &WorldSpec, width: usize) {
 /// exactly as it did while the read scanned the bundle per call.
 fn bundle_members_stay_unreadable(spec: &WorldSpec) {
     let mut fixture = leaf::excl_fixture::<leaf::LeafBundle>(spec);
+    let registered = fixture.excl;
     for &actor in fixture.actors.iter() {
         let world = fixture.app.world();
         let view = leaf::leaf_view(world, &mut fixture.view, actor);
+        let mut ids = Vec::new();
         let mut carried = Vec::new();
-        refused::<leaf::LeafBundle, ChildOf>(&view, world, actor, &mut carried);
-        refused::<leaf::LeafBundle, ModifierOf>(&view, world, actor, &mut carried);
-        refused::<leaf::LeafBundle, Effect>(&view, world, actor, &mut carried);
-        refused::<leaf::LeafBundle, EffectDuration>(&view, world, actor, &mut carried);
-        refused::<leaf::LeafBundle, EffectTicker>(&view, world, actor, &mut carried);
-        refused::<leaf::LeafBundle, EffectSource>(&view, world, actor, &mut carried);
-        refused::<leaf::LeafBundle, EffectTarget>(&view, world, actor, &mut carried);
-        refused::<leaf::LeafBundle, AppliedEffects>(&view, world, actor, &mut carried);
-        refused::<leaf::LeafBundle, EffectSources>(&view, world, actor, &mut carried);
+        refused::<leaf::LeafBundle, ChildOf>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, ModifierOf>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, Effect>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, EffectDuration>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, EffectTicker>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, EffectSource>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, EffectTarget>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, AppliedEffects>(&view, world, actor, &mut ids, &mut carried);
+        refused::<leaf::LeafBundle, EffectSources>(&view, world, actor, &mut ids, &mut carried);
+        ids.sort();
+        // The list above is hand-written and only `AppliedEffects` and `EffectSources` of its nine
+        // members are carried by an actor, so the checks it runs cannot notice a dropped line. The
+        // oracle has to come from the bundle type, which is what the view actually excludes.
+        let mut declared: Vec<ComponentId> =
+            <leaf::LeafBundle as Bundle>::get_component_ids(world.components())
+                .flatten()
+                .collect();
+        declared.sort();
+        assert_eq!(
+            ids,
+            declared,
+            "{}: this loop walked {} component(s), the bundle declares {} ({registered} of them \
+             registered in this world), so a member was dropped from or swapped into the list above \
+             and the guard kept printing green for the members nobody read",
+            type_name::<leaf::LeafBundle>(),
+            ids.len(),
+            declared.len(),
+        );
         assert!(
             !carried.is_empty(),
             "no member of {} lives on {actor:?} of shape {}, so this cannot tell a view that \
@@ -219,28 +245,40 @@ where
     );
     let view = leaf::leaf_view(world, &mut fixture.view, actor);
     assert!(
-        ActorRead::get::<M>(&view).is_none(),
+        through_view::<_, M>(&view).is_none(),
         "{} lives on {actor:?} and is a member of {}, so the view must answer None for it",
         type_name::<M>(),
         type_name::<B>()
     );
 }
 
-/// One member of `B` on one actor: `None` through the view if the entity carries it, and a note in
-/// `carried` so the caller can prove the loop had something to check.
+/// One member of `B` on one actor: `None` through the view if the entity carries it, its id in
+/// `checked` so the caller can compare the walk with what the bundle declares, and a note in `carried`
+/// so the caller can prove the loop had something to check.
 fn refused<B, M>(
     view: &EntityRefExcept<'_, '_, B>,
     world: &World,
     actor: Entity,
+    checked: &mut Vec<ComponentId>,
     carried: &mut Vec<&'static str>,
 ) where
     B: Bundle,
     M: Component,
 {
+    let id = world.components().get_id(TypeId::of::<M>()).unwrap_or_else(|| {
+        panic!(
+            "{} is named as a member of {} but has no `ComponentId` in this world, so the check below \
+             would compare nothing: every state this repo builds registers its bundle members \
+             (`EntityRefExcept::init_state`), so a missing id here is that contract breaking",
+            type_name::<M>(),
+            type_name::<B>(),
+        )
+    });
+    checked.push(id);
     if world.get::<M>(actor).is_some() {
         carried.push(type_name::<M>());
         assert!(
-            ActorRead::get::<M>(view).is_none(),
+            through_view::<_, M>(view).is_none(),
             "{} lives on {actor:?} and is a member of {}, so the view must answer None for it",
             type_name::<M>(),
             type_name::<B>()

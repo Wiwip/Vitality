@@ -29,9 +29,18 @@
 //! asserts).
 //!
 //! Three tightenings, one per hole B-6 found in the rule as B-5 left it, each pinned by its own test
-//! below: holes 2 and 3 and the group rename of rule 4 are proved red by mutating a copy of
-//! `bench_systems.rs` into the matching shape (and green again under the rule B-5 left behind), and
-//! hole 1 is proved red by mutating this file's own name scan back to the head parse it replaced:
+//! below. Every one of them is proved red on a *synthetic* source handed to [`audit`] — no test edits
+//! or copies `bench_systems.rs`: hole 2 is
+//! [`a_post_loop_panic_reads_as_a_check_that_needs_a_guard`], hole 3 is
+//! [`a_post_loop_call_to_a_helper_that_asserts_inside_reads_as_a_violation`], hole 1 is the
+//! `names_a_path` body inside [`the_rule_bites_a_bare_assert_after_a_timed_loop`], and the group rename
+//! of rule 4 is [`a_stale_guard_id_reads_as_a_lie_about_its_group`]. Each of those four also carries the
+//! green half (the same shape behind a `.guard(`, or the honest id) so a rule cannot pass by matching
+//! nothing. The real file is what the three `every_*` tests read as it stands —
+//! [`every_post_loop_bench_assert_goes_through_the_guard_helper`],
+//! [`every_guard_is_bumped_from_inside_its_own_timed_loop`] and
+//! [`every_guard_id_names_a_group_the_bench_file_opens`] — so those go red only on a violation the bench
+//! file actually contains, never on one a test imagined:
 //!
 //! * the observable name is read off **every identifier of the line**, never off a chosen segment of
 //!   it. The first version split the whole line on `::` and kept the last segment, so
@@ -47,8 +56,14 @@
 //!
 //! Rule 4 pins the other half of a guard's honesty: the id a guard prints must carry the name of the
 //! group its own body opens (or of the file-level `const` a group is opened with), so renaming a
-//! `benchmark_group("…")` cannot leave `guard skipped (<id> filtered out)` naming an id that no
-//! longer exists.
+//! `benchmark_group("…")` cannot leave `guard skipped (<id> filtered out)` naming an id that no longer
+//! exists. The rule reads ids that *claim* a group: an id with no `/` in it is not a criterion id, and
+//! [`guard_id_problems`] exempts it — which is where `RATIO_TABLE = "recompute ratio table"` lives,
+//! because the ratio table is printed by the run and never registered with criterion, so no group rename
+//! can make its skip line lie. That exemption is pinned rather than assumed:
+//! [`every_guard_id_names_a_group_the_bench_file_opens`] runs rule 4 over the real file and counts that
+//! guard among the ids it read (`checked >= 5`), so closing the exemption without giving the table a
+//! slashed id is a red test, not a quiet one.
 //!
 //! ## What the rule cannot see
 //!

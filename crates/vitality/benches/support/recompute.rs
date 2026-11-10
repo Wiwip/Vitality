@@ -197,11 +197,16 @@ pub fn assert_dirty_attrs(
 /// The dirty set a timed loop leaves behind: empty, whatever the id says it was handed.
 ///
 /// Since D-34 `are_different` is `!=`, and since L-4 the mark phase runs ahead of the resolve, so the
-/// marks a shape is handed are raised and consumed by the same tick: the write that resolve makes is only
-/// seen as a `Changed<T>` by the *next* tick, which re-marks, resolves again, yields what the attribute
-/// already holds and writes nothing. Every boundary read after the first sample is therefore empty and
-/// `test_recompute_ratio` pins `Dirtied::None` on all three of its repeat ticks (before L-4 the first of
-/// those reads still found `Dirtied::One`, because the re-mark landed behind the resolve). `dirty=one` /
+/// marks a shape is handed are raised and consumed by the same tick — and nothing re-marks them. A
+/// re-mark needs a `Changed<T>`, and the only writer here is the resolve, which [`recompute_shape`] has
+/// given nothing to change: it settles the world, raises `Dirty<T>` and never writes a base value, so
+/// that first resolve folds to what the attribute already holds and writes nothing. Every boundary read
+/// from the first sample on is therefore empty — one tick, like the `dirty=none` control and the
+/// `many_actors` shapes — and `test_recompute_ratio` pins `Dirtied::None` on all three of its repeat
+/// ticks (before L-4 the first of those reads still found `Dirtied::One`). A shape that *does* write a
+/// base is the two-tick case: the write is seen as `Changed<T>` by the next tick, which re-marks and
+/// resolves once more, and that is the drain this doc used to claim for a family that writes no base.
+/// `dirty=one` /
 /// `dirty=all` name the marks the shape is *handed*, not the state it sits in. Anything non-empty here is
 /// the workload the id does not quote: a resolve re-marking itself (the pre-D-34 storm, which would make
 /// every sample after the first a full dirty walk), or a mark that spread to an attribute outside
@@ -218,8 +223,9 @@ pub fn assert_dirty_drained(
     assert!(
         got.is_empty(),
         "{when}: id `dirty={}` still holds {} dirty attribute(s) {got:?}. Every timed loop of this \
-         family ends drained since D-34 (the mark resolves, its write re-marks once, the next resolve has \
-         nothing to write), so a survivor is either the re-dirty storm or a mark that leaked outside the \
+         family ends drained since D-34 (the mark is resolved by the tick that sees it, and this shape \
+         writes no base value, so there is no `Changed<T>` left to re-mark it), so a survivor is either \
+         the re-dirty storm or a mark that leaked outside the \
          {} the id names, and the samples resolved some other workload than the row reports",
         dirtied.tag(),
         got.len(),

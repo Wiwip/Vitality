@@ -363,11 +363,16 @@ fn excl_width<B: Bundle + Arity>(group: &mut BenchmarkGroup<'_, WallTime>, spec:
 ///
 /// `cold` repeats `leaf/access_paths/path_i_except_get`: `iter_batched_ref` setup is a whole `App`
 /// build plus a tick per sample — milliseconds of allocation the reported number does not include,
-/// but which is exactly what evicts the caches around a read that measures 220–250 ns post-L-2 at
-/// this tip (`mt`/`dyn`, for both
+/// but which is exactly what evicts the caches around a read that measures 215–240 ns post-L-2 at
+/// this tip (`mt`/`dyn`: the post-fix pair read 240.07 / 220.15 in the L-2 session's `l2-after-c` run
+/// and 215.30 / 219.74 in the reviewer's `l2-review-leaf` re-run of the same tip, both recorded in
+/// `.auto/LOG.md`'s L-2 entry, for
 /// `leaf/access_paths/a=8/e=2/m=1/actors=10/dirty=0/tick=0/path_i_except_get/excl=9` and its
-/// `leaf/warm_cold/a=8/e=2/m=1/actors=10/dirty=0/tick=0/cold_except_get/excl=9` twin). Pre-L-2 those
-/// two ids measured 572–695 ns, so any §3 row quoted from them prices the read that walked the bundle.
+/// `leaf/warm_cold/a=8/e=2/m=1/actors=10/dirty=0/tick=0/cold_except_get/excl=9` twin). Pre-L-2 the same
+/// two ids read 571.75 / 563.03 (`l2-before-a`) and 585.30 / 600.71 (`l2-b`), CIs 548.9–626.4, so any
+/// §3 row quoted from those logs prices the read that walked the bundle. Both sides are quoted as pairs
+/// because single rows here move that much: the reviewer's unchanged `path_ii_entity_get` control read
+/// 108.02 in `l2-before-a` and 88.22 in its own re-run.
 /// `warm` is one already-built fixture read back to back, so nothing evicts anything.
 ///
 /// The rows this feeds are ratios, not levels: BENCH-PLAN §3 fixes leaf access first when
@@ -377,7 +382,12 @@ fn excl_width<B: Bundle + Arity>(group: &mut BenchmarkGroup<'_, WallTime>, spec:
 /// reference — the same read through a bundle with nothing to scan — so the warm price of a narrower
 /// bundle is a subtraction inside this group instead of an inference from the cold column. Post-L-2 that
 /// subtraction is all the width is worth: 18.0 ns at `excl=9` against 7.1 ns at `excl=0` (`mt`/`dyn`),
-/// where pre-L-2 the same pair read 41.9 against 5.8.
+/// where pre-L-2 the same pair read 41.9 against 5.8. The *cold* column cannot be subtracted that way,
+/// and the reason is a cost of L-2 rather than a width: at zero there was no scan to remove, so the
+/// bitset fetch is all new, and `…/except_get/excl=0/arity=0` cold went 148.97 / 159.07 (`l2-before-a`,
+/// `l2-b`) to 220.69 / 221.29 (`l2-after-c`, `l2-review-leaf`) — i.e. the zero-width cold row now sits
+/// level with the cold `excl=9` row (220.15), which is the flat sweep seen from the cold side. Anyone
+/// pricing §2C's ns-against-width from a cold run reports one fixed cost four times, not four widths.
 fn leaf_warm_cold(c: &mut Criterion) {
     // Same shape, same read and same setup as `leaf/access_paths/path_i_except_get`, so the cold
     // column here is that id and the ratio is between two runs of one thing.
@@ -455,19 +465,24 @@ const RATIO_TABLE: &str = "recompute ratio table";
 /// the `all_attrs` one of the same A is read).
 ///
 /// What each side really times, per the asserts in `support/recompute.rs` and `test_recompute_ratio`:
-/// since D-34 `are_different` is `!=`, so a resolve writes only when the value it yields differs and the
-/// write is what re-marks it (`on_change_notify_attribute_parents::<T>` in
+/// since D-34 `are_different` is `!=`, so a resolve writes only when the value it yields differs, and a
+/// write is the only thing that can re-mark (`on_change_notify_attribute_parents::<T>` in
 /// `EffectsSet::UpdateBaseValues`, which since L-4 sits in front of the resolve and so answers the write
-/// of the tick before, not the resolve it runs beside). `recompute/one_attr` is therefore *one attribute dirty for the tick that
-/// moves its value* and idle from the next — the same attribute, the same actor, every sample — and
+/// of the tick before, not the resolve it runs beside). Nothing in this family writes a base value:
+/// [`recompute::recompute_shape`] settles the world (`floor::prepare_floor`) and then raises `Dirty<T>`,
+/// so the resolve that mark triggers folds to the value the attribute already holds, writes nothing, and
+/// leaves no `Changed<T>` behind. `recompute/one_attr` is therefore *one attribute dirty for the first
+/// sample and idle for every sample after it* — the same attribute, the same actor, every sample — and
 /// `recompute/all_attrs` is the same shape with A of them dirty. Before the fix both ids were permanent:
 /// the re-mark fired whatever the resolve computed, so `one_attr` was one attribute permanently dirty and
 /// `all_attrs` was the steady state of that bug rather than of the design.
 ///
 /// The ids still say `dirty=one` / `dirty=all`, and the assert after each timed loop still re-reads the
 /// dirty set per attribute. Since D-34 it re-reads it *empty* (`recompute::assert_dirty_drained`): the
-/// marks are what the shape is handed, and they drain on the second sample. That is the premise these
-/// numbers were taken on, and it went stale rather than the guard becoming decorative — re-rolling these
+/// marks are what the shape is handed, and they drain on the **first** sample — the same one-tick drain
+/// `recompute/many_actors` (marks only, via `common::mark_dirty_fraction`) and the `dirty=none` control
+/// (handed nothing) show. That is the premise these numbers were taken on, and it went stale rather
+/// than the guard becoming decorative — re-rolling these
 /// ids (and the `dirty=` field of their ids) is a bench-loop decision, not something this run quietly
 /// edits.
 ///

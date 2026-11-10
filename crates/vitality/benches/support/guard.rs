@@ -19,11 +19,14 @@
 //! does not. A guard that ran asserts exactly what it asserted before this existed, and prints
 //! nothing extra.
 //!
-//! The groups whose asserts already sit *inside* their closure need no [`Ran`]:
-//! `harness/app_update` keeps both of its asserts in the `iter_batched_ref` setup closure, and the
-//! three `leaf/*` groups have no assert outside a closure at all. A filter that drops a sample drops
-//! the assert that rides in it, so those groups can never look at a world they did not build — which
-//! is the property everything else here has to re-create by hand.
+//! The groups whose asserts already sit *inside* their closure need no [`Ran`]: `harness/app_update`
+//! keeps both of its asserts in the `iter_batched_ref` setup closure, and the three `leaf/*` groups have
+//! no assert *statement* after a timed loop. They do assert outside a closure — `leaf_fixture` at
+//! `leaf.rs:107` and `:120`, `excl_fixture` at `:236`, both called from a group body before its first
+//! `bench_function` — and that is the exempt shape below: the builder reads the world the group function
+//! just built, so it is true under every filter. A filter that drops a sample drops the assert that rides
+//! in it, so those groups can never look at a world they did not build — which is the property everything
+//! else here has to re-create by hand.
 //!
 //! What it does **not** guarantee: that an assert outside a loop needs it — a guard that only reads
 //! what the group function itself built (the pre-loop `attrs().len()` and `shape.ticking` asserts) is
