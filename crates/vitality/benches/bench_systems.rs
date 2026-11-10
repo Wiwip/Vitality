@@ -15,15 +15,16 @@
 //! ```text
 //! cd /mnt/rust/RustroverProjects/vitality
 //! bash scripts/gate.sh                                       # tests only, no bench targets
-//! cargo check --offline --locked -p vitality --benches       # compile the bench targets
+//! cargo bench --offline --locked -p vitality --bench bench_systems --no-run   # compile the bench targets (links)
 //! cargo bench --offline --locked -p vitality --bench bench_systems   # full run
 //! cargo bench --offline --locked -p vitality --bench bench_systems -- floor \
 //!     --warm-up-time 0.5 --measurement-time 1 --sample-size 10       # short run for the log
 //! ```
 //!
 //! Exactly one `--` in that last line (D-35): everything after it goes to criterion, so a second one is
-//! what turns a filtered run into the whole suite. Keep the load discipline the logs carry — read
-//! `/proc/loadavg` before and after the run, and report anything under ~10 % as directional (D-36).
+//! what turns a filtered run into the whole suite. Keep the load discipline `.auto/LOG.md` records —
+//! read `/proc/loadavg` before and after the run, and report anything under ~10 % as directional
+//! (D-36).
 //!
 //! A bench id is `<group>/<WorldSpec::shape_id()>`, so a number never travels without the shape it
 //! came from.

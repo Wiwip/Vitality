@@ -28,10 +28,7 @@ use vitality_core::view::ActorRead;
 /// shape carries rather than only slot 0.
 const LEAF_READ_COUNT: usize = 8;
 
-/// The same eight reads, in pool order, in a table *built* generic in the view. `fn(&V)` with a bare
-/// `V` has no inherent methods, so every `get` this table runs is `ActorRead::get`; a
-/// `&[(&str, fn(&EffectsRef<'_, '_>))]` table could only be filled by a call site already holding a
-/// concrete view, which is the bypass R-2 closes (review ddf32ffc).
+/// generic in the view so every `get` here can only be `ActorRead::get`
 fn leaf_reads<V: ActorRead>() -> [(&'static str, fn(&V) -> Option<f64>); LEAF_READ_COUNT] {
     [
         ("Attr0", read_attr::<V, common::Attr0>),
@@ -55,13 +52,7 @@ where
     through_view::<_, T>(view).map(|attr| attr.current_value() as f64)
 }
 
-/// The only fetch this file makes, and the reason its reads are pinned instead of merely generic: the
-/// return type hides the concrete view, so no call site can hold one. `EntityRefExcept`'s inherent
-/// `get` (`world/entity_access/except.rs:67`, the per-call bundle re-resolve L-2 replaced) takes
-/// `&EntityRefExcept`, so at a [`pinned_view`] site the inherent spelling is `E0308` and the only `get`
-/// that compiles is `ActorRead::get`, the call `Attribute::at()` makes. R-2 review ddf32ffc: fetched
-/// through `leaf::leaf_view` directly, a temporary needed no binding and the unfixed read stayed one
-/// line away at both exclusion checks.
+/// hides the concrete view so the inherent `EntityRefExcept::get` can't be spelled at a call site
 fn pinned_view<'w, 's, B: Bundle>(
     world: &'w World,
     query: &'s mut QueryState<EntityRefExcept<'static, 'static, B>>,
@@ -73,12 +64,7 @@ where
     leaf::leaf_view(world, query, actor)
 }
 
-/// The library's leaf read, and the only place this file spells it. Generic in the *view* rather than
-/// in the bundle: a bare type parameter has no inherent methods, so the `get` below can only be
-/// `ActorRead::get`. Spell the same read on a concrete `EntityRefExcept` and `view.get::<T>()` binds
-/// bevy's inherent method, which re-resolves every member of the exclusion bundle through `Components`
-/// on each call — the read L-2 replaced. Both answer `None` for a bundle member, so no value this file
-/// compares could tell them apart (L-2 review, f64114df); the unfixed read is simply not nameable here.
+/// generic in the view for the same reason: a bare `V` has only the trait `get`
 fn through_view<V, T>(view: &V) -> Option<&T>
 where
     V: ActorRead,
@@ -87,10 +73,7 @@ where
     view.get::<T>()
 }
 
-/// The exclusion verdict, spelled once, in a body generic over the *view* like [`through_view`], and
-/// only ever fed a [`pinned_view`], so bevy's inherent `get` can be written at neither exclusion check
-/// (R-1 review 23467152: with a concrete parameter, both could; R-2 review ddf32ffc: so could their
-/// callers). `B` only names the excluded bundle in the message now.
+/// the one exclusion check; only fed a pinned view
 fn assert_refused<B, M, V>(view: &V, actor: Entity)
 where
     B: Bundle,
