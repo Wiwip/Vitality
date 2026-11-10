@@ -72,9 +72,10 @@ fn periodic_tick_scan_fires_about_once_per_tick() {
             shape.actors.len(),
         );
         assert!(
-            shape.markers_cleared > 0,
-            "settling shape {} cleared no Dirty<T>, so the walk that reports a settled world never \
-             saw one and the quiet-window assert below proves nothing",
+            shape.markers_at_handoff > 0,
+            "settling shape {} found no Dirty<T> when prepare_floor took it over, so the walk that \
+             reports a settled world never saw one and the quiet-window assert below proves \
+             nothing",
             spec.shape_id(),
         );
         assert!(

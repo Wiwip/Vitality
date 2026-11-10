@@ -3,12 +3,12 @@ use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use vitality::ability::AbilityBuilder;
-use vitality::actors::{Actor, ActorBuilder};
 use vitality::ability::AbilityDef;
-use vitality::effect::conditions::IsAttributeWithinBounds;
+use vitality::actors::{Actor, ActorBuilder};
 use vitality::context::Vitality;
-use vitality::effect::{Effect, EffectInactive};
+use vitality::effect::conditions::IsAttributeWithinBounds;
 use vitality::effect::modifier::{EffectSubject, ModOp};
+use vitality::effect::{Effect, EffectInactive};
 use vitality::prelude::*;
 use vitality::registry::ability_registry::AbilityToken;
 use vitality::registry::effect_registry::EffectToken;
@@ -56,6 +56,7 @@ fn prepare_effects(mut registry: RegistryMut) {
 
 pub const TEST_EFFECT: EffectToken = EffectToken::new_static("test.test");
 pub const CONDITION_EFFECT: EffectToken = EffectToken::new_static("test.condition");
+pub const GATED_BUFF: EffectToken = EffectToken::new_static("test.gated_buff");
 
 fn prepare_abilities(mut abilities: RegistryMut) {
     abilities.add_ability(TEST_ABILITY_TOKEN, fireball_ability());
@@ -69,6 +70,31 @@ pub fn fireball_ability() -> AbilityDef {
         .with_cooldown(3.5)
         .with_cost::<TestB>(3.0)
         .build()
+}
+
+/// The deactivation guard's own fixture: one effect, one condition on the target's own TestA, so a
+/// write can flip it without touching TestB.
+fn prepare_gated_effect(mut registry: RegistryMut) {
+    registry.add_effect(
+        GATED_BUFF,
+        Effect::permanent()
+            .name("Gated Buff".into())
+            .modify::<TestB>(25.0_f64, ModOp::Add, EffectSubject::Target)
+            .active_while(IsAttributeWithinBounds::<TestA>::target(..50.0_f32))
+            .build(),
+    );
+}
+
+fn prepare_gated_actor(mut ctx: Vitality, registry: Registry) {
+    let actor_template = ctx.add_actor(
+        ActorBuilder::new()
+            .name("GatedActor".into())
+            .with::<TestA>(0.0)
+            .with::<TestB>(1.0)
+            .with_effect(&registry.effect(&GATED_BUFF))
+            .build(),
+    );
+    ctx.spawn_actor_from_handle(&actor_template);
 }
 
 #[test]
@@ -123,4 +149,68 @@ fn test_attribute_condition() {
         .query::<(Entity, &Effect, &ConditionTag, Option<&EffectInactive>)>();
     let opt_inactive = query.single(app.world()).unwrap().3;
     assert!(opt_inactive.is_none());
+}
+
+/// L-4's deactivation half: flipping an effect off changes the fold without writing any attribute of
+/// the target, and no leftover mark reaches the next tick, so only the flip's own mark repaints it.
+#[test]
+fn test_condition_deactivation_repaints_target() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        LogPlugin {
+            filter: "error,vitality=debug".into(),
+            level: bevy::log::Level::DEBUG,
+            ..default()
+        },
+        AttributesPlugin,
+    ));
+    app.add_plugins((
+        vitality::init_attribute::<TestA>,
+        vitality::init_attribute::<TestB>,
+    ));
+    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+
+    app.add_systems(Startup, (prepare_gated_effect, prepare_gated_actor).chain());
+
+    app.update();
+    app.update();
+
+    let mut query = app.world_mut().query::<(Entity, &Actor, &TestB)>();
+    let (actor_id, _, test_b) = query.single(app.world()).unwrap();
+    assert_eq!(
+        test_b.current_value(),
+        26.0,
+        "the gated buff never applied while its condition held"
+    );
+
+    // A write TestB has no part in: the condition reads TestA, and TestB is not one of its dependents.
+    app.world_mut()
+        .run_system_once(move |mut attributes: Query<&mut TestA>| {
+            attributes.single_mut().unwrap().set_base_value(60.0);
+        })
+        .unwrap();
+
+    for _ in 0..4 {
+        app.update();
+    }
+
+    let mut query = app
+        .world_mut()
+        .query::<(Entity, &Effect, Option<&EffectInactive>)>();
+    let opt_inactive = query.single(app.world()).unwrap().2;
+    assert!(
+        opt_inactive.is_some(),
+        "the condition never turned the buff off, so a TestB that stayed put would prove nothing"
+    );
+
+    let test_b = app.world().get::<TestB>(actor_id).unwrap();
+    assert_eq!(
+        test_b.current_value(),
+        1.0,
+        "the buff is inactive but TestB still reads {}: the flip changed the fold without dirtying \
+         the target, so nothing resolved it",
+        test_b.current_value()
+    );
 }

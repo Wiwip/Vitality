@@ -171,9 +171,9 @@ pub struct PeriodicShape {
     /// T: effect instances on [`PeriodicShape::actor`] carrying an `EffectTicker`, counted off the
     /// world — not the plan's ticking count, and not `ticking_fraction × effects`.
     pub ticking: usize,
-    /// `Dirty<T>` components [`floor::prepare_floor`] removed. Zero would mean the settle was reading a
-    /// world the walk never saw a marker in.
-    pub markers_cleared: usize,
+    /// `Dirty<T>` components the world carried when [`floor::prepare_floor`] took it over. Zero would mean
+    /// the settle was reading a world the walk never saw a marker in.
+    pub markers_at_handoff: usize,
 }
 
 /// Builds `spec` from the default pool and settles it. Safe to settle because the build is fresh:
@@ -202,7 +202,7 @@ pub fn periodic_shape(spec: &WorldSpec) -> PeriodicShape {
         MIN_PERIOD_TICKS,
         MAX_PERIOD_TICKS,
     );
-    let markers_cleared = floor::prepare_floor(&mut app);
+    let markers_at_handoff = floor::prepare_floor(&mut app);
     let actor = actors[0];
     let ticking = ticking_instances(app.world(), actor);
     let planned = app
@@ -233,7 +233,7 @@ pub fn periodic_shape(spec: &WorldSpec) -> PeriodicShape {
         actor,
         actors,
         ticking,
-        markers_cleared,
+        markers_at_handoff,
     }
 }
 
@@ -458,7 +458,7 @@ pub fn periodic_id(spec: &WorldSpec, ticking: usize, firing: &FiringStats) -> St
 pub fn point_line(spec: &WorldSpec, shape: &PeriodicShape, firing: &FiringStats) -> String {
     format!(
         "{} fired={:.3}/tick moved={}/{} ticks ({:.3}) delta={:.3}/tick over {} ticks after a \
-         {}-tick warm-up, T={}, markers_cleared={}",
+         {}-tick warm-up, T={}, markers_at_handoff={}",
         periodic_id(spec, shape.ticking, firing),
         firing.fired_per_tick,
         firing.moved_ticks,
@@ -468,6 +468,6 @@ pub fn point_line(spec: &WorldSpec, shape: &PeriodicShape, firing: &FiringStats)
         firing.window,
         firing.warm_up,
         shape.ticking,
-        shape.markers_cleared,
+        shape.markers_at_handoff,
     )
 }

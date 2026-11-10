@@ -189,9 +189,9 @@ pub struct ManyShape {
     /// Actors [`dirty_actors`] found carrying a `Dirty<T>`, after the settle and the marking. This
     /// is the count the id quotes.
     pub dirty_actors: usize,
-    /// `Dirty<T>` components [`floor::prepare_floor`] removed off the build. Zero would mean the
-    /// walk that reports a settled world never saw a marker.
-    pub markers_cleared: usize,
+    /// `Dirty<T>` components the world carried when [`floor::prepare_floor`] took it over. Zero would mean
+    /// the walk that reports a settled world never saw a marker.
+    pub markers_at_handoff: usize,
     /// Build + settle + mark, milliseconds. Setup, not measurement, and printed by the group so the
     /// hole in the grid can be costed in the same run that produced the numbers.
     pub setup_ms: u64,
@@ -206,7 +206,7 @@ pub fn many_shape(spec: &WorldSpec) -> ManyShape {
     let started = Instant::now();
     let pool = floor::floor_pool(spec.attributes_per_actor);
     let mut app = build_app_with(spec, pool);
-    let markers_cleared = floor::prepare_floor(&mut app);
+    let markers_at_handoff = floor::prepare_floor(&mut app);
     // Collected after the settle: `clear_dirty` removes components, which moves every actor to
     // another archetype. Entity ids survive that, but the list is what the guard reads, so it is
     // taken off the world the guard will look at.
@@ -251,7 +251,7 @@ pub fn many_shape(spec: &WorldSpec) -> ManyShape {
         spec: spec.clone(),
         actors,
         dirty_actors: dirty.len(),
-        markers_cleared,
+        markers_at_handoff,
         setup_ms,
         mark_us,
     }

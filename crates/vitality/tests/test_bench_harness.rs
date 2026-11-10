@@ -426,12 +426,14 @@ const BASE_DELTA: f64 = 7.0;
 /// benches loop over.
 ///
 /// The dirty set is asserted per attribute at every step, including *after* the tick. A resolve that
-/// moves `current_value` writes through `&mut T`, `Changed<T>` sees that write and re-marks, so in (a)
-/// the tick that resolves every attribute leaves every attribute dirty again. Since D-34 a resolve that
-/// yields the value it already holds writes nothing and re-marks nothing, which is why (b) drains to
-/// clean one tick after its write lands. If a re-mark ever reached an attribute nobody had written, a
-/// `dirty=one` id would be timing an all-dirty world and its ratio would be 1/A of the truth; the
-/// asserts after the tick are what catch it.
+/// moves `current_value` writes through `&mut T`, and `Changed<T>` of that write is what
+/// `on_change_notify_attribute_parents::<T>` answers, so a changing write still buys one more resolve.
+/// Since L-4 that mark phase runs ahead of the resolve, so the re-mark is raised and consumed by the
+/// *next* tick and both (a) and (b) are clean at the tick boundary — which is what the asserts after the
+/// tick now pin. What they can no longer see is a spurious re-mark *inside* a tick: the boundary read used
+/// to catch that by finding the whole pool dirty where only the written attributes should be, and it now
+/// reads empty either way. Spread is pinned from outside a tick instead
+/// (`mark_dirty_fraction_marks_are_visible`, and `tests/test_dirty_spread.rs`).
 #[test]
 fn test_recompute_ratio() {
     let spec = recompute::recompute_spec(RECOMPUTE_ATTRIBUTES, RECOMPUTE_EFFECTS);
@@ -521,7 +523,7 @@ fn test_recompute_ratio() {
             after[index]
         );
     }
-    recompute::assert_dirty_attrs(
+    recompute::assert_dirty_drained(
         all.app.world(),
         pool,
         actor,
@@ -587,21 +589,16 @@ fn test_recompute_ratio() {
         );
     }
 
-    // What `dirty=one` buys since D-34: the mark moves its attribute's current value on the first tick,
-    // the write re-marks it for one more, and from there the resolve yields what it already holds, so the
-    // attribute is clean and the id's workload is over. Repeat it, because the old behaviour was a
-    // permanent one-attribute walk and a single clean tick would not tell that from a fluke.
+    // What `dirty=one` buys since L-4: the mark is raised and resolved by the tick that carries it, so
+    // even the first boundary read after that tick finds the attribute clean. Repeat it, because the old
+    // behaviour was a permanent one-attribute walk and a single clean read would not tell that from a
+    // fluke.
     for tick_number in 1..=3 {
-        let expected = if tick_number == 1 {
-            recompute::Dirtied::One
-        } else {
-            recompute::Dirtied::None
-        };
-        recompute::assert_dirty_attrs(
+        recompute::assert_dirty_drained(
             one.app.world(),
             pool,
             actor,
-            expected,
+            recompute::Dirtied::One,
             &format!("(b) {tick_number} tick(s) in"),
         );
         run_fixed_tick(one.app.world_mut());

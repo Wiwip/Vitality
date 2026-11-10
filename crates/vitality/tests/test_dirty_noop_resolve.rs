@@ -174,7 +174,7 @@ fn a_resolve_that_yields_the_same_value_fans_out_nothing() {
         "the source and the reader are one actor, so nothing below ever crossed an actor",
     );
     assert!(
-        shape.markers_cleared > 0,
+        shape.markers_at_handoff > 0,
         "the shape was never dirty, so `dirty_entity_count` returning 0 below is a walk that never \
          saw a marker rather than a settled world",
     );
@@ -188,7 +188,7 @@ fn a_resolve_that_yields_the_same_value_fans_out_nothing() {
     assert_eq!(
         dirty_entity_count(world),
         0,
-        "shape {} is not clean ({} markers cleared, {} dirty entities left), so no tick below can \
+        "shape {} is not clean ({} dirty entities at handoff, {} left after the prepare), so no tick below can \
          attribute a mark to this file's own call",
         spec.shape_id(),
         cleared,

@@ -1,6 +1,7 @@
 use crate::EffectsRef;
 use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
+use crate::systems::MarkActorDirty;
 use crate::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
 use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
@@ -79,10 +80,15 @@ pub fn evaluate_effect_conditions(
             // Effect was inactive and its conditions are now met, so activate it.
             debug!("Effect {effect_entity} is now active.");
             commands.entity(effect_entity).remove::<EffectInactive>();
+            // Nothing else tells the target: no attribute of its own changed, so no `Changed<T>` and no
+            // cascade reaches it, and since L-4 no leftover mark carries the fold into the next tick
+            // either. The flip changes what the resolve folds, so ask for that resolve.
+            commands.trigger(MarkActorDirty { entity: target.0 });
         } else if !should_be_active && !is_inactive {
             // Effect was active and its conditions are no longer met, so deactivate it.
             debug!("Effect {effect_entity} is now inactive.");
             commands.entity(effect_entity).insert(EffectInactive);
+            commands.trigger(MarkActorDirty { entity: target.0 });
         }
     }
 }

@@ -22,12 +22,12 @@
 //!
 //! A node marker is raised by `update_modifier_when_dependencies_changed`
 //! (`crates/vitality_effects/src/modifier.rs:222-228`), which triggers `MarkNodeDirty` on the effect
-//! entity from `EffectsSet::Notify` — *after* `update_current_value_system` has cleaned the nodes of
-//! that tick. So the first tick of a live cascade legitimately ends with one node marker on the world,
-//! NaN or not: measured on this file's finite control round (a `+3` write to the source, no NaN
-//! anywhere) tick 1 ends with `84v0[Dirty<NanDep>]`, kind `effect`, and ticks 2 onward with none. A
-//! per-tick "no node is dirty" assert would therefore be red on a world that is working, today and
-//! after D-34 alike.
+//! entity from the `UpdateAttributeSignal` → `RecalculateExpression` observer chain that the resolve
+//! itself queues — so it lands *after* `update_current_value_system` has cleaned the nodes of that tick.
+//! (Since L-4 that chain runs inside the resolve rather than off `EffectsSet::Notify`, which changes the
+//! set name and nothing else about this: measured here, tick 1 of a live round still ends with
+//! `90v0[Dirty<NanDep>]`, kind `effect`, and ticks 2 onward with none.) A per-tick "no node is dirty"
+//! assert would therefore be red on a world that is working, before and after L-4 alike.
 //!
 //! What is pinned instead is the claim the walk actually makes. Only `update_effect_tree_attributes`
 //! takes a node marker off, and it reaches a node in the tick after the actor above it was dirty. So:
@@ -49,11 +49,14 @@
 //! source actor, one reader actor, one permanent `EffectSubject::Source` modifier so the reader's
 //! `NanDep` value comes from the source's `NanAttr`):
 //!
-//! * **the mark survives.** A marked actor with a NaN-valued resolve keeps its `Dirty<NanAttr>` on every
-//!   tick of the round, while the *finite* attribute of the same actor, marked by the same call, is
-//!   clean at tick 1: the finite resolve yields the value it already holds, so it writes nothing,
-//!   notifies nothing and re-marks nothing, and `update_current_value_system`'s `try_remove` is the end
-//!   of it. NaN is now the one attribute here that is dirty forever;
+//! * **the mark is re-raised forever.** A marked actor with a NaN-valued resolve is told again on every
+//!   tick of the round, while the *finite* attribute of the same actor, marked by the same call, is told
+//!   once and then left alone: the finite resolve yields the value it already holds, so it writes nothing,
+//!   notifies nothing and re-marks nothing. Since L-4 neither half is readable as a `Dirty<T>` at a tick
+//!   boundary — the tick that raises a mark resolves it — so this pair is read off [`MarkFires`], the
+//!   file's `MarkNodeDirty` counters: measured on the round below, the source's `NanAttr` earns one mark
+//!   on every tick of `NAN_HORIZON` and its `NanDep` earns none. NaN is the one attribute here that never
+//!   stops asking;
 //! * **the write lands.** The base goes to NaN and `current_value` follows it from tick 1, and a fresh
 //!   `MarkNodeDirty` re-writes it. NaN can still reach `current_value` unguarded in two other ways —
 //!   `set_current_value` is public and `attribute_impl!`'s `new()`
@@ -61,16 +64,18 @@
 //!   all — but neither one is sticky any more: the next resolve compares against it and counts it as a
 //!   change;
 //! * **the cascade rides it.** `should_notify_observers` is true, so `CurrentValueChanged` and
-//!   `RecalculateExpression` fire off a NaN resolve: the reader gains `Dirty<NanDep>`, reads NaN from
-//!   tick 2 and is re-marked by its own NaN resolve on every tick after. The round just before the NaN
-//!   one, on the same edge, is the file's positive control: one `+3` write to the source moved the
-//!   reader's value by 3 inside three ticks and put `Dirty<NanDep>` on the reader and — on its first
-//!   tick, which is when the node marker is legal — on its effect node.
+//!   `RecalculateExpression` fire off a NaN resolve: the reader is marked with `MarkNodeDirty<NanDep>`,
+//!   reads NaN from tick 2 and is told again on every tick after (one fire on tick 1, none on tick 2 —
+//!   the tick that resolves the mark it already carried, while the node marker still short-circuits the
+//!   propagation — two on every tick from tick 3). The round just before the NaN one, on the same edge,
+//!   is the file's positive control: one `+3` write to the source moved the reader's value by 3 inside
+//!   three ticks and put a `Dirty<NanDep>` on the reader's effect node — on its first tick, which is when
+//!   the node marker is legal.
 //!
 //! Read the two NaN doors apart, because they send NaN to opposite places. When the **resolve evaluates
 //! to NaN** (the base is NaN, so `NanAttr::src()`-style expressions fold to NaN), the NaN is written
-//! into `current_value` and rides the edge: the reader's `NanDep` reads NaN from tick 2 and stays dirty.
-//! When a **NaN merely sits in `current_value`** (the public `set_current_value`, which is
+//! into `current_value` and rides the edge: the reader's `NanDep` reads NaN from tick 2 and keeps being
+//! re-marked. When a **NaN merely sits in `current_value`** (the public `set_current_value`, which is
 //! [`a_nan_left_in_current_value_leaves_its_dependent_dirty_and_stale`]) the finite base is still in the
 //! other slot, so the first resolve writes the base back over it, notifies once, and the dependent is
 //! marked on tick 1, clean from tick 2, and never sees the NaN in its own value at all. Before D-34 both
@@ -99,19 +104,20 @@
 //!   two read NaN from tick 1; the third reads the finite base back, written over the injected NaN by
 //!   the first resolve;
 //! * *the cascade stops at the NaN* — 3 asserts, each one the reader: its value in the base round, its
-//!   marks in the same round, and its marks after the bare mark. The reader reads NaN from tick 2 and
-//!   carries `Dirty<NanDep>` on every tick of the round;
+//!   marks in the same round, and its marks after the bare mark. The reader reads NaN from tick 2; what
+//!   those two marks-reads asserted moved with L-4, below;
 //! * *the NaN mark decays and nothing else decays* — 4 asserts: the `NanAttr`-absent one and the
 //!   `NanDep`-present control beside it (base round, tick >= 2), the bare-mark `marks` read (which
 //!   asserts both halves of that pair in one), and the third test's "the dependent stays dirty". The pair
-//!   is exactly inverted: the source keeps `Dirty<NanAttr>` on every tick and loses `Dirty<NanDep>` at
-//!   tick 1, and the third test's dependent is dirty on tick 1 only.
+//!   is exactly inverted, and L-4 moved where it is readable: at a tick boundary neither half carries a
+//!   marker any more, and the inversion lives in the marks each one raises.
 //!
 //! The last group retires the phrase "a NaN mark then lives as long as a finite one's", which the first
 //! pass of this file used and which was wrong even then: `NaN != NaN` is true, so a NaN resolve reports
-//! a change every tick it runs. The steady state is that the source's `Dirty<NanAttr>` and the reader's
-//! `Dirty<NanDep>` never leave at all while a *finite* marked actor is clean at tick 1 — a NaN mark
-//! outlives the finite one, it does not join it. That permanently-dirty world is what D-34 hands to a
+//! a change every tick it runs. A NaN keeps asking and a finite attribute stops; before L-4 that
+//! difference was readable as markers that never left versus a marker gone by tick 1, and since L-4 both
+//! boundaries read empty and only the re-mark separates them. That permanently-re-marking world is what
+//! D-34 hands to a
 //! dependent of an attribute whose **resolve evaluates to** NaN, and to no other *NaN* shape: where the
 //! NaN only sits in `current_value`, the third test below falsifies the broad claim — the first resolve
 //! writes the finite base over it and that dependent is clean from tick 2. NaN is not the only way to
@@ -120,6 +126,18 @@
 //! no test in this file builds that shape. The assert beside the third test's flip keeps its "the
 //! dependent never reads NaN" wording on purpose: here the NaN is erased before the edge can carry it,
 //! which is the difference the two paragraphs above are about.
+//!
+//! ## What L-4 changed in this file
+//!
+//! L-4 moved the mark/notify pair ahead of the resolve (`vitality_effects/src/lib.rs`,
+//! `EffectsSet::UpdateBaseValues`), so a tick raises a `Dirty<T>` and clears it again before its own
+//! boundary. Every assert that went red was a boundary read of a marker this file used to see: the NaN
+//! round's "source carries `NanAttr`" / "reader carries `NanDep`" pair and their bare-mark twins (four),
+//! plus `nan_world`'s `prepare_floor` control, which is `floor.rs`'s story rather than this file's. What
+//! held unchanged is the point: the value pins, the node-marker guarantee of half one and the third
+//! test's "told once, then quiet". The reorder moves *when a mark is readable*, not what the cascade
+//! does. [`MarkFires`] is how the file keeps its teeth: counting `MarkNodeDirty` triggers says whether an
+//! attribute is still being told, which an empty boundary read no longer can.
 //!
 //! NaN stays inside `NanAttr`/`NanDep` in a world this file builds and never shares, because a NaN
 //! current value can propagate through dependents and no other test may inherit one.
@@ -138,6 +156,7 @@ use crate::common::{
 use crate::floor::{DirtyNode, DirtySplit, dirty_entity_count, dirty_split, prepare_floor};
 use crate::recompute::dirty_names;
 use bevy::prelude::*;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use vitality::attributes::Attribute;
 use vitality::effect::Effect;
@@ -174,8 +193,10 @@ static NAN_POOL: &[AttrSpec] = &[
 /// the NaN half to be measuring a live cascade.
 const NAN_STEP: f64 = 3.0;
 
-/// Past the tick the NaN mark is measured to be gone on (tick 2 after a base write), with room to show
-/// it does not come back. The stale-dependent test reads the same number of ticks.
+/// Long enough to show a NaN mark keeps being raised and a finite one stops, with room to spare. Since
+/// L-4 the round's marks are gone by every boundary read, so this horizon is read through [`MarkFires`]
+/// rather than as "the tick the mark is measured to be gone on", which is what it named pre-L-4. The
+/// stale-dependent test reads the same number of ticks.
 const NAN_HORIZON: usize = 6;
 
 /// The reader's value is an `f32` sum read back as `f64`; the assert is about a 3.0 move on a value in
@@ -334,6 +355,46 @@ fn apply_reader_effect(world: &mut World, source: Entity, reader: Entity) {
     world.flush();
 }
 
+/// How many `MarkNodeDirty` triggers each half of the NaN pair has landed on each actor since the app
+/// started.
+///
+/// Since L-4 the mark phase runs ahead of the resolve, so a tick both raises a mark and clears it: a read
+/// at a tick boundary is empty even on an attribute that re-marks itself forever. The trigger is what
+/// still shows which half of a pair keeps asking. Per entity, because one global count cannot tell the
+/// source's finite `NanDep` (marked once, never again) from the reader's NaN one (marked every tick).
+#[derive(Resource, Default)]
+struct MarkFires {
+    attr: HashMap<Entity, u32>,
+    dep: HashMap<Entity, u32>,
+}
+
+impl MarkFires {
+    /// How many marks have landed on `entity` for one half, over the whole run of the app.
+    fn total(&self, attr: bool, entity: Entity) -> u32 {
+        let map = if attr { &self.attr } else { &self.dep };
+        map.get(&entity).copied().unwrap_or_default()
+    }
+
+    /// The four reads the rounds below compare across one tick: marks raised on the source's `NanAttr`,
+    /// its `NanDep`, the reader's `NanAttr` and the reader's `NanDep`, in that order.
+    fn snapshot(&self, source: Entity, reader: Entity) -> [u32; 4] {
+        [
+            self.total(true, source),
+            self.total(false, source),
+            self.total(true, reader),
+            self.total(false, reader),
+        ]
+    }
+}
+
+fn count_nan_attr_marks(trigger: On<MarkNodeDirty<NanAttr>>, mut fires: ResMut<MarkFires>) {
+    *fires.attr.entry(trigger.entity).or_default() += 1;
+}
+
+fn count_nan_dep_marks(trigger: On<MarkNodeDirty<NanDep>>, mut fires: ResMut<MarkFires>) {
+    *fires.dep.entry(trigger.entity).or_default() += 1;
+}
+
 /// The two NaN shapes build the same world: two actors, the reader reading the source through one
 /// permanent modifier, nothing periodic and nothing else registered.
 fn nan_world() -> (App, Entity, Entity) {
@@ -346,6 +407,9 @@ fn nan_world() -> (App, Entity, Entity) {
         ticking_fraction: 0.0,
     };
     let mut app = build_app_with(&spec, NAN_POOL);
+    app.init_resource::<MarkFires>();
+    app.add_observer(count_nan_attr_marks);
+    app.add_observer(count_nan_dep_marks);
     let actors = actor_entities(app.world_mut());
     assert_eq!(
         actors.len(),
@@ -670,12 +734,19 @@ fn a_nan_resolve_decays_its_mark_and_freezes_what_it_would_notify() {
     );
 
     for number in 1..=NAN_HORIZON {
+        let before = app.world().resource::<MarkFires>().snapshot(source, reader);
         tick(&mut app);
+        let after = app.world().resource::<MarkFires>().snapshot(source, reader);
+        let attr_source = after[0] - before[0];
+        let dep_source = after[1] - before[1];
+        let attr_reader = after[2] - before[2];
+        let dep_reader = after[3] - before[3];
         let world = app.world();
         let marks = dirty_names(world, &pool, source);
         println!(
             "B-4c nan tick {number}: source marks {marks:?} NanAttr base={} current={} \
-             (frozen {frozen}); reader marks {:?} NanDep current={}",
+             (frozen {frozen}); reader marks {:?} NanDep current={}; marks raised src-attr={attr_source} \
+             src-dep={dep_source} reader-attr={attr_reader} reader-dep={dep_reader}",
             nan.base(world, source).unwrap(),
             nan.current(world, source).unwrap(),
             dirty_names(world, &pool, reader),
@@ -718,48 +789,80 @@ fn a_nan_resolve_decays_its_mark_and_freezes_what_it_would_notify() {
         }
 
         if number >= 2 {
+            // The pair this file used to read at a boundary — `NanAttr` present on the NaN half, absent
+            // on the finite half — is now absent on both: since L-4 the tick that raises a mark resolves
+            // it. What still separates the two halves is what gets raised next, so that is what is pinned.
             assert!(
-                marks.contains(&"NanAttr"),
-                "B-4c the NaN mark stopped outliving the finite one: at tick {number} the source reads \
-                 {marks:?} without NanAttr. `NaN != NaN` is true, so the NaN resolve writes, notifies \
-                 and re-marks itself every tick — the NaN is the one attribute on this world whose mark \
-                 never decays, which is the flip side of D-34 and what the `dirty=1/1` fraction row of \
-                 `floor/nan_dirty` times",
+                marks.is_empty(),
+                "B-4c a marker outlived its tick: at tick {number} the source reads {marks:?} at the \
+                 boundary. Since L-4 the re-mark is raised in `EffectsSet::UpdateBaseValues` and removed \
+                 by the resolve later in that same tick, so nothing should be left here; a survivor is \
+                 either the pre-L-4 ordering back or a mark this resolve could not clear",
             );
             assert!(
-                !marks.contains(&"NanDep"),
-                "the control broke: at tick {number} the source's finite NanDep is still dirty \
-                 ({marks:?}). Since D-34 a resolve that yields the value it already holds writes \
-                 nothing, notifies nothing and re-marks nothing, so the finite half of this pair has to \
-                 be clean by tick 1 — if it is not, the re-dirty storm is back and the NaN assert above \
-                 is showing nothing about NaN either",
+                attr_source > 0,
+                "B-4c the NaN mark stopped outliving the finite one: tick {number} of the NaN round \
+                 raised no `MarkNodeDirty<NanAttr>` on the source. `NaN != NaN` is true, so the NaN \
+                 resolve writes, notifies and re-marks itself every tick — the NaN is the one attribute \
+                 on this world that never stops asking, which is the flip side of D-34: a NaN attribute \
+                 never leaves the resolve set, whatever the ordering around it is",
             );
             assert!(
-                dirty_names(world, &pool, reader) == ["NanDep"],
-                "the reader {reader:?} reads {:?} at tick {number} of the NaN round. Since D-34 the NaN \
-                 resolve notifies, the mark crosses the edge and the reader's own NaN resolve re-marks \
-                 it, so it carries NanDep on every tick of the round",
-                dirty_names(world, &pool, reader),
+                dep_source == 0,
+                "the control broke: tick {number} of the NaN round raised {dep_source} more \
+                 `MarkNodeDirty<NanDep>` on the source. Its NanDep is finite, so its resolve yields the \
+                 value it already holds, writes nothing and re-marks nothing — if it is being told again, \
+                 the re-dirty storm is back and the NaN assert above shows nothing about NaN either",
+            );
+            // Tick 2 is the one tick the reader is not told: it is the tick that resolves the mark the
+            // previous resolve left on it, and the cascade's `MarkNodeDirty` lands on the still-dirty
+            // effect node, whose observer stops the propagation (`systems.rs:36-39`). From the next tick
+            // the node marker is gone and the edge fires again on every tick of the round.
+            assert!(
+                number < 3 || dep_reader > 0,
+                "the cascade stopped at the edge: tick {number} of the NaN round raised {dep_reader} \
+                 `MarkNodeDirty<NanDep>` on the reader {reader:?} while it reads {} and re-marks itself \
+                 on every tick. Since D-34 a NaN resolve notifies; a reader that stops being told while \
+                 its value stays NaN is a stale dependent",
+                dep.current(world, reader).unwrap(),
             );
         }
     }
 
     // A bare mark, with no write behind it, so the decay above cannot be blamed on the round's base
     // write (which re-marks the actor through `Changed<T>` and buys the mark one extra tick).
+    let before = app.world().resource::<MarkFires>().snapshot(source, reader);
     nan.mark_dirty(app.world_mut(), source);
     app.world_mut().flush();
     tick(&mut app);
+    let after = app.world().resource::<MarkFires>().snapshot(source, reader);
+    let attr_source = after[0] - before[0];
+    let dep_reader = after[3] - before[3];
     let world = app.world();
     let marks = dirty_names(world, &pool, source);
-    println!("B-4c nan bare mark: source marks {marks:?}");
+    let reader_marks = dirty_names(world, &pool, reader);
+    println!(
+        "B-4c nan bare mark: source marks {marks:?} reader marks {reader_marks:?}; marks raised \
+         src-attr={attr_source} reader-dep={dep_reader}"
+    );
     assert_node_markers_are_being_cleaned(world, &mut previous, "after the bare NaN mark");
     assert!(
-        marks == ["NanAttr"],
-        "B-4c the bare mark swapped the pair back: one tick after a bare `MarkNodeDirty<NanAttr>` the \
-         source reads {marks:?} and not `[\"NanAttr\"]`. `NaN != NaN` is true, so the NaN resolve \
-         re-marks itself and the mark survives a write-free tick, while the finite attribute marked by \
-         the same hand resolves to what it already holds and is clean. Before D-34 the two were the \
-         other way round (`[\"NanDep\"]`): the NaN mark decayed and the finite one never did",
+        marks.is_empty(),
+        "B-4c the bare mark left a marker behind: one tick after a bare `MarkNodeDirty<NanAttr>` the \
+         source reads {marks:?}. Since L-4 the tick that raises a mark resolves it, so what a boundary \
+         read finds is nothing on both halves of the pair — pre-L-4 this read `[\"NanAttr\"]`, because \
+         the notify behind the resolve re-raised the mark after the walk had cleaned it. A marker here \
+         now is one the NaN resolve could not clear",
+    );
+    assert!(
+        attr_source > 0,
+        "B-4c the bare mark did not keep the NaN storm alive: no `MarkNodeDirty<NanAttr>` fired across \
+         a tick that started from a hand mark on the NaN attribute. `NaN != NaN` is true, so the resolve \
+         writes, notifies and earns another mark — that permanent re-mark is the flip side of D-34, and \
+         no bench id prices it: `recompute/*` marks actors through `mark_dirty_fraction` on finite \
+         attributes, never through a NaN resolve. Pre-L-4 this was pinned as a marker that survives the \
+         tick; since L-4 the marker is gone by the boundary and only the mark being raised again is \
+         visible",
     );
     assert!(
         nan.current(world, source).unwrap().is_nan()
@@ -772,11 +875,15 @@ fn a_nan_resolve_decays_its_mark_and_freezes_what_it_would_notify() {
         dep.current(world, reader).unwrap(),
     );
     assert!(
-        dirty_names(world, &pool, reader) == ["NanDep"],
-        "a bare mark on the NaN attribute left the reader {:?} instead of carrying it on NanDep: since \
-         D-34 a NaN resolve notifies, so the cascade starts from a NaN and the mark stays, because the \
-         reader's own NaN resolve re-raises it",
-        dirty_names(world, &pool, reader),
+        dep_reader > 0,
+        "a bare mark on the NaN attribute fired no `MarkNodeDirty<NanDep>`: since D-34 a NaN resolve \
+         notifies, so the cascade has to start from a NaN even when nothing wrote a finite value",
+    );
+    assert!(
+        reader_marks.is_empty(),
+        "a bare mark on the NaN attribute left the reader {reader_marks:?} at the tick boundary: the \
+         mark crosses the edge and the tick that raises it resolves it (L-4), so what is readable here \
+         is the reader's NaN value and no marker",
     );
 }
 

@@ -16,9 +16,10 @@
 //!   there), so the shape settles with a `tick` and then [`floor::clear_dirty`]. A shape that only
 //!   ticked would be timing all-A resolve work while its id says `dirty=one`.
 //! * an attribute that resolves used to re-dirty itself: `update_attribute` writes through `&mut T`
-//!   (`vitality_core/src/attributes.rs:315`) and `on_change_notify_attribute_parents::<T>` in
-//!   `EffectsSet::Notify` (`vitality_effects/src/systems.rs:274`) read that as a change and triggered a
-//!   fresh `MarkNodeDirty`, because the old float `are_different` was true for equal values. That made
+//!   (`vitality_core/src/attributes.rs:315`) and `on_change_notify_attribute_parents::<T>`
+//!   (`vitality_effects/src/systems.rs:292`, in `EffectsSet::Notify` until L-4) read that as a change
+//!   and triggered a fresh `MarkNodeDirty`, because the old float `are_different` was true for equal
+//!   values. That made
 //!   `one_attr` "one attribute *permanently* dirty" and `all_attrs` the realistic steady state. Since
 //!   D-34 `are_different` is `!=` (`crates/vitality_core/src/math.rs`), so a resolve that yields the
 //!   value the attribute already holds writes nothing and re-marks nothing: the two dirty ids hold their
@@ -116,10 +117,10 @@ pub struct RecomputeShape {
     pub app: App,
     pub actor: Entity,
     pub dirtied: Dirtied,
-    /// `Dirty<T>` components [`floor::clear_dirty`] removed inside [`floor::prepare_floor`]. Zero
-    /// would mean the shape never had markers to clear, i.e. the build did not dirty anything and the
-    /// positive control in `test_recompute_ratio` is wrong.
-    pub markers_cleared: usize,
+    /// `Dirty<T>` components the world carried when [`floor::prepare_floor`] took it over. Zero would
+    /// mean the shape never had markers, i.e. the build did not dirty anything and the positive control in
+    /// `test_recompute_ratio` is wrong.
+    pub markers_at_handoff: usize,
 }
 
 /// Builds `spec` from the default pool, settles it with [`floor::prepare_floor`] (tick, clear, one
@@ -137,7 +138,7 @@ pub fn recompute_shape(spec: &WorldSpec, dirtied: Dirtied) -> RecomputeShape {
         actors.len(),
     );
     let actor = actors[0];
-    let markers_cleared = floor::prepare_floor(&mut app);
+    let markers_at_handoff = floor::prepare_floor(&mut app);
     let pool = app.world().resource::<HarnessWorld>().attrs();
     assert_eq!(
         pool.len(),
@@ -157,7 +158,7 @@ pub fn recompute_shape(spec: &WorldSpec, dirtied: Dirtied) -> RecomputeShape {
         app,
         actor,
         dirtied,
-        markers_cleared,
+        markers_at_handoff,
     }
 }
 
@@ -195,14 +196,17 @@ pub fn assert_dirty_attrs(
 
 /// The dirty set a timed loop leaves behind: empty, whatever the id says it was handed.
 ///
-/// Since D-34 `are_different` is `!=`, so the mark a shape is handed resolves on the first sample, the
-/// write it causes re-marks it for one more, and the second sample has nothing to write (`test_recompute_ratio`
-/// pins 1 tick of `Dirtied::One` and empty from the next). Criterion runs hundreds of samples, so every
-/// cell ends drained and `dirty=one` / `dirty=all` name the marks the shape is *handed*, not the state it
-/// sits in. Anything non-empty here is the workload the id does not quote: a resolve re-marking itself
-/// (the pre-D-34 storm, which would make every sample after the first a full dirty walk), or a mark that
-/// spread to an attribute outside [`Dirtied::pick`]. A `dirty=none` cell carries the same expectation and
-/// the stricter meaning: it must never become dirty at all.
+/// Since D-34 `are_different` is `!=`, and since L-4 the mark phase runs ahead of the resolve, so the
+/// marks a shape is handed are raised and consumed by the same tick: the write that resolve makes is only
+/// seen as a `Changed<T>` by the *next* tick, which re-marks, resolves again, yields what the attribute
+/// already holds and writes nothing. Every boundary read after the first sample is therefore empty and
+/// `test_recompute_ratio` pins `Dirtied::None` on all three of its repeat ticks (before L-4 the first of
+/// those reads still found `Dirtied::One`, because the re-mark landed behind the resolve). `dirty=one` /
+/// `dirty=all` name the marks the shape is *handed*, not the state it sits in. Anything non-empty here is
+/// the workload the id does not quote: a resolve re-marking itself (the pre-D-34 storm, which would make
+/// every sample after the first a full dirty walk), or a mark that spread to an attribute outside
+/// [`Dirtied::pick`]. A `dirty=none` cell carries the same expectation and the stricter meaning: it must
+/// never become dirty at all.
 pub fn assert_dirty_drained(
     world: &World,
     pool: &[AttrSpec],

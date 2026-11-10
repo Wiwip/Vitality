@@ -254,6 +254,24 @@ pub struct AttributeDependencyChanged<T> {
     phantom_data: PhantomData<T>,
 }
 
+/// "Something about this actor's effects changed and no attribute of it did", so an actor can be dirtied
+/// from code that is not typed on an attribute. [`init_effect_attribute`] registers one observer per
+/// attribute, and each answers with its own [`MarkNodeDirty`].
+#[derive(EntityEvent)]
+pub(crate) struct MarkActorDirty {
+    pub entity: Entity,
+}
+
+pub(crate) fn mark_actor_dirty_observer<T: Attribute>(
+    trigger: On<MarkActorDirty>,
+    mut commands: Commands,
+) {
+    commands.trigger(MarkNodeDirty::<T> {
+        entity: trigger.entity,
+        phantom_data: Default::default(),
+    });
+}
+
 pub fn on_change_notify_attribute_dependencies<T: Attribute>(
     query: Query<&AttributeDependents<T>, Changed<T>>,
     mut commands: Commands,

@@ -115,9 +115,9 @@ fn cross_actor_cascade_converges() {
         shape.readers.len()
     );
     assert!(
-        shape.markers_cleared > 0,
-        "settling shape {} cleared no Dirty<T> at all, so the walk that reports a settled world \
-         never saw one and the asserts below prove nothing",
+        shape.markers_at_handoff > 0,
+        "settling shape {} found no Dirty<T> at all when prepare_floor took it over, so the walk that \
+         reports a settled world never saw one and the asserts below prove nothing",
         spec.shape_id()
     );
 
@@ -292,19 +292,27 @@ fn cross_actor_cascade_converges() {
         spec.shape_id()
     );
     assert_eq!(
-        write, 3,
-        "a plain source write now converges in {write} resolver ticks, but 3 is the number the docs \
-         quote: update the `write (the bench's unit) 3 passes` / `write + MarkNodeDirty 2 passes` \
-         block, the `3 → 2` sentence and the `printed write=3 write_then_mark=2` line in \
-         benches/support/cross_actor.rs, and the `takes 3 resolver ticks` and `arrive 3 ticks late` \
-         lines of the `recompute/cross_actor` doc in benches/bench_systems.rs",
+        write, 2,
+        "a plain source write now converges in {write} resolver ticks, and L-4's claim is that moving \
+         the mark/notify pair ahead of the resolve costs one tick off the cascade on its own, with none \
+         of L-3's per-attribute resolve phases: HEAD prints 3 here, and the same-session nine-point run \
+         in benches/support/cross_actor.rs prints `write=3` on all nine ids at HEAD and `write=2` on all \
+         nine after the reorder, at the same cost. Update the `Passes to converge` block, the grid \
+         sentence and the `recompute/cross_actor` doc in benches/bench_systems.rs only as part of a \
+         change that explains the new count. If the 1-pass design in \
+         `.auto/l3-attempt-2026-11-09*.patch` is ever revived this flips to 1: it adds the per-attribute \
+         `ResolvePhase` chain on top of this ordering, and that chain — not this reorder — is what buys \
+         the last tick",
     );
     assert_eq!(
         marked, 2,
-        "a source write marked by hand now converges in {marked} resolver ticks, but 2 is the number \
-         the docs quote: update the `write + MarkNodeDirty 2 passes` line and the `3 → 2` sentence in \
-         benches/support/cross_actor.rs, and the `2 once MarkNodeDirty is triggered by hand` line of \
-         the `recompute/cross_actor` doc in benches/bench_systems.rs",
+        "a source write marked by hand now converges in {marked} resolver ticks, equal to `write` and \
+         measured equal at all nine widths. With the mark ahead of the resolve a hand-raised mark and a \
+         write's own mark are consumed by the same tick, so the pre-L-4 `3 → 2` distinction is gone; a \
+         difference between the two means one of the two mark paths moved back behind the resolve. If \
+         the 1-pass design in `.auto/l3-attempt-2026-11-09*.patch` is ever revived this flips to 1 with \
+         `write`, and the bug pin below flips with it: a cascade that lands in the tick that raises it \
+         cannot drop its own mark",
     );
     assert!(
         write <= MAX_PASSES,

@@ -103,9 +103,10 @@ fn probe_fraction(spec: &WorldSpec) -> usize {
         shape.actors.len(),
     );
     assert!(
-        shape.markers_cleared > 0,
-        "settling shape {} cleared no Dirty<T>, so the walk that reports it settled never saw a \
-         marker and the count below would also read 0 for a world left dirty by the build",
+        shape.markers_at_handoff > 0,
+        "settling shape {} found no Dirty<T> on the world it was handed, so the walk that reports it \
+         settled never saw a marker and the count below would also read 0 for a world left dirty by \
+         the build",
         spec.shape_id(),
     );
 

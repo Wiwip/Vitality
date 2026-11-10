@@ -50,22 +50,62 @@
 //! which every reader carries it. Measured on the gate shape `(a=5/readers=1)` at this tip, `mt`/`dyn`:
 //!
 //! ```text
-//! write (the bench's unit)          3 passes
+//! write (the bench's unit)          2 passes
 //! write + MarkNodeDirty             2 passes
 //! ```
 //!
 //! Both are > 1, which is §2B's staleness finding: a reader's dependent attribute lags the source it
-//! reads by whole resolver ticks, and the reason is the schedule, not the cascade. Writes are marked in
-//! `EffectsSet::Notify` (`systems.rs:274-283`), which runs *after* `UpdateCurrentValues`, so a base
-//! write is only resolved on the next tick; that resolve fans out and marks the reader during
-//! `UpdateCurrentValues`, and a system's dirty-actor query is fixed when it starts, so the reader
-//! resolves on the tick after that. Triggering `MarkNodeDirty` by hand (what `AttrSpec::mark_dirty`
-//! does, and what a spell/aura system that dirties its own source would do) skips the first of the
-//! three, which is where the 3 → 2 comes from. It also means the µs/tick column is *not* the latency a
-//! player sees: at 60 Hz a 3-pass cascade is two frames of stale derived stats.
+//! reads by whole resolver ticks, and the reason is the schedule, not the cascade. Before L-4 the write
+//! was marked in `EffectsSet::Notify` (`systems.rs:292-301`), which ran *after* `UpdateCurrentValues`, so
+//! a base write was only resolved on the next tick; that resolve fanned out and marked the reader, and a
+//! system's dirty-actor query is fixed when it starts, so the reader resolved on the tick after that —
+//! three ticks for one cascade. L-4 moved the mark phase ahead of the resolve
+//! (`vitality_effects/src/lib.rs`, `init_effect_attribute`), so the write and the resolve that reads its
+//! `Changed<T>` now share a tick and the count is two. Two is the floor a schedule like this one has:
+//! the mark, the fan-out onto the reader's effect node and the reader's own resolve are still three
+//! separate command batches. `AttrSpec::mark_dirty` — what a spell or aura system that dirties its own
+//! source would do — already skipped the first of the old three, so its count was 2 then and 2 now, and
+//! the two halves of the pair meeting is what L-4 bought. The µs/tick column is still *not* the latency a
+//! player sees: at 60 Hz a 2-pass cascade is one frame of stale derived stats.
 //!
-//! The nine-id bench run at this tip printed `write=3 write_then_mark=2` on every point visible in the
-//! captured output, so the count is a property of the schedule rather than of the guard shape.
+//! ## What L-4 costs, measured in one session
+//!
+//! L-4 is the ordering change alone. L-3's one-pass design — a `DirtyMarkers` resource, `mark_all` and a
+//! per-attribute resolve phase — is a parked item and none of it is in this branch, so nothing here
+//! reproduces the 1-pass rows that attempt quoted, and the 2 above is not a step towards them. Both
+//! columns below are the same nine `recompute/cross_actor` ids, same binary, same machine, one session,
+//! `--warm-up-time 0.5 --measurement-time 1 --sample-size 10`, median with the 95% band, µs/tick; `HEAD`
+//! is `87e968e`'s `vitality_effects/src/lib.rs` in that tree and `L-4` is the reorder:
+//!
+//! ```text
+//!  a  readers          HEAD (band)              L-4 (band)         delta
+//!  1        1     29.26 (28.0 – 31.1)     26.89 (26.2 – 28.0)     −8.1%
+//!  5        1     50.37 (48.6 – 51.5)     39.59 (38.8 – 40.3)    −21.4%
+//! 20        1     84.49 (82.8 – 85.7)     76.81 (74.5 – 80.3)     −9.1%
+//!  1       10     31.22 (30.2 – 32.1)     40.03 (37.2 – 43.5)    +28.2%
+//!  5       10     44.62 (42.5 – 47.0)     48.83 (47.4 – 50.1)     +9.4%
+//! 20       10     99.96 (96.8 – 104.5)    93.85 (92.1 – 96.6)     −6.1%
+//!  1      100   114.61 (106.8 – 123.9)   125.29 (118.8 – 131.7)   +9.3%
+//!  5      100   135.75 (131.1 – 142.6)   142.46 (135.0 – 151.7)   +4.9%
+//! 20      100   217.71 (209.3 – 226.2)   201.96 (196.7 – 209.1)   −7.2%
+//! ```
+//!
+//! Every point printed `write=3 write_then_mark=2` under HEAD and `write=2 write_then_mark=2` under the
+//! reorder — the tick saving belongs to the schedule, not to a width, and it is what [`cross_shape`]
+//! prints for each of the nine before timing it. The `delta` column is one run per side and does not
+//! survive re-measurement. Re-running `a=1/readers=10` twice per side in the same layout gave L-4
+//! medians of 46.86 and 45.58 µs against HEAD's 48.23 and 38.42
+//! (`/tmp/l4-review/bench-l4-a1.log`, `/tmp/l4-review/bench-l4-a1-round2.log`,
+//! `/tmp/l4-review/bench-head-a1.log`, `/tmp/l4-review/bench-head-a1-round2.log`): +6.7 % on the median
+//! pair, bands overlapping in half the pairings, two pairings reading negative, and HEAD disagreeing
+//! with itself by 25.5 % on non-overlapping bands — wider than eight of the nine deltas below, short of
+//! only the `+28.2 %` cell, and the table's own 31.22 for that HEAD cell sits below both re-runs. So no
+//! row here is a measured cost: `+28.2 %` is the one delta the run-to-run spread at `--sample-size 10`
+//! cannot clear, and it belongs to the cell whose HEAD re-runs disagree the most. "HEAD-level" is the
+//! only honest summary, and settling a difference of this size needs interleaved A/B rounds rather than
+//! more runs of this layout. The tick saving shows up as a win nowhere in the table because the timed
+//! unit is one tick of an already-settled world — what a game stops paying is the cascade tick it no
+//! longer runs, and no id here times a cascade from a cold source.
 //!
 //! Both counts are measured from a shape that has gone quiet, and that qualifier is load-bearing since
 //! D-34: `passes_to_converge` stops on the tick the *values* agree on, which leaves the reader holding
@@ -80,11 +120,12 @@
 //!
 //! ## Measured µs/tick at this tip
 //!
-//! The table, the sample count and the load sit in the `recompute/cross_actor` group doc in
-//! `bench_systems.rs`, next to the ids that produced them. The one line that belongs here is the shape
-//! of the answer, with the build tag on the number itself (D-22): on that `mt`/`dyn` run µs/tick is a
-//! level plus **1.7–2.4 µs per reader per tick**, so the row prices a per-reader fan-out slope, and the
-//! 3-pass lag above is what that slope buys.
+//! The table above came from `/tmp/l4-head.log` and `/tmp/l4-after.log`, like the four files the `delta`
+//! discussion cites: all six live outside the repo, which is why every number here carries its band. The
+//! one line that belongs in this file is the shape of the answer, with the build tag on the number itself
+//! (D-22): on that `mt`/`dyn` run µs/tick is a level plus **1.26–1.35 µs per reader per tick** (the
+//! `a=20` row, `readers=1` to `readers=100`: HEAD `(217.71 − 84.49)/99`, L-4 `(201.96 − 76.81)/99`), so
+//! the row prices a per-reader fan-out slope, and the 2-pass lag above is what that slope buys.
 //!
 //! ## Two other things this shape shows
 //!
@@ -94,7 +135,7 @@
 //!   library's own `MarkNodeDirty<Dep>` event; a game that applies a buff to an idle actor has the same
 //!   hole. (Spawning via `ActorBuilder::with_effect` hides it, because `on_add_attribute` marks every
 //!   inserted attribute of the fresh actor.)
-//! * `on_change_notify_attribute_dependencies::<T>` (`systems.rs:257-272`) fires
+//! * `on_change_notify_attribute_dependencies::<T>` (`systems.rs:275-290`) fires
 //!   `AttributeDependencyChanged` for every dependent on every `Changed<T>` — K triggers per source
 //!   write — and no observer in the workspace is registered for that event, so a share of the fan-out
 //!   the row prices is work nothing reads.
@@ -164,9 +205,9 @@ pub struct CrossShape {
     pub effects: Vec<Entity>,
     /// The K modifier entities, in reader order.
     pub modifiers: Vec<Entity>,
-    /// `Dirty<T>` components [`floor::prepare_floor`] removed on the way to settled. Zero would mean
-    /// the shape was never dirty, so "settled" would be the walk reporting nothing.
-    pub markers_cleared: usize,
+    /// `Dirty<T>` components the world carried when [`floor::prepare_floor`] took it over on the way to
+    /// settled. Zero would mean the walk that reports a settled world never saw a marker.
+    pub markers_at_handoff: usize,
 }
 
 /// The generator half of the shape: K bare reader actors, `attributes` attributes each, no effects —
@@ -253,13 +294,14 @@ where
     let staggered = floor::prepare_floor(&mut app);
     assert!(
         staggered > 0,
-        "shape {} had nothing dirty to clear after its stagger write, so prepare_floor's zero-dirty \
-         assert is reading a world the walk never saw",
+        "shape {} carried no `Dirty<T>` when prepare_floor took it over, so its settle tick \
+         resolved nothing, and the zero-dirty assert there is reading a world the walk never \
+         saw",
         spec.shape_id()
     );
 
     apply_cascade::<S, D>(app.world_mut(), &readers, source);
-    let markers_cleared = floor::prepare_floor(&mut app);
+    let markers_at_handoff = floor::prepare_floor(&mut app);
     let (effects, modifiers) = find_cascade(app.world(), &readers);
 
     CrossShape {
@@ -269,7 +311,7 @@ where
         readers,
         effects,
         modifiers,
-        markers_cleared,
+        markers_at_handoff,
     }
 }
 

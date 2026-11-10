@@ -190,7 +190,7 @@ fn marks_decay_and_never_spread() {
     );
     assert!(
         cleared > 0,
-        "the build left no `Dirty<T>` for `clear_dirty` to remove ({} cleared), so the clean reads \
+        "the build left no `Dirty<T>` for `prepare_floor` to see ({} dirty at handoff), so the clean reads \
          below are a walk that never saw a marker",
         cleared,
     );

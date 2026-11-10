@@ -12,15 +12,17 @@
 //!
 //! [`floor_shape`] builds the shape, and it clears the dirty markers instead of ticking them away.
 //! A world from `build_app_with` comes back dirty and unresolved: the first resolve has a real fold to
-//! write (the modifiers `Startup` applied are not in `current_value` yet), and the write is what
-//! `on_change_notify_attribute_parents::<T>` — which runs in `EffectsSet::Notify`, after the resolve —
-//! reads as a change, so the marks survive one more tick. Since D-34 that is the end of it: the second
-//! resolve yields what the attribute already holds, `are_different` (`crates/vitality_core/src/math.rs`)
-//! says "unchanged", and nothing re-marks. Measured on this file's 3-attribute, 5-actor, zero-effect
-//! world: 5 dirty entities at the build, 5 after tick 1, 0 from tick 2 on. Before the fix the same world
-//! triggered 5 `MarkNodeDirty` and re-inserted 5 `Dirty<T>` on every tick while every value stayed put,
-//! so it was dirty forever. [`clear_dirty`] is still what the shapes use: it reaches zero in one step and
-//! without spending resolve work that a timed tick would then be paying for.
+//! write (the modifiers `Startup` applied are not in `current_value` yet). Since D-34 that is the end of
+//! it: the next resolve yields what the attribute already holds, `are_different`
+//! (`crates/vitality_core/src/math.rs`) says "unchanged", and nothing re-marks. Since L-4 one tick is
+//! enough to get there, because `on_change_notify_attribute_parents::<T>` now runs in
+//! `EffectsSet::UpdateBaseValues`, *ahead of* the resolve — the write that resolve makes is only read as
+//! a `Changed<T>` by the next tick, and by then the marker is gone. Measured on this file's
+//! 3-attribute, 5-actor, zero-effect world: 5 dirty entities at the build, 0 after tick 1 and from there
+//! on; before L-4 the same world read 5 after tick 1 and 0 from tick 2. Before the D-34 fix it triggered
+//! 5 `MarkNodeDirty` and re-inserted 5 `Dirty<T>` on every tick while every value stayed put, so it was
+//! dirty forever. [`clear_dirty`] is still what the shapes use: it reaches zero in one step and without
+//! spending resolve work that a timed tick would then be paying for.
 
 use crate::common::{
     ATTRIBUTE_POOL, AttrSpec, POOL_LEN, WorldSpec, actor_entities, build_app_with, run_fixed_tick,
@@ -89,8 +91,10 @@ pub struct FloorShape {
     /// [`dirty_entity_count`] really does see a `Dirty<T>` — a walk that sees none also reports 0 for
     /// a world full of them, and then "no `Dirty<T>` survives" proves nothing.
     pub dirty_at_build: usize,
-    /// `Dirty<T>` components [`clear_dirty`] removed.
-    pub markers_cleared: usize,
+    /// `Dirty<T>` components the world carried when [`prepare_floor`] took it over. Since L-4 that is
+    /// the same number as [`FloorShape::dirty_at_build`]: the settle tick consumes the marks, so
+    /// [`clear_dirty`] has nothing left to remove. Zero means the build dirtied nothing at all.
+    pub markers_at_handoff: usize,
 }
 
 /// The idle shape for `attributes` attributes on `actors` actors: no effects, nothing dirty, so the
@@ -112,7 +116,17 @@ pub fn floor_spec(attributes: usize, actors: usize) -> WorldSpec {
 pub fn floor_shape(spec: &WorldSpec, pool: &'static [AttrSpec]) -> FloorShape {
     let mut app = build_app_with(spec, pool);
     let dirty_at_build = dirty_entity_count(app.world());
-    let markers_cleared = prepare_floor(&mut app);
+    let (markers_at_handoff, cleared) = prepare_floor_tallies(&mut app);
+    // Nothing to fold on a floor point, so a mark still standing after the settle tick is one the
+    // resolve did not consume: the mark phase is back behind it, and `clear_dirty` is what hides that.
+    assert_eq!(
+        cleared,
+        0,
+        "shape {} left {cleared} `Dirty<T>` markers for `clear_dirty` to remove after its settle tick \
+         ({markers_at_handoff} dirty entities at handoff): a zero-effect shape has nothing to fan out \
+         to, so the tick that made the mark was not the tick that resolved it",
+        spec.shape_id()
+    );
     let actors = actor_entities(app.world_mut());
     assert!(
         !actors.is_empty(),
@@ -123,14 +137,31 @@ pub fn floor_shape(spec: &WorldSpec, pool: &'static [AttrSpec]) -> FloorShape {
         app,
         actors,
         dirty_at_build,
-        markers_cleared,
+        markers_at_handoff,
     }
 }
 
 /// Leaves the app with nothing for a tick to do: one [`tick`] so the modifiers Startup applied are
-/// resolved, then [`clear_dirty`], then one [`run_fixed_tick`] — the very call the benches time — to
-/// show the zero-dirty shape holds. Returns how many markers were cleared.
+/// resolved, then [`clear_dirty`] for whatever that tick left, then one [`run_fixed_tick`] — the very
+/// call the benches time — to show the zero-dirty shape holds.
+///
+/// Returns how many entities carried a `Dirty<T>` when the world was handed over, not how many
+/// [`clear_dirty`] removed. Only a shape with nothing to fold leaves the settle tick with zero to
+/// remove — a shape with effects keeps the marks its first resolve fanned out, which is the second pass
+/// of the cascade rather than a mark the schedule left behind — so reading the count after
+/// [`clear_dirty`] would report a number the call sites cannot attribute, and the `> 0` guards there
+/// would stop proving the walk ever saw a marker. Read before the tick, 0 still means "this shape was
+/// never dirty".
 pub fn prepare_floor(app: &mut App) -> usize {
+    prepare_floor_tallies(app).0
+}
+
+/// [`prepare_floor`] with both tallies: `(dirty entities at handoff, Dirty<T> markers clear_dirty
+/// removed after the settle tick)`. The two are not in the same unit — one entity carries one marker per
+/// attribute — and a caller that needs the second one is pinning the settle tick's own work, not its
+/// shape's.
+pub fn prepare_floor_tallies(app: &mut App) -> (usize, usize) {
+    let marked = dirty_entity_count(app.world());
     tick(app);
     let cleared = clear_dirty(app.world_mut());
     run_fixed_tick(app.world_mut());
@@ -141,12 +172,12 @@ pub fn prepare_floor(app: &mut App) -> usize {
          tick ran: a timed tick would resolve, so its ns/tick is not a floor",
         left, cleared
     );
-    cleared
+    (marked, cleared)
 }
 
-/// Removes every `Dirty<T>` from the world and returns how many components came off. Ticking gets to
-/// the same place in two ticks now (module docs), but this reaches it in one step and without the
-/// resolve work the first of those ticks has to spend.
+/// Removes every `Dirty<T>` from the world and returns how many components came off. Ticking reaches the
+/// same place now (module docs), but this gets there in one step and without the resolve work that tick
+/// has to spend.
 pub fn clear_dirty(world: &mut World) -> usize {
     // Collected first: removing a component moves its entity to another archetype.
     let mut marked: Vec<(Entity, ComponentId)> = Vec::new();

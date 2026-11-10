@@ -456,8 +456,9 @@ const RATIO_TABLE: &str = "recompute ratio table";
 ///
 /// What each side really times, per the asserts in `support/recompute.rs` and `test_recompute_ratio`:
 /// since D-34 `are_different` is `!=`, so a resolve writes only when the value it yields differs and the
-/// write is what re-marks it (`on_change_notify_attribute_parents::<T>` in `EffectsSet::Notify` answers
-/// the write, not the resolve). `recompute/one_attr` is therefore *one attribute dirty for the tick that
+/// write is what re-marks it (`on_change_notify_attribute_parents::<T>` in
+/// `EffectsSet::UpdateBaseValues`, which since L-4 sits in front of the resolve and so answers the write
+/// of the tick before, not the resolve it runs beside). `recompute/one_attr` is therefore *one attribute dirty for the tick that
 /// moves its value* and idle from the next — the same attribute, the same actor, every sample — and
 /// `recompute/all_attrs` is the same shape with A of them dirty. Before the fix both ids were permanent:
 /// the re-mark fired whatever the resolve computed, so `one_attr` was one attribute permanently dirty and
@@ -626,12 +627,14 @@ macro_rules! cross_actor_point {
 ///
 /// Each point prints its [`cross_actor::passes_to_converge`] line before timing: §2B reads that count as
 /// the staleness half of the row, and it is measured on the world the µs/tick beside it comes from. Both
-/// counts came out > 1, so §2B's per-tick staleness is confirmed and µs/tick is not a latency: a plain
-/// source write takes **3 resolver ticks** to reach a reader, 2 once `MarkNodeDirty` is triggered by hand
-/// — the write is only marked in `EffectsSet::Notify`, which runs after `UpdateCurrentValues`, and the
-/// readers are only marked during a resolve, so each of those two steps costs a tick.
+/// counts came out > 1, so §2B's per-tick staleness is confirmed and µs/tick is not a latency. Since L-4
+/// a plain source write takes **2 resolver ticks** to reach a reader and a hand-triggered
+/// `MarkNodeDirty` takes the same 2: the mark phase that answers the write now runs in
+/// `EffectsSet::UpdateBaseValues`, in front of the resolve that reads it, so the step it used to cost is
+/// gone (`support/cross_actor.rs` has the before/after and the nine-point same-session cost table; the
+/// 3 it used to take is why these ids' numbers moved when they did).
 ///
-/// Measured at this tip, `mt`/`dyn`, mean point estimate, 10 samples per id (`--warm-up-time 0.5
+/// Measured before L-4, `mt`/`dyn`, mean point estimate, 10 samples per id (`--warm-up-time 0.5
 /// --measurement-time 1`), `/proc/loadavg` 4.40 on 8 cores when the run ended — directional per §7, and
 /// `std_dev` runs 2.6–32.5 µs, wider on the `readers=100` points:
 /// ```text
@@ -901,12 +904,12 @@ fn recompute_many_actors(c: &mut Criterion) {
         ));
         // Setup, printed before the loop so a filtered run still says what its world cost.
         println!(
-            "  setup {bench_id}: {} ms ({} ms of marks), {} dirty of {} actors, {} markers cleared",
+            "  setup {bench_id}: {} ms ({} ms of marks), {} dirty of {} actors, {} dirty at handoff",
             shape.setup_ms,
             shape.mark_us as f64 / 1000.0,
             shape.dirty_actors,
             cell.actors,
-            shape.markers_cleared,
+            shape.markers_at_handoff,
         );
         group.throughput(Throughput::Elements(cell.actors as u64));
         let pool = shape.app.world().resource::<HarnessWorld>().attrs();

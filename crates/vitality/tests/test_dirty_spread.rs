@@ -178,7 +178,7 @@ fn marks_cross_a_cross_actor_edge_and_stop_there() {
     assert!(
         cleared > 0,
         "spawning a bystander with {ATTRIBUTES} attributes left no `Dirty<T>` for `prepare_floor` to \
-         clear, so the clean reads below are a walk that never saw a marker",
+         see, so the clean reads below are a walk that never saw a marker",
     );
 
     let roster: [(&str, Entity); 3] = [

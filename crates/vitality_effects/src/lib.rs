@@ -26,8 +26,9 @@ use crate::periodic::apply_periodic_effect;
 use crate::registry::EffectRegistry;
 use crate::stacks::read_add_stack_event;
 use crate::systems::{
-    mark_node_dirty_observer, on_add_attribute, on_change_notify_attribute_dependencies,
-    on_change_notify_attribute_parents, update_attribute, update_current_value_system,
+    mark_actor_dirty_observer, mark_node_dirty_observer, on_add_attribute,
+    on_change_notify_attribute_dependencies, on_change_notify_attribute_parents, update_attribute,
+    update_current_value_system,
 };
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 use bevy::prelude::*;
@@ -77,17 +78,21 @@ pub fn init_effect_attribute<T: Attribute>(app: &mut App) {
         FixedUpdate,
         (
             apply_periodic_effect::<T>.in_set(EffectsSet::Prepare),
-            apply_modifier_events::<T>.in_set(EffectsSet::UpdateBaseValues),
-            update_current_value_system::<T>.in_set(EffectsSet::UpdateCurrentValues),
+            // A base write is marked here, ahead of the resolve, so the tick that writes a base value
+            // is the tick that resolves it. `Notify` runs last in the chain and would cost one tick.
             (
+                apply_modifier_events::<T>,
                 on_change_notify_attribute_parents::<T>,
                 on_change_notify_attribute_dependencies::<T>,
             )
-                .in_set(EffectsSet::Notify),
+                .in_set(EffectsSet::UpdateBaseValues)
+                .chain(),
+            update_current_value_system::<T>.in_set(EffectsSet::UpdateCurrentValues),
         ),
     );
 
     app.add_observer(mark_node_dirty_observer::<T>);
+    app.add_observer(mark_actor_dirty_observer::<T>);
     app.add_observer(on_add_attribute::<T>);
     app.add_observer(update_attribute::<T>);
     app.add_observer(update_modifier_when_dependencies_changed::<T>);
