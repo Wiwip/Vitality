@@ -94,9 +94,9 @@
 //! reorder — the tick saving belongs to the schedule, not to a width, and it is what [`cross_shape`]
 //! prints for each of the nine before timing it. The `delta` column is one run per side and does not
 //! survive re-measurement. Re-running `a=1/readers=10` twice per side in the same layout gave L-4
-//! medians of 46.86 and 45.58 µs against HEAD's 48.23 and 38.42
-//! (`/tmp/l4-review/bench-l4-a1.log`, `/tmp/l4-review/bench-l4-a1-round2.log`,
-//! `/tmp/l4-review/bench-head-a1.log`, `/tmp/l4-review/bench-head-a1-round2.log`): +6.7 % on the median
+//! medians of 46.86 and 45.58 µs against HEAD's 48.23 and 38.42 (`.auto/l4-evidence/bench-l4-a1.log`,
+//! `.auto/l4-evidence/bench-l4-a1-round2.log`, `.auto/l4-evidence/bench-head-a1.log`,
+//! `.auto/l4-evidence/bench-head-a1-round2.log`): +6.7 % on the median
 //! pair, bands overlapping in half the pairings, two pairings reading negative, and HEAD disagreeing
 //! with itself by 25.5 % on non-overlapping bands — wider than eight of the nine deltas below, short of
 //! only the `+28.2 %` cell, and the table's own 31.22 for that HEAD cell sits below both re-runs. So no
@@ -120,12 +120,14 @@
 //!
 //! ## Measured µs/tick at this tip
 //!
-//! The table above came from `/tmp/l4-head.log` and `/tmp/l4-after.log`, like the four files the `delta`
-//! discussion cites: all six live outside the repo, which is why every number here carries its band. The
-//! one line that belongs in this file is the shape of the answer, with the build tag on the number itself
-//! (D-22): on that `mt`/`dyn` run µs/tick is a level plus **1.26–1.35 µs per reader per tick** (the
-//! `a=20` row, `readers=1` to `readers=100`: HEAD `(217.71 − 84.49)/99`, L-4 `(201.96 − 76.81)/99`), so
-//! the row prices a per-reader fan-out slope, and the 2-pass lag above is what that slope buys.
+//! The table above came from `.auto/l4-evidence/l4-head.log` and `.auto/l4-evidence/l4-after.log`, like
+//! the four files the `delta` discussion cites. All six are the run's logs under `.auto/` (gitignored,
+//! named in `.auto/LOG.md`) rather than files in the tree, which is why every number here carries its
+//! band. The one line that belongs in this file is the shape of the answer, with the build tag on the
+//! number itself (D-22): on that `mt`/`dyn` run µs/tick is a level plus **1.26–1.35 µs per reader per
+//! tick** (the `a=20` row, `readers=1` to `readers=100`: HEAD `(217.71 − 84.49)/99`, L-4
+//! `(201.96 − 76.81)/99`), so the row prices a per-reader fan-out slope, and the 2-pass lag above is what
+//! that slope buys.
 //!
 //! ## Two other things this shape shows
 //!

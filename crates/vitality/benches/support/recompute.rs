@@ -22,11 +22,12 @@
 //!   values. That made
 //!   `one_attr` "one attribute *permanently* dirty" and `all_attrs` the realistic steady state. Since
 //!   D-34 `are_different` is `!=` (`crates/vitality_core/src/math.rs`), so a resolve that yields the
-//!   value the attribute already holds writes nothing and re-marks nothing: the two dirty ids hold their
-//!   marks for the tick that moves a value and drain to `Dirtied::None` on the next one. The ids still
-//!   say `dirty=one` / `dirty=all` — they name the marks the shape is handed, which is what the timed
-//!   unit resolves once — and [`assert_dirty_drained`] after the timed loop reads empty there, which is
-//!   the guard that fires first when those ids are re-rolled for the fixed resolver.
+//!   value the attribute already holds writes nothing and re-marks nothing — and no tick of this family
+//!   moves a value, since [`recompute_shape`] settles the world before it raises the marks, so both
+//!   dirty ids drain to `Dirtied::None` on the *first* sample. The ids still say `dirty=one` /
+//!   `dirty=all` — they name the marks the shape is handed, which is what the timed unit resolves once
+//!   — and [`assert_dirty_drained`] after the timed loop reads empty there, which is the guard that
+//!   fires first when those ids are re-rolled for the fixed resolver.
 
 use crate::common::{
     ATTRIBUTE_POOL, AttrSpec, HarnessWorld, WorldSpec, actor_entities, build_app_with,

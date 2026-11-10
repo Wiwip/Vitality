@@ -123,8 +123,11 @@ pub fn floor_shape(spec: &WorldSpec, pool: &'static [AttrSpec]) -> FloorShape {
         cleared,
         0,
         "shape {} left {cleared} `Dirty<T>` markers for `clear_dirty` to remove after its settle tick \
-         ({markers_at_handoff} dirty entities at handoff): a zero-effect shape has nothing to fan out \
-         to, so the tick that made the mark was not the tick that resolved it",
+         ({markers_at_handoff} dirty entities at handoff): a shape that folds nothing has nothing \
+         standing at the end of a tick unless that tick raised the mark after its own resolve, and the \
+         pre-L-4 `EffectsSet::Notify` put `on_change_notify_attribute_parents::<T>` exactly there — \
+         behind the resolve, answering the spawn's `Insert<T>` as a `Changed<T>` — and L-4 moved that \
+         mark phase in front of it",
         spec.shape_id()
     );
     let actors = actor_entities(app.world_mut());

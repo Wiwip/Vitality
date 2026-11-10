@@ -279,10 +279,13 @@ pub fn seed_rng() -> StdRng {
 /// commands inline, so the returned world is dirty on every attribute of every actor and nothing has
 /// resolved yet — measured: a 3-attribute, 4-actor build carries 24 `Dirty<T>` markers when
 /// [`floor::clear_dirty`] walks it, actors and effect nodes alike. The [`mark_dirty_fraction`] call
-/// below therefore adds marks to a world that already has all of them. Ticking does drain them now —
-/// two ticks, one to write the fold the startup effects owe and one to find nothing left to write
-/// (`are_different` is `!=` since D-34) — but a shape that needs its `dirty=` field to be true clears
-/// markers itself rather than paying that work: see `floor::prepare_floor` and
+/// below therefore adds marks to a world that already has all of them. Ticking does drain them now, and
+/// how many ticks that takes depends on whether the shape has anything to fold: a zero-effect build is
+/// clean after one tick — L-4 put the mark phase ahead of the resolve, and `floor.rs` measures its
+/// 3-attribute, 5-actor, zero-effect world at 5 dirty entities at the build and 0 after tick 1 — while a
+/// build with effects needs two, one to write the fold the startup effects owe and one to find nothing
+/// left to write (`are_different` is `!=` since D-34). Either way a shape that needs its `dirty=` field
+/// to be true clears markers itself rather than paying that work: see `floor::prepare_floor` and
 /// `recompute::recompute_shape`; `test_recompute_ratio` pins the all-dirty build.
 pub fn build_app_with(spec: &WorldSpec, attrs: &'static [AttrSpec]) -> App {
     assert!(

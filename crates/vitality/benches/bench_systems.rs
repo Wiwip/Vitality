@@ -159,10 +159,12 @@ fn app_update(c: &mut Criterion) {
 /// evicts the caches the tick would run on). The same world is ticked hundreds of times here, which
 /// is only sound because it stays idle — [`floor::prepare_floor`] clears the dirty markers and
 /// asserts one idle tick later that nothing re-marked itself, and the assert below re-checks that
-/// after the loop. Since D-34 ticking does reach the same state (`are_different` is `!=`, so the second
-/// resolve of an unmoving attribute writes nothing and re-marks nothing — two ticks on a built world),
-/// but it spends a real resolve to get there; before the fix a world with markers left in it re-resolved
-/// every attribute of every actor forever.
+/// after the loop. Since D-34 ticking does reach the same state: `are_different` is `!=`, so a resolve of
+/// an unmoving attribute writes nothing and re-marks nothing, and on a shape with zero effects its first
+/// resolve is already the one with nothing to write. That is one tick on a built world, which `floor.rs`
+/// measures as 5 dirty entities at the build and 0 after tick 1; it took two ticks before L-4, when the
+/// mark phase ran behind the resolve. Ticking still spends a real resolve to get there, and before the
+/// D-34 fix a world with markers left in it re-resolved every attribute of every actor forever.
 ///
 /// `run_fixed_tick` is `World::run_schedule(FixedUpdate)`, not `app.update()`: it runs the resolver
 /// and nothing else. It also does not advance `Time<Fixed>` (`common.rs`), which is harmless for a
