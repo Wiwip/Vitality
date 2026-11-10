@@ -118,7 +118,7 @@ pub fn floor_shape(spec: &WorldSpec, pool: &'static [AttrSpec]) -> FloorShape {
     let dirty_at_build = dirty_entity_count(app.world());
     let (markers_at_handoff, cleared) = prepare_floor_tallies(&mut app);
     // Nothing to fold on a floor point, so a mark still standing after the settle tick is one the
-    // resolve did not consume: the mark phase is back behind it, and `clear_dirty` is what hides that.
+    // resolve did not consume, and `clear_dirty` is what hides that.
     assert_eq!(
         cleared,
         0,

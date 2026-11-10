@@ -121,13 +121,13 @@
 //! ## Measured µs/tick at this tip
 //!
 //! The table above came from `.auto/l4-evidence/l4-head.log` and `.auto/l4-evidence/l4-after.log`, like
-//! the four files the `delta` discussion cites. All six are the run's logs under `.auto/` (gitignored,
-//! named in `.auto/LOG.md`) rather than files in the tree, which is why every number here carries its
-//! band. The one line that belongs in this file is the shape of the answer, with the build tag on the
-//! number itself (D-22): on that `mt`/`dyn` run µs/tick is a level plus **1.26–1.35 µs per reader per
-//! tick** (the `a=20` row, `readers=1` to `readers=100`: HEAD `(217.71 − 84.49)/99`, L-4
-//! `(201.96 − 76.81)/99`), so the row prices a per-reader fan-out slope, and the 2-pass lag above is what
-//! that slope buys.
+//! the four files the `delta` discussion cites. All six are the run's logs under `.auto/l4-evidence/`,
+//! gitignored there rather than files in the tree (`.auto/LOG.md` names that directory, not the six
+//! files inside it), which is why every number here carries its band. The one line that belongs in this
+//! file is the shape of the answer, with the build tag on the number itself (D-22): on that `mt`/`dyn`
+//! run µs/tick is a level plus **1.26–1.35 µs per reader per tick** (the `a=20` row, `readers=1` to
+//! `readers=100`: HEAD `(217.71 − 84.49)/99`, L-4 `(201.96 − 76.81)/99`), so the row prices a
+//! per-reader fan-out slope, and the 2-pass lag above is what that slope buys.
 //!
 //! ## Two other things this shape shows
 //!

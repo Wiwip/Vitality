@@ -5,24 +5,30 @@
 //! link. So shared code lives in `benches/support/` and is pulled in below with `#[path]`: add a
 //! group to `resolver_benches`, do not add a file next to this one.
 //!
-//! Running this in the sandbox. The repo's manifests, lockfile and `~/.cargo/registry` are
-//! read-only and there is no network, so cargo only runs inside the `/tmp` mirror; the gate never
-//! compiles bench targets, so `--no-run` has to be asked for:
+//! Running this in the sandbox. The repo's manifests, lockfile and `~/.cargo/registry` are read-only
+//! and there is no network, which is why every cargo call below carries `--offline --locked` and runs
+//! in the tree itself: a read-only `Cargo.toml`/`Cargo.lock` costs `--locked` nothing, and the shared
+//! `sccache` keeps this profile warm without a mirror or a second `CARGO_HOME`. If `--locked` ever
+//! complains the lockfile is stale, which is something to report, never a reason to drop the flag. The
+//! gate never compiles bench targets, so compiling them has to be asked for:
 //!
 //! ```text
-//! export VITALITY_MIRROR=/tmp/vitality-auto VITALITY_CARGO_HOME=/tmp/ch-auto
 //! cd /mnt/rust/RustroverProjects/vitality
-//! bash scripts/gate.sh                                     # tests only, no bench targets
-//! cd /tmp/vitality-auto && cargo bench --offline --no-run   # compile the bench targets
-//! cd /tmp/vitality-auto && cargo bench --offline            # full run
-//! cd /tmp/vitality-auto && cargo bench --offline -- --warm-up-time 0.5 --measurement-time 1 \
-//!     --sample-size 10                                      # short run for the log
+//! bash scripts/gate.sh                                       # tests only, no bench targets
+//! cargo check --offline --locked -p vitality --benches       # compile the bench targets
+//! cargo bench --offline --locked -p vitality --bench bench_systems   # full run
+//! cargo bench --offline --locked -p vitality --bench bench_systems -- floor \
+//!     --warm-up-time 0.5 --measurement-time 1 --sample-size 10       # short run for the log
 //! ```
+//!
+//! Exactly one `--` in that last line (D-35): everything after it goes to criterion, so a second one is
+//! what turns a filtered run into the whole suite. Keep the load discipline the logs carry — read
+//! `/proc/loadavg` before and after the run, and report anything under ~10 % as directional (D-36).
 //!
 //! A bench id is `<group>/<WorldSpec::shape_id()>`, so a number never travels without the shape it
 //! came from.
 //!
-//! **Every number this repo can produce is an `mt`/`dyn` build, never `st`/`static`.** In the mirror,
+//! **Every number this repo can produce is an `mt`/`dyn` build, never `st`/`static`.** In the tree,
 //! `cargo tree --offline -e features -p vitality | grep -c multi_threaded` prints **12** and
 //! `grep -c dynamic_linking` prints **3**: the `[dev-dependencies.bevy]` block of
 //! `crates/vitality/Cargo.toml` (features `ui`, `dynamic_linking`, `debug`, …) unifies with the
@@ -114,7 +120,9 @@ fn app_update(c: &mut Criterion) {
             || {
                 let mut app = spec.build_app();
                 // Clean before the fraction, or `dirty=25` describes nothing. Ticking does drain a built
-                // world now (two ticks, since D-34), but that is resolve work the shape would pay for.
+                // world now, in one tick if it has nothing to fold (`floor.rs` measures 5 dirty entities
+                // at the build and 0 after tick 1 on its zero-effect shape) and two if it has effects
+                // like this one, but that is resolve work the shape would pay for.
                 floor::prepare_floor(&mut app);
                 let attrs = app.world().resource::<HarnessWorld>().attrs();
                 let actors = actor_entities(app.world_mut());
