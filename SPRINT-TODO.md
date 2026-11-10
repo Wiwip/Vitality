@@ -117,7 +117,7 @@ Evidence for every line below was read from `../hfsm-rs` and from the pinned `be
 - after: B-1
 - test: add to `tests/test_bench_harness.rs` a test that each shape's dirty set before the timed tick is the literal expected one (storm: every attribute of every actor; no-op: written value equals the old one), as `test_recompute_ratio` does after the P-6 fix. Mutation: change the shape's dirty pick and the test must fail.
 - origin: owner
-- status: parked behind D-34 (are_different is always true for floats, so no_op_write cannot be measured as the plan describes)
+- status: todo (unparked: D-34 landed in 42d3b52)
 
 ## B-3: periodic tick_scan bench
 - change: BENCH-PLAN §2E (P-9), `periodic/tick_scan` only: T ticking effects with about one firing per tick, A in {1,5,20}, reported as ns/tick against A. New `benches/support/periodic.rs` wired through `bench_systems.rs`. Subtract the in-shape idle floor the way `recompute::ratio_row` does and reuse its noise guard rather than writing a second one.
@@ -133,52 +133,50 @@ Evidence for every line below was read from `../hfsm-rs` and from the pinned `be
 - status: done (2fdef8d)
 
 ## Owner, before the run (not sprint work)
-- Decide the open branch: `auto/2026-11-08` (tip 403a793, 35 commits over main) is judged but unmerged and unpushed. The sprint block in AGENTS.md still says `base = auto/2026-11-07`; point it at the branch the next run starts from.
-- Commit `BENCH-PLAN.md` (untracked, cited by three landed bench groups) and this file and the report edit.
+- Sprint base is `main` (22e2714); auto/2026-11-08 and auto/2026-11-09 are both merged into it.
 - D-22: a `multi_threaded` feature and `dynamic_linking` out of the dev bevy dep, or no `st`/`static` number will exist. P-10 stays parked until then.
-- D-34: record the decision in `.auto/decisions.md`; B-2 and the dirty-forever resolver fix wait on it.
-- Add `--doc` to `scripts/gate.sh`.
 
 ## Next batch (from verdict-2026-11-08-5 and .auto/REPORT.md queue)
 ## B-7: literal `dirty=none` assert
 - change: `tests/test_bench_harness.rs` `test_recompute_ratio`: assert `recompute::dirty_names(none world, pool, actor)` is empty, next to the one/all asserts, since `Dirtied::pick` is also the oracle of `assert_dirty_attrs`.
 - test: the assert itself; mutation: `Dirtied::None => &pool[..1]` in `benches/support/recompute.rs` must fail it.
 - origin: judge
-- status: todo
+- status: done (b7117ad)
 
 ## D-34: `are_different` is always true for floats
 - change: `crates/vitality_core/src/math.rs:32-34` compares against `MIN` (`f32::MIN`), so every float resolve looks changed. Fix with `!=` or a real epsilon, and say what NaN does (today it is the only value that looks unchanged). Re-pin B-4's never-decays test (it flips) and re-measure the numbers that assume re-dirtying.
 - needs: owner decision recorded in `.auto/decisions.md` D-34 before the run (library change, observable behaviour).
 - origin: owner
-- status: todo
-
-## D-22: `st`/`static` bench numbers (owner manifest edit, not sprint work)
-- change: add a `multi_threaded` feature and drop `dynamic_linking` from the dev bevy dep (`Cargo.toml` is protected). P-10 stays parked until then.
-- origin: owner
-- status: todo
+- status: done (42d3b52)
 
 ## B-6: close the `assert_head` guard blind spots
 - change: `panic!` after a loop, asserts inside called helpers, and guard-id drift still slip past the guard rule (`.auto/REPORT.md` queue item 1). Add a test per hole to the guard's own test file and fix the rule until each fails.
 - test: one mutation per hole must fail its test.
 - origin: judge
-- status: todo
+- status: done (30d5ca8)
 
 ## B-1b: pin registration's fixed half
 - change: B-1 is slope-only, so a fixed cost passes (mutation M4: +1 node in the base plugin, `.auto/LOG.md:469`). Assert the intercept (systems at 2 attributes) as well.
 - test: the M4 mutation must fail it.
 - after: B-6
 - origin: judge
-- status: todo
+- status: done (a0859d7)
 
 ## B-4b: spread guard across a real cross-actor edge
 - change: B-4 pins lifetime inside one shape only; `common.rs:420` still claims a cross-actor mark lasts "for the rest of its life". Pin it with the reviewer's probe numbers from `.auto/LOG.md:436`.
 - test: the test itself; mutation: drop the cross-actor edge and it must fail.
 - origin: judge
-- status: todo
+- status: done (90115e8)
 
 ## B-4c: effect-node dirtiness and NaN
 - change: assert effect-node dirtiness, and characterize NaN, the one value where a mark can decay (D-34 addendum). Expected to flip once D-34 is fixed.
 - test: the test itself.
+- origin: judge
+- status: done (1b0adfa)
+
+## N-1: two comment nits from verdict-2026-11-10-2
+- change: `crates/vitality/benches/support/cross_actor.rs:125` "lines a test run prints" -> "lines printed by the instrumented run" (no TALLY print exists in crates/); `crates/vitality/tests/test_leaf_view_read.rs:67` "for the same reason" -> "generic so `view.get` can only bind the trait `get`".
+- test: none (comments only); the gate stays green.
 - origin: judge
 - status: todo
 
