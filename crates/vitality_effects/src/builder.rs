@@ -6,13 +6,13 @@ use crate::definition::EffectDef;
 use crate::modifier::{AttributeModifier, Capture, EffectSubject};
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::{Bundle, Component, Entity, EntityCommands, EntityEvent, Name};
-use vitality_core::tags::TagSpec;
 use express_it::expr::{AsExpression, Expr};
 use std::ops::RangeBounds;
 use std::sync::Arc;
 use vitality_core::attributes::Attribute;
 use vitality_core::modifier::ModOp;
 use vitality_core::mutator::EntityActions;
+use vitality_core::tags::TagSpec;
 
 pub struct EffectBuilder {
     def: EffectDef,

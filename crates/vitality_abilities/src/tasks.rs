@@ -190,7 +190,10 @@ fn on_execute_task_observer<T: AbilityTask>(
         ability_items.get_mut(ability_id),
         caster_items.get_mut(caster_id.0),
     ) else {
-        warn!("[{}] Task query items don't match their entities.", trigger.task_id);
+        warn!(
+            "[{}] Task query items don't match their entities.",
+            trigger.task_id
+        );
         return;
     };
 
@@ -234,7 +237,10 @@ fn on_task_completed_observer<T: AbilityTask>(
         ability_items.get_mut(ability_id),
         caster_items.get_mut(caster_id.0),
     ) else {
-        warn!("[{}] Task query items don't match their entities.", trigger.task_id);
+        warn!(
+            "[{}] Task query items don't match their entities.",
+            trigger.task_id
+        );
         return;
     };
 
@@ -272,7 +278,10 @@ fn on_task_stopped_observer<T: AbilityTask>(
         ability_items.get_mut(ability_id),
         caster_items.get_mut(caster_id.0),
     ) else {
-        warn!("[{}] Task query items don't match their entities.", trigger.task_id);
+        warn!(
+            "[{}] Task query items don't match their entities.",
+            trigger.task_id
+        );
         return;
     };
 

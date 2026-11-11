@@ -39,13 +39,13 @@ use vitality_core::schedule::EffectsSet;
 
 pub use application::*;
 pub use builder::EffectBuilder;
+pub use components::*;
+pub use condition::ConditionPlugin;
 pub use effects_param::Effects;
+pub use global_effect::*;
 pub use lifecycle::{
     EffectApplied, EffectBlocked, EffectRemovalReason, EffectRemoved, EffectStacksChanged,
 };
-pub use components::*;
-pub use condition::ConditionPlugin;
-pub use global_effect::*;
 pub use stacks::*;
 pub use targeting::EffectTargeting;
 pub use timing::*;
@@ -77,13 +77,17 @@ impl Plugin for EffectsPlugin {
         // same clock as the resolver and the periodic appliers, so a timer that finishes is seen once
         app.add_systems(
             FixedUpdate,
-            (tick_effect_tickers, tick_effect_durations, read_add_stack_event)
+            (
+                tick_effect_tickers,
+                tick_effect_durations,
+                read_add_stack_event,
+            )
                 .chain()
                 .in_set(EffectsSet::Prepare),
         )
-            .add_observer(apply_effect_event_observer)
-            .add_observer(lifecycle::on_effect_removed)
-            .add_message::<NotifyAddStackEvent>();
+        .add_observer(apply_effect_event_observer)
+        .add_observer(lifecycle::on_effect_removed)
+        .add_message::<NotifyAddStackEvent>();
     }
 }
 

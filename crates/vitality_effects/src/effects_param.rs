@@ -3,13 +3,13 @@ use crate::lifecycle::{EffectRemovalReason, remove_effect};
 use crate::stacks::{notify_stacks_changed, set_stacks};
 use crate::{
     AppliedEffects, ApplyEffectEvent, Effect, EffectDuration, EffectSource, EffectTags,
-    EffectTargeting, EffectTarget, Stacks,
+    EffectTarget, EffectTargeting, Stacks,
 };
 use bevy::ecs::system::{SystemParam, SystemState};
 use bevy::prelude::*;
 use std::any::TypeId;
-use vitality_core::attributes::Attribute;
 use std::time::Duration;
+use vitality_core::attributes::Attribute;
 
 /// Applies, inspects and removes effects. Every change is deferred to the next command flush.
 #[derive(SystemParam)]

@@ -102,12 +102,15 @@ impl<'s, 'w> Vitality<'w, 's> {
 
     /// Applies one operation to an attribute's base value, like an instant effect would.
     pub fn modify_base<T: Attribute>(&mut self, actor: Entity, op: ModOp, value: T::Property) {
-        self.commands.entity(actor).queue_silenced(move |mut entity: EntityWorldMut| {
-            if let Some(mut attribute) = entity.get_mut::<T>() {
-                let base = AttributeCalculator::<T>::from_op(op, value).eval(attribute.base_value());
-                attribute.set_base_value(base);
-            }
-        });
+        self.commands
+            .entity(actor)
+            .queue_silenced(move |mut entity: EntityWorldMut| {
+                if let Some(mut attribute) = entity.get_mut::<T>() {
+                    let base =
+                        AttributeCalculator::<T>::from_op(op, value).eval(attribute.base_value());
+                    attribute.set_base_value(base);
+                }
+            });
     }
 
     /// Grants a counted tag that stays until a matching [`Self::revoke_tag`].

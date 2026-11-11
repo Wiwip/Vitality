@@ -1,5 +1,5 @@
-use crate::lifecycle::{EffectRemovalReason, remove_effect};
 use crate::EffectInactive;
+use crate::lifecycle::{EffectRemovalReason, remove_effect};
 use bevy::prelude::*;
 use bevy::time::Timer;
 

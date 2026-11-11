@@ -1,11 +1,11 @@
 use crate::AbilityRef;
 use crate::context::AbilityExprContext;
 use crate::definition::AbilityDef;
-use crate::registry::Registry;
 use crate::lifecycle::{
     AbilityActivated, AbilityActivationFailed, AbilityEnded, AbilityEnding, ActivationError,
     change_blocks, check_activation,
 };
+use crate::registry::Registry;
 use crate::systems::ActivateAbility;
 use crate::task_states::TaskMachine;
 use crate::task_states::{TaskEvent, TaskState};
@@ -162,10 +162,12 @@ impl MachineState<AbilityMachine> for ReadyState {
                         .iter()
                         .any(|tag| other_ref.has_type(tag.type_id))
                     {
-                        ctx.external.commands.trigger(MachineEvent::<AbilityMachine>::new(
-                            other,
-                            AbilityEvent::CancelAbility,
-                        ));
+                        ctx.external
+                            .commands
+                            .trigger(MachineEvent::<AbilityMachine>::new(
+                                other,
+                                AbilityEvent::CancelAbility,
+                            ));
                     }
                 }
             }
@@ -177,7 +179,10 @@ impl MachineState<AbilityMachine> for ReadyState {
         }
         change_blocks(
             &mut caster,
-            def.blocks_abilities_with.iter().map(|tag| tag.type_id).collect(),
+            def.blocks_abilities_with
+                .iter()
+                .map(|tag| tag.type_id)
+                .collect(),
             true,
         );
 
@@ -269,7 +274,10 @@ impl MachineState<AbilityMachine> for ActiveState {
             }
             change_blocks(
                 &mut caster_commands,
-                def.blocks_abilities_with.iter().map(|tag| tag.type_id).collect(),
+                def.blocks_abilities_with
+                    .iter()
+                    .map(|tag| tag.type_id)
+                    .collect(),
                 false,
             );
         }
@@ -309,7 +317,11 @@ impl MachineState<AbilityMachine> for RecoveryState {
         };
 
         // non-finite or negative cooldowns would panic in Duration
-        let cooldown = if cooldown.is_finite() { cooldown.max(0.0) } else { 0.0 };
+        let cooldown = if cooldown.is_finite() {
+            cooldown.max(0.0)
+        } else {
+            0.0
+        };
         if cooldown == 0.0 {
             ctx.internal_events.push_back(AbilityEvent::Recovered);
         } else {

@@ -97,11 +97,11 @@ pub(crate) fn read_add_stack_event(
             warn!("No effect definition for {:?}", ev.handle);
             continue;
         };
-        let Some((old, new)) =
-            effect_definition
-                .stacking_policy
-                .apply(ev.effect_entity, &mut stacks, &mut applications)
-        else {
+        let Some((old, new)) = effect_definition.stacking_policy.apply(
+            ev.effect_entity,
+            &mut stacks,
+            &mut applications,
+        ) else {
             continue;
         };
         notify_stacks_changed(ev.effect_entity, old, new, &targets, &mut commands);

@@ -31,10 +31,14 @@ pub(crate) fn apply_periodic_effect<T: Attribute>(
         }
 
         let Some(effect_def) = effect_assets.get(&effect.0) else {
-            warn!("Periodic effect {} has no loaded definition.", effect_ref.id());
+            warn!(
+                "Periodic effect {} has no loaded definition.",
+                effect_ref.id()
+            );
             continue;
         };
-        let (Ok(source_actor_ref), Ok(target_actor_ref)) = (actors.get(source.0), actors.get(target.0))
+        let (Ok(source_actor_ref), Ok(target_actor_ref)) =
+            (actors.get(source.0), actors.get(target.0))
         else {
             continue;
         };

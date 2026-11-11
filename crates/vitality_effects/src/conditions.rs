@@ -11,8 +11,8 @@ use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 use vitality_core::attributes::{Attribute, dep_key};
-use vitality_core::context::{Source, Target};
 use vitality_core::context::ActorExprContext;
+use vitality_core::context::{Source, Target};
 use vitality_core::util::pretty_type_name;
 
 #[derive(TypePath)]

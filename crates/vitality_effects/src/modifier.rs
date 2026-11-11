@@ -1,3 +1,4 @@
+use crate::EffectTargeting;
 use crate::EffectsMut;
 use crate::EffectsRef;
 use crate::context::{EffectExprContext, EffectExprContextMut, EffectExprSchema};
@@ -9,16 +10,15 @@ use bevy::prelude::*;
 use bevy::prelude::{Component, Entity, EntityCommands, Reflect, reflect_trait};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::collections::HashSet;
+use std::any::TypeId;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
-use std::any::TypeId;
-use vitality_core::{AttributeBindings, DepRole};
-use crate::EffectTargeting;
+use vitality_core::attributes::record_dependencies;
 use vitality_core::math::AbsDiff;
 use vitality_core::modifier::AttributeCalculator;
 pub use vitality_core::modifier::ModOp;
 use vitality_core::util::pretty_type_name;
+use vitality_core::{AttributeBindings, DepRole};
 
 pub trait Modifier: Send + Sync {
     /// Spawns the modifier as a component on the effect, targeting the actor for observers.
@@ -105,7 +105,7 @@ where
         type_bindings: &AttributeBindings,
         commands: &mut EntityCommands,
     ) {
-        let value = self.expr.eval(ctx);
+        let (value, mut deps) = record_dependencies(|| self.expr.eval(ctx));
 
         let modifier = AttributeModifier::<T> {
             expr: self.expr.clone(),
@@ -117,7 +117,6 @@ where
         let display = modifier.to_string();
 
         if self.capture == Capture::Live {
-            let mut deps = HashSet::default();
             self.expr.get_dependencies(&mut deps);
             let mut seen: Vec<(TypeId, Entity)> = Vec::new();
             for dep in deps {
@@ -137,7 +136,10 @@ where
                     continue;
                 }
                 // one AttributeDependency<A> per entity, so a second actor for A needs a proxy
-                if seen.iter().any(|(attribute, _)| *attribute == binding.attribute) {
+                if seen
+                    .iter()
+                    .any(|(attribute, _)| *attribute == binding.attribute)
+                {
                     let modifier_entity = commands.id();
                     let mut spawner = commands.commands();
                     let mut proxy = spawner.spawn(DependencyProxyOf(modifier_entity));
@@ -324,8 +326,11 @@ pub fn apply_modifier<T: Attribute>(
     modifier.update_value(&context);
 
     // Apply the modifier
-    let calculator =
-        AttributeCalculator::<T>::from_op_stacked(modifier.operation, modifier.value, trigger.stacks);
+    let calculator = AttributeCalculator::<T>::from_op_stacked(
+        modifier.operation,
+        modifier.value,
+        trigger.stacks,
+    );
     let new_base_value = calculator.eval(base_value);
 
     let has_changed = new_base_value.are_different(base_value);

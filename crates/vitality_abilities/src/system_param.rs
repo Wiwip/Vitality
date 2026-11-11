@@ -1,10 +1,10 @@
 use crate::AbilityRef;
 use crate::ability_state::{AbilityEvent, AbilityMachine, AbilityState};
 use crate::definition::AbilityDef;
+use crate::lifecycle::{ActivationError, check_activation};
 use crate::registry::{AbilityToken, Registry};
 use crate::tasks::TaskScope;
 use crate::tasks::{Task, Tasks};
-use crate::lifecycle::{ActivationError, check_activation};
 use crate::{Ability, AbilityError, AbilityOf, GrantedAbilities, TargetData};
 use bevy::ecs::resource::IsResource;
 use bevy::ecs::system::SystemParam;
@@ -163,6 +163,29 @@ impl<'w, 's> Abilities<'w, 's> {
         ) {
             error!("[{}] AbilityMachine dispatch failed: {err}", ability_entity);
         }
+    }
+
+    /// Asks the actor's granted copy of `handle` to activate; false when it isn't granted.
+    /// The outcome arrives as `AbilityActivated` or `AbilityActivationFailed`.
+    pub fn try_activate(
+        &mut self,
+        actor: Entity,
+        handle: &Handle<AbilityDef>,
+        target: TargetData,
+    ) -> bool {
+        let Some(ability) = self.get_ability_entity_by_handle(actor, handle) else {
+            return false;
+        };
+        if let Err(err) = self.machines.dispatch_event(
+            ability,
+            AbilityEvent::TryActivate {
+                source: actor,
+                target,
+            },
+        ) {
+            error!("[{ability}] AbilityMachine dispatch failed: {err}");
+        }
+        true
     }
 
     pub fn try_activate_by_tag<T: Component + Reflect>(

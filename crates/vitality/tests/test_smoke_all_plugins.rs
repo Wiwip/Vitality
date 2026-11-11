@@ -7,9 +7,9 @@ use bevy::time::TimeUpdateStrategy;
 use std::time::Duration;
 use vitality::ability::{Abilities, AbilityBuilder, TargetData};
 use vitality::actors::ActorBuilder;
-use vitality::effect::conditions::IsAttributeWithinBounds;
 use vitality::context::Vitality;
 use vitality::effect::Effect;
+use vitality::effect::conditions::IsAttributeWithinBounds;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 use vitality::registry::ability_registry::AbilityToken;
@@ -71,7 +71,9 @@ fn effects_and_abilities_run_together() {
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
     app.add_plugins(vitality::init_attribute::<Health>);
     app.add_plugins(vitality::init_attribute::<Armor>);
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(20)));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+        20,
+    )));
     app.add_systems(Startup, (setup, spawn).chain());
 
     app.update();
@@ -104,5 +106,9 @@ fn effects_and_abilities_run_together() {
     let health = app.world().get::<Health>(hero).unwrap();
     assert_eq!(health.current_value(), 150.0, "the buff applies once");
     let armor = app.world().get::<Armor>(hero).unwrap();
-    assert_eq!(armor.current_value(), 5.0, "the gated effect activates after the buff");
+    assert_eq!(
+        armor.current_value(),
+        5.0,
+        "the gated effect activates after the buff"
+    );
 }

@@ -10,12 +10,11 @@ use vitality_core::context::ActorExprSchema;
 use vitality_core::modifier::AttributeCalculatorCached;
 use vitality_core::mutator::EntityActions;
 use vitality_core::num_traits::{AsPrimitive, Num};
-use vitality_core::util::pretty_type_name;
 use vitality_effects::definition::EffectDef;
 use vitality_effects::graph::NodeType;
 use vitality_effects::{ApplyEffectEvent, EffectTargeting};
 
-use crate::clamp::Clamp;
+use crate::clamp::{Clamp, mark_clamp_stale};
 
 #[derive(Asset, TypePath)]
 pub struct ActorDef {
@@ -28,7 +27,8 @@ pub struct ActorDef {
     // The value below is hidden behind 'Any' but actually:
     // Box<(Expr<T::Property>, Expr<T::Property>)>
     pub clamp_exprs: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
-    pub clamp_reverse_lookup: HashMap<SmolStr, Vec<SmolStr>>,
+    /// Per dependency key read by a clamp, what marks that clamp stale.
+    pub clamp_dependents: HashMap<TypeId, Vec<fn(&mut EntityCommands)>>,
 }
 
 #[derive(Component, Clone, Debug, Deref)]
@@ -49,7 +49,10 @@ impl EntityCommand for SpawnActorCommand {
         entity.world_scope(|world| {
             world.resource_scope(|world, actor_assets: Mut<Assets<ActorDef>>| {
                 let Some(actor_def) = actor_assets.get(&self.handle) else {
-                    warn!("Actor {:?} has no loaded definition; {actor_entity} left empty.", self.handle);
+                    warn!(
+                        "Actor {:?} has no loaded definition; {actor_entity} left empty.",
+                        self.handle
+                    );
                     return;
                 };
 
@@ -112,7 +115,7 @@ impl ActorBuilder {
                 abilities: vec![],
                 effects: vec![],
                 clamp_exprs: Default::default(),
-                clamp_reverse_lookup: Default::default(),
+                clamp_dependents: Default::default(),
             },
         }
     }
@@ -126,7 +129,7 @@ impl ActorBuilder {
         mut self,
         value: impl Num + AsPrimitive<T::Property> + Copy + Send + Sync + 'static,
     ) -> ActorBuilder {
-        self.actor.builder_actions.push_front(EntityActions::new(
+        self.actor.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert((T::new(value), AttributeCalculatorCached::<T>::default()));
             },
@@ -150,15 +153,16 @@ impl ActorBuilder {
         let min_expr = min.as_expr();
         let max_expr = max.as_expr();
 
-        // Insert dependencies for reverse lookup
-        let mut paths = HashSet::default();
-        min_expr.get_dependencies(&mut paths);
-        max_expr.get_dependencies(&mut paths);
-        debug!(
-            "Clamp<{}> dependencies: {:?}",
-            pretty_type_name::<T>(),
-            paths
-        );
+        let mut deps = HashSet::default();
+        min_expr.get_dependencies(&mut deps);
+        max_expr.get_dependencies(&mut deps);
+        for dep in deps {
+            self.actor
+                .clamp_dependents
+                .entry(dep)
+                .or_default()
+                .push(mark_clamp_stale::<T>);
+        }
 
         let min_erased: Box<dyn Expr<T::Property, ActorExprSchema> + Send + Sync> =
             Box::new(min_expr);
@@ -181,7 +185,7 @@ impl ActorBuilder {
     }
 
     pub fn insert<T: Bundle + Clone + 'static>(mut self, bundle: T) -> ActorBuilder {
-        self.actor.builder_actions.push_front(EntityActions::new(
+        self.actor.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
                 entity_commands.insert(bundle.clone());
             },

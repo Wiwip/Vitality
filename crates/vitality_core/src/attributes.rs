@@ -6,7 +6,7 @@ use crate::view::{ActorRead, ActorWrite};
 use bevy::ecs::component::Mutable;
 use bevy::ecs::query::QueryData;
 use bevy::log::error;
-use bevy::prelude::{Component, Entity, Reflect, TypePath};
+use bevy::prelude::{Component, Entity, Reflect, ReflectComponent, TypePath};
 use bevy::reflect::{GetTypeRegistration, Typed, reflect_trait};
 use express_it::expr::{AsExpression, Context, ContextMut, Expr};
 use express_it::nodes::Node;
@@ -97,7 +97,8 @@ where
             _marker: Default::default(),
         }
     }
-    fn at_base<Role: 'static, C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C, Role>>
+    fn at_base<Role: 'static, C>()
+    -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C, Role>>
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Role>,
@@ -316,18 +317,55 @@ macro_rules! tag {
 #[derive(Component, Default, Debug, Copy, Clone)]
 pub struct ManageAttributes;
 
+/// Bounds on an attribute's base and current value, kept up to date by the facade from the
+/// actor definition's clamp expressions.
+#[derive(Component, Default, Debug, Clone, Reflect)]
+#[reflect(Component, from_reflect = false)]
+pub struct Clamp<T: Attribute> {
+    pub min_limit: T::Property,
+    pub max_limit: T::Property,
+    /// False until the limits are first evaluated; an unready clamp bounds nothing.
+    pub ready: bool,
+}
+
+impl<T: Attribute> Clamp<T> {
+    pub fn new() -> Self {
+        Self {
+            min_limit: T::Property::default(),
+            max_limit: T::Property::default(),
+            ready: false,
+        }
+    }
+
+    pub fn apply(&self, value: T::Property) -> T::Property {
+        if !self.ready {
+            value
+        } else if value < self.min_limit {
+            self.min_limit
+        } else if value > self.max_limit {
+            self.max_limit
+        } else {
+            value
+        }
+    }
+}
+
 #[derive(QueryData, Debug)]
 #[query_data(mutable, derive(Debug))]
 pub struct AttributeQueryData<T: Attribute + 'static> {
     pub entity: Entity,
     pub attribute: &'static mut T,
     pub calculator_cache: &'static mut AttributeCalculatorCached<T>,
+    pub clamp: Option<&'static Clamp<T>>,
 }
 
 impl<T: Attribute> AttributeQueryDataItem<'_, '_, T> {
     pub fn update_attribute(&mut self, calculator: &AttributeCalculator<T>) -> bool {
         let old_val = self.attribute.current_value();
-        let new_val = calculator.eval(self.attribute.base_value());
+        let mut new_val = calculator.eval(self.attribute.base_value());
+        if let Some(clamp) = self.clamp {
+            new_val = clamp.apply(new_val);
+        }
 
         let has_changed = old_val.are_different(new_val);
         if has_changed {
@@ -338,10 +376,13 @@ impl<T: Attribute> AttributeQueryDataItem<'_, '_, T> {
 
     pub fn update_attribute_from_cache(&mut self) -> bool {
         let old_val = self.attribute.current_value();
-        let new_val = self
+        let mut new_val = self
             .calculator_cache
             .calculator
             .eval(self.attribute.base_value());
+        if let Some(clamp) = self.clamp {
+            new_val = clamp.apply(new_val);
+        }
 
         let has_changed = old_val.are_different(new_val);
         if has_changed {
@@ -373,6 +414,26 @@ where
     }
 }
 
+thread_local! {
+    static RECORDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static RECORDED: std::cell::RefCell<HashSet<TypeId>> = std::cell::RefCell::new(HashSet::new());
+}
+
+/// Runs `f` and returns the dependency keys of every attribute it read. express-it's operator
+/// nodes don't forward `get_dependencies`, so a composite expression only reports through this.
+pub fn record_dependencies<R>(f: impl FnOnce() -> R) -> (R, HashSet<TypeId>) {
+    let was_recording = RECORDING.replace(true);
+    let out = f();
+    RECORDING.set(was_recording);
+    let deps = RECORDED.with_borrow_mut(std::mem::take);
+    (out, deps)
+}
+
+#[cold]
+fn note_read(key: TypeId) {
+    RECORDED.with_borrow_mut(|deps| deps.insert(key));
+}
+
 /// Dependency key of `T` read through `Role`, as reported by [`Expr::get_dependencies`].
 pub struct DepKey<T, Role>(PhantomData<fn() -> (T, Role)>);
 
@@ -397,6 +458,9 @@ impl<T: 'static, N: 'static, C: Context + 'static, Role: 'static> Expr<N, C>
 {
     #[inline(always)]
     fn eval(&self, ctx: &C::ContextItem<'_, '_>) -> N {
+        if RECORDING.get() {
+            note_read(dep_key::<T, Role>());
+        }
         (self.fetch_fn)(ctx)
     }
 

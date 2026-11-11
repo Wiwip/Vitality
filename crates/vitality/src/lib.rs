@@ -1,5 +1,5 @@
 use crate::actors::{ActorDef, ActorRegistry};
-use crate::clamp::{Clamp, apply_clamps, update_clamps};
+use crate::clamp::{Clamp, apply_clamps, clamp_dependency_changed};
 use bevy::prelude::*;
 use vitality_abilities::AbilityPlugin;
 use vitality_core::CorePlugin;
@@ -31,7 +31,9 @@ pub mod prelude {
     pub use crate::context::Vitality;
     pub use crate::{AttributesPlugin, VitalityPlugin, init_attribute};
     pub use vitality_abilities::prelude::*;
-    pub use vitality_abilities::Abilities;
+    pub use vitality_abilities::{
+        Abilities, AbilityActivated, AbilityActivationFailed, AbilityEnded, ActivationError,
+    };
     pub use vitality_core::tags::{ActorTags, TagSpec};
     pub use vitality_effects::prelude::*;
     pub use vitality_effects::{
@@ -124,5 +126,5 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
             .after(vitality_effects::systems::update_current_value_system::<T>)
             .in_set(EffectsSet::UpdateCurrentValues),
     );
-    app.add_observer(update_clamps::<T>);
+    app.add_observer(clamp_dependency_changed::<T>);
 }

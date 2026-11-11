@@ -1,95 +1,124 @@
 use crate::actors::{Actor, ActorDef};
-use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
 use express_it::expr::Expr;
 use std::any::{Any, TypeId};
+use std::marker::PhantomData;
 use vitality_core::CurrentValueChanged;
-use vitality_core::attributes::{Attribute, AttributeQueryData};
-use vitality_core::context::{ActorExprContext, ActorExprSchema};
+use vitality_core::attributes::{Attribute, dep_key};
+use vitality_core::context::{ActorExprContext, ActorExprSchema, Source};
+use vitality_core::modifier::AttributeCalculatorCached;
 
-#[derive(Component, Default, Debug, Clone, Reflect)]
-#[reflect(Component, from_reflect = false)]
-pub struct Clamp<T: Attribute> {
-    pub min_limit: T::Property,
-    pub max_limit: T::Property,
+pub use vitality_core::attributes::Clamp;
+
+/// An attribute a clamp of `T` reads changed, so its limits must be re-evaluated.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+pub struct ClampStale<T>(PhantomData<T>);
+
+impl<T> Default for ClampStale<T> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
 }
 
-impl<T> Clamp<T>
-where
-    T: Attribute,
-{
-    pub fn new() -> Self {
-        Self {
-            min_limit: T::Property::default(),
-            max_limit: T::Property::default(),
+pub(crate) fn mark_clamp_stale<T: Attribute>(entity: &mut EntityCommands) {
+    entity.try_insert(ClampStale::<T>::default());
+}
+
+/// Marks the clamps that read `D` on this actor stale.
+pub fn clamp_dependency_changed<D: Attribute>(
+    trigger: On<CurrentValueChanged<D>>,
+    actors: Query<&Actor>,
+    actor_assets: Res<Assets<ActorDef>>,
+    mut commands: Commands,
+) {
+    let Ok(actor) = actors.get(trigger.entity) else {
+        return;
+    };
+    let Some(def) = actor_assets.get(&actor.0) else {
+        return;
+    };
+    let mut entity = commands.entity(trigger.entity);
+    for key in [dep_key::<D, Source>(), TypeId::of::<D>()] {
+        for mark in def.clamp_dependents.get(&key).into_iter().flatten() {
+            mark(&mut entity);
         }
     }
 }
 
-/// When the Source attribute changes, we update the bounds of the target attribute
-pub fn update_clamps<T: Attribute>(
-    trigger: On<CurrentValueChanged<T>>,
-    mut set: ParamSet<(Query<(&Actor, FilteredEntityRef)>, Query<&mut Clamp<T>>)>,
+type ClampExprs<T> = (
+    Box<dyn Expr<<T as Attribute>::Property, ActorExprSchema> + Send + Sync>,
+    Box<dyn Expr<<T as Attribute>::Property, ActorExprSchema> + Send + Sync>,
+);
+
+/// Re-evaluates stale limits, then clamps base and current value of `T`.
+pub fn apply_clamps<T: Attribute>(
+    mut set: ParamSet<(
+        Query<
+            Entity,
+            (
+                With<Clamp<T>>,
+                Or<(Changed<T>, Added<Clamp<T>>, With<ClampStale<T>>)>,
+            ),
+        >,
+        Query<(&Actor, EntityRef)>,
+        Query<(&mut T, &AttributeCalculatorCached<T>, &mut Clamp<T>)>,
+    )>,
     actor_assets: Res<Assets<ActorDef>>,
-) -> Result<(), BevyError> {
-    let (min_value, max_value) = {
-        let p0 = set.p0();
-        let Ok((actor_handle, attribute_ref)) = p0.get(trigger.entity) else {
-            return Ok(());
-        };
-        let actor_def = actor_assets
-            .get(&actor_handle.0)
-            .ok_or("Missing actor asset")?;
-
-        let actor_context = ActorExprContext {
-            actor_context: attribute_ref,
-        };
-
-        let Some(clamp_exprs) = actor_def.clamp_exprs.get(&TypeId::of::<T>()) else {
-            return Ok(());
-        };
-
-        let any_ref: &dyn Any = clamp_exprs.as_ref();
-        let (min_expr, max_expr) = any_ref
-            .downcast_ref::<(
-                Box<dyn Expr<T::Property, ActorExprSchema> + Send + Sync>,
-                Box<dyn Expr<T::Property, ActorExprSchema> + Send + Sync>,
-            )>()
-            .ok_or("Failed downcast expressions")?;
-
-        let min_value = min_expr.eval(&actor_context);
-        let max_value = max_expr.eval(&actor_context);
-
-        (min_value, max_value)
-    };
-
-    let mut clamps = set.p1();
-    let mut clamp = clamps.get_mut(trigger.entity)?;
-
-    // Multiply the source value by the limit to get the derived limit
-    clamp.min_limit = min_value;
-    clamp.max_limit = max_value;
-    Ok(())
-}
-
-pub fn apply_clamps<T>(
-    mut query: Query<(AttributeQueryData<T>, &Clamp<T>), (Changed<T>, Changed<Clamp<T>>)>,
-) where
-    T: Attribute,
-{
-    fn clamp_partial<V: Copy + PartialOrd>(value: V, min: V, max: V) -> V {
-        let value = if value < min { min } else { value };
-        if value > max { max } else { value }
+    mut commands: Commands,
+    mut candidates: Local<Vec<Entity>>,
+    mut limits: Local<Vec<(Entity, T::Property, T::Property)>>,
+) {
+    candidates.clear();
+    candidates.extend(set.p0().iter());
+    if candidates.is_empty() {
+        return;
     }
 
-    for (mut attribute_data, clamp) in query.iter_mut() {
-        let base = attribute_data.attribute.base_value();
-        let clamped = clamp_partial(base, clamp.min_limit, clamp.max_limit);
+    limits.clear();
+    {
+        let actors = set.p1();
+        for &entity in candidates.iter() {
+            let Ok((actor, attribute_ref)) = actors.get(entity) else {
+                continue;
+            };
+            let Some(def) = actor_assets.get(&actor.0) else {
+                continue;
+            };
+            let Some(exprs) = def.clamp_exprs.get(&TypeId::of::<T>()) else {
+                continue;
+            };
+            let any_ref: &dyn Any = exprs.as_ref();
+            let Some((min_expr, max_expr)) = any_ref.downcast_ref::<ClampExprs<T>>() else {
+                continue;
+            };
+            let context = ActorExprContext {
+                actor_context: attribute_ref.into(),
+            };
+            limits.push((entity, min_expr.eval(&context), max_expr.eval(&context)));
+        }
+    }
 
-        if clamped != base {
-            attribute_data.attribute.set_base_value(clamped);
-            // Base changed => recompute current from cached calculator.
-            attribute_data.update_attribute_from_cache();
+    let mut attributes = set.p2();
+    for &(entity, min, max) in limits.iter() {
+        commands.entity(entity).try_remove::<ClampStale<T>>();
+        let Ok((mut attribute, cache, mut clamp)) = attributes.get_mut(entity) else {
+            continue;
+        };
+        if !clamp.ready || clamp.min_limit != min || clamp.max_limit != max {
+            clamp.min_limit = min;
+            clamp.max_limit = max;
+            clamp.ready = true;
+        }
+
+        let base = attribute.base_value();
+        let clamped_base = clamp.apply(base);
+        if clamped_base != base {
+            attribute.set_base_value(clamped_base);
+        }
+        let current = clamp.apply(cache.calculator.eval(attribute.base_value()));
+        if current != attribute.current_value() {
+            attribute.set_current_value(current);
         }
     }
 }

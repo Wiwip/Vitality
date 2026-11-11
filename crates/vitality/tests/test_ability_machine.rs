@@ -13,6 +13,7 @@ use hfsm_bevy::{
     MachineQuery, StateEntered, StateId, StateTimer,
 };
 use vitality::AttributesPlugin;
+use vitality::ability::AbilityDef;
 use vitality::ability::ability_state::{AbilityEvent, AbilityMachine, AbilityState};
 use vitality::ability::task_states::{TaskMachine, TaskState};
 use vitality::ability::tasks::{
@@ -20,9 +21,8 @@ use vitality::ability::tasks::{
     TaskParam, TaskStatus, Tasks, task,
 };
 use vitality::ability::{Abilities, AbilityBuilder, TargetData};
-use vitality::actors::{Actor, ActorBuilder};
 use vitality::actors::ActorDef;
-use vitality::ability::AbilityDef;
+use vitality::actors::{Actor, ActorBuilder};
 use vitality::context::Vitality;
 use vitality::effect::GlobalActor;
 use vitality::registry::RegistryMut;

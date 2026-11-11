@@ -1,6 +1,6 @@
 use crate::ability_state::AbilityMachine;
-use crate::lifecycle::AbilityEnding;
 use crate::definition::AbilityDef;
+use crate::lifecycle::AbilityEnding;
 use crate::registry::{AbilityRegistry, AbilityToken};
 use crate::tasks::Tasks;
 use bevy::ecs::template::TemplateContext;

@@ -28,7 +28,9 @@ pub(crate) fn activate_ability(
 ) -> Result<(), BevyError> {
     debug!("{}: Commit ability cost.", trigger.ability);
     let actor = actors.get(trigger.ability)?;
-    let ability = actor.get::<Ability>().ok_or("Activated entity is not an ability")?;
+    let ability = actor
+        .get::<Ability>()
+        .ok_or("Activated entity is not an ability")?;
     let ability_spec = ability_assets
         .get(&ability.handle.clone())
         .ok_or("No ability asset")?;

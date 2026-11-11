@@ -112,7 +112,9 @@ impl AbilityBuilder {
                 // a caster without the attribute can't pay
                 ctx.caster_ref
                     .get::<T>()
-                    .map_or(T::Property::default(), |attribute| attribute.current_value())
+                    .map_or(T::Property::default(), |attribute| {
+                        attribute.current_value()
+                    })
             },
         );
 

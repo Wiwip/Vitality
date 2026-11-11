@@ -1,12 +1,12 @@
+use crate::EffectTags;
 use crate::EffectTargeting;
 use crate::EffectsRef;
-use crate::lifecycle::{EffectApplied, EffectBlocked, EffectRemovalReason, remove_effect};
-use crate::EffectTags;
-use crate::systems::MarkActorDirty;
 use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
 use crate::graph::NodeType;
+use crate::lifecycle::{EffectApplied, EffectBlocked, EffectRemovalReason, remove_effect};
 use crate::modifier::ModifierOf;
+use crate::systems::MarkActorDirty;
 use crate::timing::{EffectDuration, EffectTicker};
 use crate::{
     AppliedEffects, Effect, EffectSource, EffectStackingPolicy, EffectTarget, NotifyAddStackEvent,
@@ -132,8 +132,15 @@ pub struct ApplyEffectEvent {
     pub handle: Handle<EffectDef>,
 }
 
-type ActorQuery<'w, 's> =
-    Query<'w, 's, (Option<&'static AppliedEffects>, EffectsRef<'static, 'static>), (Without<Effect>, Without<IsResource>)>;
+type ActorQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Option<&'static AppliedEffects>,
+        EffectsRef<'static, 'static>,
+    ),
+    (Without<Effect>, Without<IsResource>),
+>;
 
 impl ApplyEffectEvent {
     fn context<'a>(
@@ -189,7 +196,11 @@ impl ApplyEffectEvent {
             let Ok(tags) = effect_tags.get(other) else {
                 continue;
             };
-            if effect.cleanses.iter().any(|tag| tags.0.contains(&tag.type_id)) {
+            if effect
+                .cleanses
+                .iter()
+                .any(|tag| tags.0.contains(&tag.type_id))
+            {
                 remove_effect(commands, other, EffectRemovalReason::Cleansed);
             }
         }
@@ -259,7 +270,10 @@ impl ApplyEffectEvent {
             triggers.apply(&mut effect_commands);
         }
 
-        let bindings = type_bindings.internal.read().unwrap_or_else(|err| err.into_inner());
+        let bindings = type_bindings
+            .internal
+            .read()
+            .unwrap_or_else(|err| err.into_inner());
         for modifier in &effect.modifiers {
             let mut entity_commands = commands.spawn(ModifierOf(effect_entity));
             modifier.spawn_persistent_modifier(
