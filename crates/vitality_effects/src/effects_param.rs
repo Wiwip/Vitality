@@ -11,21 +11,20 @@ use std::any::TypeId;
 use std::time::Duration;
 use vitality_core::attributes::Attribute;
 
+/// What `Effects` reads per effect entity.
+type EffectInfo = (
+    &'static Effect,
+    &'static EffectSource,
+    Option<&'static EffectTags>,
+    Option<&'static Stacks>,
+    Option<&'static EffectDuration>,
+);
+
 /// Applies, inspects and removes effects. Every change is deferred to the next command flush.
 #[derive(SystemParam)]
 pub struct Effects<'w, 's> {
     applied: Query<'w, 's, &'static AppliedEffects>,
-    effects: Query<
-        'w,
-        's,
-        (
-            &'static Effect,
-            &'static EffectSource,
-            Option<&'static EffectTags>,
-            Option<&'static Stacks>,
-            Option<&'static EffectDuration>,
-        ),
-    >,
+    effects: Query<'w, 's, EffectInfo>,
     commands: Commands<'w, 's>,
 }
 

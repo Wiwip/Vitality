@@ -28,23 +28,23 @@ impl PeriodicApplies {
     }
 }
 
+/// One periodic effect, read the same way by the collapsed node and by v1's per-attribute system.
+type PeriodicEffectRow<'w, 's> = (
+    EffectsRef<'w, 's>,
+    &'w Effect,
+    &'w Stacks,
+    &'w EffectTicker,
+    &'w OwnedModifiers,
+    &'w EffectTarget,
+    &'w EffectSource,
+);
+
 /// The actor, effect and modifier queries of one attribute, kept as a resource so the collapsed node
 /// pays nothing per attribute beyond building them once.
 #[derive(Resource)]
 struct PeriodicState<T: Attribute> {
     actors: QueryState<EffectsRef<'static, 'static>, Without<IsResource>>,
-    effects: QueryState<
-        (
-            EffectsRef<'static, 'static>,
-            &'static Effect,
-            &'static Stacks,
-            &'static EffectTicker,
-            &'static OwnedModifiers,
-            &'static EffectTarget,
-            &'static EffectSource,
-        ),
-        Without<IsResource>,
-    >,
+    effects: QueryState<PeriodicEffectRow<'static, 'static>, Without<IsResource>>,
     modifiers: QueryState<&'static AttributeModifier<T>>,
 }
 
@@ -151,18 +151,7 @@ pub fn apply_all_periodic_effects(world: &mut World, mut applies: Local<Vec<Peri
 
 pub(crate) fn apply_periodic_effect<T: Attribute>(
     actors: Query<EffectsRef, Without<IsResource>>,
-    effects: Query<
-        (
-            EffectsRef,
-            &Effect,
-            &Stacks,
-            &EffectTicker,
-            &OwnedModifiers,
-            &EffectTarget,
-            &EffectSource,
-        ),
-        Without<IsResource>,
-    >,
+    effects: Query<PeriodicEffectRow<'_, '_>, Without<IsResource>>,
     modifiers: Query<&AttributeModifier<T>>,
     mut event_writer: MessageWriter<ApplyAttributeModifierMessage<T>>,
     effect_assets: Res<Assets<EffectDef>>,

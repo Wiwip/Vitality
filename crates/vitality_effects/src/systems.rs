@@ -42,12 +42,16 @@ pub fn mark_node_dirty_observer<T: Attribute>(
         .try_insert(Dirty::<T>::default());
 }
 
+/// The actors of one attribute that carry a dirty mark.
+type DirtyActors<'w, 's, T> =
+    Query<'w, 's, Entity, (With<ManageAttributes>, With<T>, With<Dirty<T>>)>;
+
 /// Navigates the tree descendants to update the tree attribute values
 /// Effects that have a periodic timer application must be ignored in the current value calculations
 pub fn update_current_value_system<T: Attribute>(
     graph: DependencyGraph,
     nodes: Query<&NodeType>,
-    dirty_actors: Query<Entity, (With<ManageAttributes>, With<T>, With<Dirty<T>>)>,
+    dirty_actors: DirtyActors<'_, '_, T>,
     dirty_nodes: Query<&Dirty<T>>,
     statuses: Query<EffectStatusParam>,
     attributes: Query<AttributeQueryDataReadOnly<T>>,
@@ -122,18 +126,16 @@ fn update_effect_tree_attributes<T: Attribute>(
         return AttributeCalculator::default();
     }
     if !dirty_nodes.contains(current_entity) {
-        match attributes.get(current_entity) {
-            Ok(attribute) => {
-                return attribute.calculator_cache.calculator;
-            }
-            _ => {} // Continue traversing the tree.
+        // not dirty and no cached calculator: keep walking the tree
+        if let Ok(attribute) = attributes.get(current_entity) {
+            return attribute.calculator_cache.calculator;
         }
     }
 
     let node_calculator = match node_type {
         NodeType::Actor => {
             // Traverse children
-            let calculator = graph
+            graph
                 .neighbors(current_entity)
                 .map(|entity| {
                     update_effect_tree_attributes::<T>(
@@ -153,9 +155,7 @@ fn update_effect_tree_attributes<T: Attribute>(
                 })
                 .fold(AttributeCalculator::default(), |acc, child| {
                     acc.combine(child)
-                });
-
-            calculator
+                })
         }
         NodeType::Effect => {
             let Ok((modifier_entities, _source, _target, stacks)) = effects.get(current_entity)
@@ -164,7 +164,7 @@ fn update_effect_tree_attributes<T: Attribute>(
                 return AttributeCalculator::default();
             };
 
-            let calculator = modifier_entities
+            modifier_entities
                 .iter()
                 .filter_map(|modifier_entity| {
                     // Get the modifier
@@ -190,9 +190,7 @@ fn update_effect_tree_attributes<T: Attribute>(
                 })
                 .fold(AttributeCalculator::default(), |acc, child| {
                     acc.combine(child)
-                });
-
-            calculator
+                })
         }
     };
 

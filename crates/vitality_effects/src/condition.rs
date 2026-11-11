@@ -28,17 +28,17 @@ impl Plugin for ConditionPlugin {
     }
 }
 
+/// One non-periodic effect with the actors it reads conditions from.
+type ConditionRow<'w, 's> = (
+    EffectsRef<'w, 's>,
+    &'w Effect,
+    &'w EffectSource,
+    &'w EffectTarget,
+    Option<&'w EffectInactive>,
+);
+
 pub fn evaluate_effect_conditions(
-    mut query: Query<
-        (
-            EffectsRef,
-            &Effect,
-            &EffectSource,
-            &EffectTarget,
-            Option<&EffectInactive>,
-        ),
-        Without<EffectTicker>,
-    >,
+    mut query: Query<ConditionRow<'_, '_>, Without<EffectTicker>>,
     parents: Query<EffectsRef>,
     effects: Res<Assets<EffectDef>>,
     mut commands: Commands,

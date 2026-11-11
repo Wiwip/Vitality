@@ -114,19 +114,22 @@ struct Output {
     readers: Vec<Entity>,
 }
 
+/// The per-effect flags the walk needs to know whether an effect folds into a value at all.
+type EffectFlags = QueryState<
+    (
+        &'static OwnedModifiers,
+        Option<&'static Stacks>,
+        Has<EffectInactive>,
+        Has<EffectTicker>,
+    ),
+    With<Effect>,
+>;
+
 pub(crate) struct ResolverState {
     actors: Option<ActorQuery>,
     built_for: usize,
     applied: QueryState<&'static AppliedEffects>,
-    effects: QueryState<
-        (
-            &'static OwnedModifiers,
-            Option<&'static Stacks>,
-            Has<EffectInactive>,
-            Has<EffectTicker>,
-        ),
-        With<Effect>,
-    >,
+    effects: EffectFlags,
     slots: QueryState<&'static ModifierSlot>,
     slot_effects: QueryState<(&'static ModifierSlot, &'static ModifierOf)>,
     targets: QueryState<&'static EffectTarget>,

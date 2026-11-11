@@ -77,11 +77,11 @@ pub(crate) fn on_effect_removed(
     let target = target.0;
     let reason = pending.map_or(EffectRemovalReason::Despawned, |pending| pending.0);
 
-    if let Some(def) = effect_assets.get(&effect.0) {
-        if let Ok(mut actor) = commands.get_entity(target) {
-            for tag in &def.granted_tags {
-                actor.queue_silenced(ChangeTag::revoke(*tag));
-            }
+    if let Some(def) = effect_assets.get(&effect.0)
+        && let Ok(mut actor) = commands.get_entity(target)
+    {
+        for tag in &def.granted_tags {
+            actor.queue_silenced(ChangeTag::revoke(*tag));
         }
     }
 

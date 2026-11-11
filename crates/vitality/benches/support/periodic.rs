@@ -7,8 +7,9 @@
 //! per tick, and the reason A belongs on that axis at all is the system's signature: on v1
 //! `init_effect_attribute` puts one `apply_periodic_effect::<T>` into `FixedUpdate` *per attribute
 //! type* (`vitality_effects/src/lib.rs:160-162`), and that system's `effects` query is not filtered
-//! by `T` (`vitality_effects/src/periodic.rs:154-165`) — only the `modifiers` fetch one line below it
-//! is (`:166`). So every ticking effect entity is visited once per registered attribute and tested
+//! by `T` (`vitality_effects/src/periodic.rs:154`, the row it reads is `:31-41`) — only the
+//! `modifiers` fetch one line below it is (`:155`). So every ticking effect entity is visited once
+//! per registered attribute and tested
 //! with `timer.just_finished()` each time, and growth against A is the same walk multiplication T2
 //! found on the modifier path, on a second code path.
 //!
@@ -19,7 +20,8 @@
 //! (`vitality_effects/src/periodic.rs:144-149`). So the same per-attribute walk of the ticking
 //! entities has to be read as one collapsed node walking A times: the per-attribute `PeriodicState`
 //! it drives carries the same unfiltered effect fetch
-//! (`vitality_effects/src/periodic.rs:36-47`) next to the same `AttributeModifier<T>` one (`:48`),
+//! (`vitality_effects/src/periodic.rs:47`, the same `:31-41` row) next to the same
+//! `AttributeModifier<T>` one (`:48`),
 //! so both modes visit every ticking entity A times and only v1 pays a schedule node for each.
 //!
 //! ## The driver is `tick`, never `run_fixed_tick`

@@ -9,8 +9,10 @@ use std::collections::HashSet;
 
 /// Attributes are Components and inserted on Entities.
 /// - Derived attributes could be used
+///
 /// Effects are spawned as child of entities
 /// - Effects can modify the modifiers till now, such as an intensity metric or stacks
+///
 /// Modifiers are added to Effects as Vec<Mod>
 /// - Modifiers must apply to an attribute
 
@@ -43,10 +45,10 @@ impl DependencyGraph<'_, '_> {
     pub fn print_dependencies(&self, entity: Entity) {
         let node_type = self.node_type(entity).expect("Node type not found");
         let mut tree = TreeBuilder::new("Root".into());
-        tree.begin_child(format!("{}({})", node_type, entity.to_string()));
+        tree.begin_child(format!("{}({})", node_type, entity));
 
         // Use petgraph's depth_first_search with a custom visitor
-        depth_first_search(&self, Some(entity), |event| {
+        depth_first_search(self, Some(entity), |event| {
             match event {
                 DfsEvent::Discover(_entity, _time) => {}
                 DfsEvent::TreeEdge(_source, target) => {

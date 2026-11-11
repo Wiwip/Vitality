@@ -206,33 +206,42 @@ impl ApplyEffectEvent {
         }
     }
 
+    /// A stacking policy lands on the copy already applied: the stack event says so, and the spawn
+    /// has nothing left to do. Returns true when that is what happened.
+    fn queue_stacked_effect(
+        &self,
+        effect: &EffectDef,
+        applied: Option<&AppliedEffects>,
+        effects: &Query<&Effect>,
+        add_stack_event: &mut MessageWriter<NotifyAddStackEvent>,
+    ) -> bool {
+        if matches!(effect.stacking_policy, EffectStackingPolicy::None) {
+            return false;
+        }
+        let existing = applied.and_then(|applied| {
+            applied.iter().find(|other| {
+                effects
+                    .get(*other)
+                    .is_ok_and(|other| other.0.id() == self.handle.id())
+            })
+        });
+        let Some(existing) = existing else {
+            return false;
+        };
+        add_stack_event.write(NotifyAddStackEvent {
+            effect_entity: existing,
+            handle: self.handle.clone(),
+        });
+        true
+    }
+
     fn spawn_persistent_effect(
         &self,
         commands: &mut Commands,
         effect: &EffectDef,
-        applied: Option<&AppliedEffects>,
         context: &EffectExprContext,
-        effects: &Query<&Effect>,
-        add_stack_event: &mut MessageWriter<NotifyAddStackEvent>,
         type_bindings: &AppAttributeBindings,
     ) -> Option<Entity> {
-        if !matches!(effect.stacking_policy, EffectStackingPolicy::None) {
-            let existing = applied.and_then(|applied| {
-                applied.iter().find(|other| {
-                    effects
-                        .get(*other)
-                        .is_ok_and(|other| other.0.id() == self.handle.id())
-                })
-            });
-            if let Some(existing) = existing {
-                add_stack_event.write(NotifyAddStackEvent {
-                    effect_entity: existing,
-                    handle: self.handle.clone(),
-                });
-                return None;
-            }
-        }
-
         if !effect
             .attach_conditions
             .iter()
@@ -255,7 +264,7 @@ impl ApplyEffectEvent {
             Effect(self.handle.clone()),
             EffectTags(effect.granted_tags.iter().map(|tag| tag.type_id).collect()),
         ));
-        for tag in effect.granted_tags.iter().copied() {
+        for &tag in &effect.granted_tags {
             effect_commands.queue(move |mut entity: EntityWorldMut| tag.insert_on(&mut entity));
         }
 
@@ -347,15 +356,13 @@ pub(crate) fn apply_effect_event_observer(
         return;
     }
 
-    if let Some(effect_entity) = trigger.spawn_persistent_effect(
-        &mut commands,
-        effect,
-        applied,
-        &context,
-        &effects,
-        &mut writer,
-        &type_bindings,
-    ) {
+    if trigger.queue_stacked_effect(effect, applied, &effects, &mut writer) {
+        return;
+    }
+
+    if let Some(effect_entity) =
+        trigger.spawn_persistent_effect(&mut commands, effect, &context, &type_bindings)
+    {
         commands.trigger(MarkActorDirty { entity: target });
         commands.trigger(EffectApplied {
             entity: target,

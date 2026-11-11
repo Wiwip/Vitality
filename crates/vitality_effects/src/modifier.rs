@@ -159,7 +159,7 @@ where
             op: modifier.operation,
             value: modifier.value.as_(),
         };
-        commands.insert((modifier, slot, Name::new(format!("{}", display))));
+        commands.insert((modifier, slot, Name::new(display)));
     }
     fn apply_immediate(&self, context: &mut EffectExprContextMut) -> bool {
         let immutable_context = EffectExprContext {
@@ -171,7 +171,7 @@ where
         let calc = AttributeCalculator::<T>::from_op(self.operation, self.value);
 
         let attr_ref = match self.who {
-            EffectSubject::Target => &immutable_context
+            EffectSubject::Target => immutable_context
                 .target_actor
                 .as_ref()
                 .unwrap_or(&immutable_context.source_actor),
@@ -383,7 +383,7 @@ pub fn apply_modifier_events<T: Attribute>(
     mut commands: Commands,
 ) {
     for ev in event_reader.read() {
-        match apply_modifier(&ev, &mut attributes) {
+        match apply_modifier(ev, &mut attributes) {
             Ok(true) => commands.trigger(MarkNodeDirty::<T> {
                 entity: ev.target_entity,
                 phantom_data: Default::default(),

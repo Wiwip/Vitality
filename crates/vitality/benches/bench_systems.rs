@@ -1003,12 +1003,14 @@ fn recompute_many_actors(c: &mut Criterion) {
 /// The multiplication this row is read for is in the system's signature: on v1 `init_effect_attribute`
 /// registers one `apply_periodic_effect::<T>` per attribute type
 /// (`vitality_effects/src/lib.rs:160-162`) and that system's `effects` query is not filtered by `T`
-/// (`vitality_effects/src/periodic.rs:154-165`) — only the `modifiers` fetch below it is (`:166`) — so
+/// (`vitality_effects/src/periodic.rs:154`, its row is `:31-41`) — only the `modifiers` fetch below
+/// it is (`:155`) — so
 /// every ticking effect entity is visited and tested with `just_finished()` **once per registered
 /// attribute**. Under `VITALITY_RESOLVER=dag` no per-type system is registered at all
 /// (`vitality_effects/src/lib.rs:144-153`); the one `apply_all_periodic_effects` node loops the
 /// registered attributes instead (`vitality_effects/src/periodic.rs:144-149`) and each turn of that loop
-/// walks the same unfiltered effect fetch (`:36-47`), so the walk — and with it the A axis — survives
+/// walks the same unfiltered effect fetch (`:47`, the same `:31-41` row), so the walk — and with it
+/// the A axis — survives
 /// the collapse, on one schedule node instead of A. Growth of ns/tick against A is
 /// therefore the same walk multiplication `recompute/*` measures on the modifier path, on a second code
 /// path — with the caveat that this shape also carries 61 permanent effects, whose fold per attribute

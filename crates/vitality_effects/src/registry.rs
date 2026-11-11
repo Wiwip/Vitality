@@ -44,7 +44,7 @@ impl EffectRegistry {
     pub fn get(&self, token: &EffectToken) -> &Handle<EffectDef> {
         self.map
             .get(token)
-            .expect(format!("{:?} not registered", token).as_str())
+            .unwrap_or_else(|| panic!("{:?} not registered", token))
     }
 }
 
@@ -89,6 +89,6 @@ impl RegistryMut<'_> {
     }
 
     pub fn effect(&self, name: &EffectToken) -> Handle<EffectDef> {
-        self.effect_registry.get(&name).clone()
+        self.effect_registry.get(name).clone()
     }
 }
