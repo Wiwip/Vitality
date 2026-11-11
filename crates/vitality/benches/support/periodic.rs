@@ -438,7 +438,7 @@ pub fn mean_firing_amount(plan: &[EffectPlan]) -> f64 {
 ///   [`QUIET_TICKS`], where no timer can have fired;
 /// * `app_update` names the driver, because the group's premise is that it is not `run_fixed_tick`;
 /// * `periodic=T` and `fire=X.XX` are the measured T and the measured firing rate of this exact shape;
-/// * `mt-dyn` is the build every number here comes from (D-22).
+/// * the last field is [`crate::common::build_label`].
 pub fn periodic_id(spec: &WorldSpec, ticking: usize, firing: &FiringStats) -> String {
     let plain = spec.shape_id();
     let id = plain.replace("/dirty=0", "/dirty=all");
@@ -448,8 +448,9 @@ pub fn periodic_id(spec: &WorldSpec, ticking: usize, firing: &FiringStats) -> St
          see cannot be put in its id",
     );
     format!(
-        "{id}/app_update/periodic={ticking}/fire={:.2}/mt-dyn",
+        "{id}/app_update/periodic={ticking}/fire={:.2}/{}",
         firing.fired_per_tick,
+        crate::common::build_label(),
     )
 }
 

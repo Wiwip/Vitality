@@ -6,6 +6,17 @@ edition = "2024"
 [features]
 default = ["debug-overlay"]
 debug-overlay = ["dep:vitality_debug"]
+multi_threaded = ["bevy/multi_threaded"]
+dyn = ["bevy/dynamic_linking"]
+# windowed examples; ui pulls default_platform and with it multi_threaded
+examples = [
+    "debug-overlay",
+    "bevy/ui",
+    "bevy/default_font",
+    "bevy/bevy_ui_debug",
+    "bevy/bevy_feathers",
+    "bevy/debug",
+]
 
 [dependencies]
 express-it = { workspace = true }
@@ -27,16 +38,21 @@ criterion = { version = "0.8", features = ["html_reports"] }
 
 [dev-dependencies.bevy]
 workspace = true
-features = [
-    "ui",
-    "bevy_state",
-    "default_font",
-    "dynamic_linking",
-    "bevy_ui_debug",
-    "bevy_feathers",
-    "debug",
-]
+# debug: the bench harness finds Dirty<T> by component name
+features = ["bevy_state", "debug"]
 
 [[bench]]
 name = "bench_systems"
 harness = false
+
+[[example]]
+name = "simple"
+required-features = ["examples"]
+
+[[example]]
+name = "abilities"
+required-features = ["examples"]
+
+[[example]]
+name = "plan"
+required-features = ["examples"]

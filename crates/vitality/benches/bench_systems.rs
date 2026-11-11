@@ -29,15 +29,9 @@
 //! A bench id is `<group>/<WorldSpec::shape_id()>`, so a number never travels without the shape it
 //! came from.
 //!
-//! **Every number this repo can produce is an `mt`/`dyn` build, never `st`/`static`.** In the tree,
-//! `cargo tree --offline -e features -p vitality | grep -c multi_threaded` prints **12** and
-//! `grep -c dynamic_linking` prints **3**: the `[dev-dependencies.bevy]` block of
-//! `crates/vitality/Cargo.toml` (features `ui`, `dynamic_linking`, `debug`, …) unifies with the
-//! library's bevy for every test and bench target, and `ui` → `default_platform` → `multi_threaded` →
-//! `bevy_ecs`/`bevy_tasks`. A `st` label therefore describes a build nobody measured, and BENCH-PLAN
-//! §3's floor row — keyed on `st`, `static` — cannot be satisfied or dismissed from this tree as it
-//! stands; see [`floor_idle_tick`] for what that does to the decision and `.auto/decisions.md` D-22
-//! for the manifest change (protected path, owner's call) that would settle it.
+//! Build labels come from `common::build_label`. Plain `cargo bench` is `st-static`; add
+//! `--features multi_threaded` for `mt-static`, and `--features dyn` only to reproduce pre-2026-11-10
+//! numbers, which were all `mt-dyn` (D-22).
 
 /// The counting allocator of `allocs_per_tick` below. Its `#[global_allocator]` static is declared
 /// here rather than in the module, so each binary that `#[path]`-includes it — this one and

@@ -34,6 +34,16 @@ use vitality::{AttributesPlugin, init_attribute};
 /// Every bench draws from the same seed (BENCH-PLAN §1.6).
 pub const SEED: u64 = 7;
 
+/// The build a number came from: `st`/`mt` from the `multi_threaded` feature, `static`/`dyn` from `dyn`.
+pub fn build_label() -> &'static str {
+    match (cfg!(feature = "multi_threaded"), cfg!(feature = "dyn")) {
+        (false, false) => "st-static",
+        (true, false) => "mt-static",
+        (false, true) => "st-dyn",
+        (true, true) => "mt-dyn",
+    }
+}
+
 /// Attribute property the harness supports. `attribute!` defaults to this.
 type Value = f32;
 
