@@ -211,9 +211,11 @@ impl AttributeRegistry {
         if let Some(id) = self.by_type.get(&TypeId::of::<T>()) {
             return *id;
         }
+        // past the cap there is no index to hand out, so refuse by name before any AttrId exists
         assert!(
             self.infos.len() < AttrSet::CAPACITY,
-            "vitality supports at most {} attributes",
+            "cannot register {}: the attribute registry holds at most {} attributes",
+            pretty_type_name::<T>(),
             AttrSet::CAPACITY
         );
         let id = AttrId(self.infos.len() as u16);
@@ -491,4 +493,69 @@ pub fn scan_base_writes(world: &mut World, mut batch: Local<Vec<(Entity, AttrId)
         scan(world, id, &mut batch);
     }
     world.resource::<ResolveQueue>().dirty_batch(&mut batch);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::attributes::Attribute;
+    use crate::prelude::{ReflectAccessAttribute, ReflectComponent};
+    use bevy::prelude::World;
+
+    fn register_one<T: Attribute>(registry: &mut AttributeRegistry, world: &mut World) {
+        registry.register::<T>(world);
+    }
+
+    macro_rules! cap_pool {
+        ($( $name:ident ),+ $(,)?) => {
+            $( crate::attribute!($name); )+
+
+            /// One entry per type, so the test loops instead of spelling out 129 calls.
+            static REGISTRATION: &[fn(&mut AttributeRegistry, &mut World)] =
+                &[$(register_one::<$name>),+];
+        };
+    }
+
+    cap_pool!(
+        Attr0, Attr1, Attr2, Attr3, Attr4, Attr5, Attr6, Attr7, Attr8, Attr9, Attr10, Attr11,
+        Attr12, Attr13, Attr14, Attr15, Attr16, Attr17, Attr18, Attr19, Attr20, Attr21, Attr22,
+        Attr23, Attr24, Attr25, Attr26, Attr27, Attr28, Attr29, Attr30, Attr31, Attr32, Attr33,
+        Attr34, Attr35, Attr36, Attr37, Attr38, Attr39, Attr40, Attr41, Attr42, Attr43, Attr44,
+        Attr45, Attr46, Attr47, Attr48, Attr49, Attr50, Attr51, Attr52, Attr53, Attr54, Attr55,
+        Attr56, Attr57, Attr58, Attr59, Attr60, Attr61, Attr62, Attr63, Attr64, Attr65, Attr66,
+        Attr67, Attr68, Attr69, Attr70, Attr71, Attr72, Attr73, Attr74, Attr75, Attr76, Attr77,
+        Attr78, Attr79, Attr80, Attr81, Attr82, Attr83, Attr84, Attr85, Attr86, Attr87, Attr88,
+        Attr89, Attr90, Attr91, Attr92, Attr93, Attr94, Attr95, Attr96, Attr97, Attr98, Attr99,
+        Attr100, Attr101, Attr102, Attr103, Attr104, Attr105, Attr106, Attr107, Attr108, Attr109,
+        Attr110, Attr111, Attr112, Attr113, Attr114, Attr115, Attr116, Attr117, Attr118, Attr119,
+        Attr120, Attr121, Attr122, Attr123, Attr124, Attr125, Attr126, Attr127, Attr128
+    );
+
+    /// Attribute 129 has no index to hand out, and the refusal has to name what it refused.
+    /// `catch_unwind` cannot read the payload back here: the dev profile builds with cranelift,
+    /// which lets a caught panic escape the catch, so `should_panic` matches the message.
+    #[test]
+    #[should_panic(
+        expected = "register Attr128: the attribute registry holds at most 128 attributes"
+    )]
+    fn attribute_129_panics_naming_itself_and_the_cap() {
+        assert_eq!(
+            REGISTRATION.len(),
+            AttrSet::CAPACITY + 1,
+            "one type past the cap"
+        );
+        let mut world = World::new();
+        let mut registry = AttributeRegistry::default();
+        for register in &REGISTRATION[..AttrSet::CAPACITY] {
+            register(&mut registry, &mut world);
+        }
+        assert_eq!(
+            registry.len(),
+            AttrSet::CAPACITY,
+            "an app at the cap still registers"
+        );
+        for register in &REGISTRATION[AttrSet::CAPACITY..] {
+            register(&mut registry, &mut world);
+        }
+    }
 }
