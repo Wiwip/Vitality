@@ -134,7 +134,9 @@ pub fn resolver_mode(app: &App) -> ResolverMode {
         .unwrap_or_default()
 }
 
-/// Registers the effect-side systems for an attribute. Pair with `vitality_core::init_core_attribute`.
+/// Registers the effect-side systems for an attribute — in DAG mode that is none at all: the
+/// collapsed nodes `EffectsPlugin::build` installed cover every attribute, and it only installed
+/// them if that build saw this same mode. Pair with `vitality_core::init_core_attribute`.
 pub fn init_effect_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<AttributeModifier<T>>();
     app.add_message::<ApplyAttributeModifierMessage<T>>();

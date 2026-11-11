@@ -83,6 +83,38 @@ fn setup(mut vitality: Vitality) {
 
 Everything runs on `FixedUpdate`. A headless app needs a `TimeUpdateStrategy` that advances time.
 
+## Wiring your own plugin
+
+The contract, with what each break looks like from inside an app, is the `vitality` crate-level doc,
+i.e. the crate's own rustdoc page (`crates/vitality/src/lib.rs`). Not `vitality::AttributesPlugin`:
+that page is a one-liner and holds no contract. Short version:
+
+- Register attributes with `vitality::init_attribute::<T>()` in the plugin's `build`. `Plugin::finish`
+  only runs when the app runner calls `App::finish()`, which `App::update()` never does, and an
+  attribute nobody registered silently applies no modifiers and fires no value-changed events.
+- `AttributesPlugin` comes before anything that calls `init_attribute`; it owns the registry the
+  attribute is written into (that one panics, so it is the easy one).
+- The 128-attribute cap is one counter for the whole app, not one per crate, and vitality's own
+  `Stacks` attribute uses a slot. The 129th registration names itself and panics.
+- `AttrId` is a registration index, so it moves when plugin order moves. Persist the attribute's
+  name, never the id — and keep names unique across crates, because the name is the type's short
+  name and a duplicate panics at build.
+- Set the resolver mode before the plugins are added (`VitalityPlugin::new().resolver(mode)`), and
+  add `EffectsPlugin`. The DAG's apply-path nodes (`resolve_system`, `apply_all_modifier_events`,
+  `scan_base_writes`, `apply_all_periodic_effects`) are installed once by `EffectsPlugin::build` and
+  only for the mode it sees there; `init_effect_attribute` installs none in DAG mode. So an app that
+  skips `EffectsPlugin` never applies anything at all — nothing listens for the apply event — and one
+  that runs `EffectsPlugin::build` under `ResolverMode::PerAttribute` while its attributes register
+  under `ResolverMode::Dag` (add `AttributesPlugin` under `PerAttribute`, insert `ResolverMode::Dag`,
+  then call `init_attribute`) applies no modifier and never fires a periodic effect, even though the
+  effect still reports itself applied. The reverse order is not that case: `Dag` at
+  `EffectsPlugin::build` with the attributes registered under `PerAttribute` runs as a mixed-mode
+  app — vitality's own attributes keep the DAG nodes, the later ones take the per-attribute path —
+  and applies and fires like a plain per-attribute app. That mixed mode runs, but no test pins it.
+  A mode inserted after the plugins are built changes nothing: all three reads of it are at build.
+  Whether that stays a contract or becomes a first-install guard inside
+  `init_effect_attribute` is open (D-52).
+
 ## Performance
 
 `.auto/BENCH-RESULTS.md` has the numbers. The short version: at 10 000 actors with 20 attributes and 3
