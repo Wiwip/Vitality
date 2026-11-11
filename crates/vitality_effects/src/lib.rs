@@ -25,7 +25,7 @@ use crate::modifier::{
     ApplyAttributeModifierMessage, AttributeModifier, ModifierApplies, ModifierOf,
     apply_all_modifier_events, apply_modifier_events, update_modifier_when_dependencies_changed,
 };
-use crate::periodic::apply_periodic_effect;
+use crate::periodic::{PeriodicApplies, apply_all_periodic_effects, apply_periodic_effect};
 use crate::registry::EffectRegistry;
 use crate::stacks::read_add_stack_event;
 use crate::systems::{
@@ -113,6 +113,15 @@ impl Plugin for EffectsPlugin {
                     .in_set(EffectsSet::UpdateCurrentValues)
                     .before(resolver::resolve_system),
             );
+            // one node for every attribute again; the fire on the tick a duration expires still has
+            // to be written, so the expiry that despawns the effect cannot win the tick
+            app.add_systems(
+                FixedUpdate,
+                apply_all_periodic_effects
+                    .in_set(EffectsSet::Prepare)
+                    .after(tick_effect_tickers)
+                    .before(tick_effect_durations),
+            );
         }
     }
 }
@@ -137,15 +146,9 @@ pub fn init_effect_attribute<T: Attribute>(app: &mut App) {
         app.world_mut()
             .get_resource_or_init::<ModifierApplies>()
             .register::<T>();
-        app.add_systems(
-            FixedUpdate,
-            apply_periodic_effect::<T>
-                .in_set(EffectsSet::Prepare)
-                .after(tick_effect_tickers)
-                // the fire on the tick a duration expires still has to be written, so the expiry
-                // that despawns the effect cannot win the tick
-                .before(tick_effect_durations),
-        );
+        app.world_mut()
+            .get_resource_or_init::<PeriodicApplies>()
+            .register::<T>();
         return;
     }
 
