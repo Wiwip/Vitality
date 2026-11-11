@@ -44,6 +44,9 @@ where
 {
 }
 
+/// The `Node` an attribute read compiles to; spelled out it sits over clippy's complexity limit.
+type AttributeNode<A, P, C, Role> = Node<P, C, AttributeVar<A, P, C, Role>>;
+
 pub trait Attribute
 where
     Self: Component<Mutability = Mutable> + Copy + Debug + Display,
@@ -60,28 +63,28 @@ where
     fn set_current_value(&mut self, value: Self::Property);
 
     // Helper to wrap attribute access in an Expression
-    fn src<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C, Source>>
+    fn src<C>() -> AttributeNode<Self, Self::Property, C, Source>
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Source>,
     {
         Self::at::<Source, C>()
     }
-    fn dst<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C, Target>>
+    fn dst<C>() -> AttributeNode<Self, Self::Property, C, Target>
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Target>,
     {
         Self::at::<Target, C>()
     }
-    fn caster<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C, Caster>>
+    fn caster<C>() -> AttributeNode<Self, Self::Property, C, Caster>
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Caster>,
     {
         Self::at::<Caster, C>()
     }
-    fn at<Role: 'static, C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C, Role>>
+    fn at<Role: 'static, C>() -> AttributeNode<Self, Self::Property, C, Role>
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Role>,
@@ -97,8 +100,7 @@ where
             _marker: Default::default(),
         }
     }
-    fn at_base<Role: 'static, C>()
-    -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C, Role>>
+    fn at_base<Role: 'static, C>() -> AttributeNode<Self, Self::Property, C, Role>
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Role>,
@@ -115,7 +117,7 @@ where
         }
     }
 
-    fn add<Role, C: ContextMut>(
+    fn add<Role, C>(
         expr: impl AsExpression<Self::Property, C, Target: Copy + Send + Sync + 'static>,
     ) -> AssignmentStep<
         Self::Property,
@@ -148,7 +150,7 @@ where
         }
     }
 
-    fn sub<Role, C: ContextMut>(
+    fn sub<Role, C>(
         expr: impl AsExpression<Self::Property, C, Target: Copy + Send + Sync + 'static>,
     ) -> AssignmentStep<
         Self::Property,
@@ -181,7 +183,7 @@ where
         }
     }
 
-    fn set<Role, C: ContextMut>(
+    fn set<Role, C>(
         expr: impl AsExpression<Self::Property, C, Target: Copy + Send + Sync + 'static>,
     ) -> AssignmentStep<
         Self::Property,
@@ -459,10 +461,7 @@ pub struct AttributeVar<T, N, C: Context, Role = Source> {
 }
 impl<T, N, C: Context, Role> Clone for AttributeVar<T, N, C, Role> {
     fn clone(&self) -> Self {
-        Self {
-            fetch_fn: self.fetch_fn,
-            _marker: Default::default(),
-        }
+        *self
     }
 }
 impl<T: 'static, N: 'static, C: Context + 'static, Role: 'static> Expr<N, C>

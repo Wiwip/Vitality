@@ -131,7 +131,7 @@ fn resolve<T: Attribute>(
             let view = entity.as_readonly();
             let bounds = unsafe { view.get_by_id(ids.clamp_bounds)?.deref::<ClampBounds<T>>() };
             let context = ActorExprContext {
-                actor_context: view.clone(),
+                actor_context: view,
             };
             (bounds.min.eval(&context), bounds.max.eval(&context))
         };
@@ -309,8 +309,8 @@ impl AttributeRegistry {
                 .map(|i| self.infos[i].name.clone())
                 .collect();
             warn!("attribute dependency cycle through {names:?}; extra passes will settle it");
-            for i in 0..n {
-                if indegree[i] > 0 {
+            for (i, &left) in indegree.iter().enumerate() {
+                if left > 0 {
                     order.push(AttrId(i as u16));
                 }
             }
@@ -369,6 +369,9 @@ pub struct Mark {
     pub regather: AttrSet,
 }
 
+/// The tuple [`ResolveQueue::take`] returns; spelled out it sits over clippy's complexity limit.
+type PendingDrain = (Vec<(Entity, Mark)>, Vec<(Entity, AttrId)>);
+
 /// Work for the next resolve. Observers and systems push here; the resolver drains it once a tick.
 #[derive(Resource, Default)]
 pub struct ResolveQueue {
@@ -414,7 +417,7 @@ impl ResolveQueue {
     }
 
     /// Drains both queues: marks, then plain dirty pairs.
-    pub fn take(&self) -> (Vec<(Entity, Mark)>, Vec<(Entity, AttrId)>) {
+    pub fn take(&self) -> PendingDrain {
         (
             std::mem::take(&mut *self.pending.lock().unwrap_or_else(|err| err.into_inner())),
             std::mem::take(&mut *self.dirty.lock().unwrap_or_else(|err| err.into_inner())),
@@ -453,14 +456,16 @@ impl ModifierTable {
     }
 }
 
+type BaseScanQuery<T> = QueryState<
+    (Entity, &'static T, Option<&'static ModifierTable>),
+    (Changed<T>, With<crate::attributes::ManageAttributes>),
+>;
+
 /// The scan query of one attribute, kept as a resource so the collapsed scan pays nothing per
 /// attribute beyond building it once.
 #[derive(Resource)]
 struct BaseScanState<T: Attribute> {
-    actors: QueryState<
-        (Entity, &'static T, Option<&'static ModifierTable>),
-        (Changed<T>, With<crate::attributes::ManageAttributes>),
-    >,
+    actors: BaseScanQuery<T>,
 }
 
 /// Marks `T` dirty on actors whose base moved since the last scan. A write that leaves the

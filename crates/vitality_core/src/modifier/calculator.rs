@@ -152,7 +152,7 @@ impl<T: Attribute> AttributeCalculator<T> {
     }
 
     pub fn from_op(operation: ModOp, value: T::Property) -> Self {
-        let calculator = match operation {
+        match operation {
             ModOp::Set => Self {
                 set: Some(value),
                 ..default()
@@ -173,8 +173,7 @@ impl<T: Attribute> AttributeCalculator<T> {
                 multiplier: value.as_(),
                 ..default()
             },
-        };
-        calculator
+        }
     }
 }
 
