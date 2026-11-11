@@ -99,6 +99,13 @@ impl Plugin for EffectsPlugin {
                     resolver::resolve_system.in_set(EffectsSet::UpdateCurrentValues),
                 )
                 .add_observer(resolver::mark_actor_dirty_dag);
+            // one node for every attribute, and it has to see a base write before the walk does
+            app.add_systems(
+                FixedUpdate,
+                scan_base_writes
+                    .in_set(EffectsSet::UpdateCurrentValues)
+                    .before(resolver::resolve_system),
+            );
         }
     }
 }
@@ -127,9 +134,6 @@ pub fn init_effect_attribute<T: Attribute>(app: &mut App) {
                     .in_set(EffectsSet::Prepare)
                     .after(tick_effect_tickers),
                 apply_modifier_events::<T>.in_set(EffectsSet::UpdateBaseValues),
-                scan_base_writes::<T>
-                    .in_set(EffectsSet::UpdateCurrentValues)
-                    .before(resolver::resolve_system),
             ),
         );
         return;

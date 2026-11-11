@@ -4,7 +4,7 @@
 //! nodes per attribute**, and `world.components().len()` is **140 at 2 and 340 at 22 → 10 components
 //! per attribute**. Both baselines are exactly those measured slopes — no headroom, so the next change
 //! to `init_core_attribute` moves a number here rather than a guess. The slope matches the 6 nodes per
-//! attribute `AUTO-REPORT-bench-2026-11-07.md` §1 quotes for the floor; that run's intercept sits 2
+//! attribute `.auto/AUTO-REPORT-bench-2026-11-07.md` §1 quotes for the floor; that run's intercept sits 2
 //! nodes higher (22 at two attributes, 20 here), and this file chases neither — the slope both runs
 //! agree on is the per-attribute cost, and the intercept pinned below is this file's own 8 nodes.
 //!
@@ -159,8 +159,8 @@ fn registration_cost_per_attribute_is_pinned() {
     );
 }
 
-/// The DAG resolver keeps three `FixedUpdate` nodes per attribute (periodic, instant base writes,
-/// base-write scan); the walk itself is one system for every attribute.
+/// The DAG resolver keeps two `FixedUpdate` nodes per attribute (periodic, instant base writes);
+/// both the base-write scan and the walk itself are one system for every attribute.
 #[test]
 fn dag_registration_cost_per_attribute_is_pinned() {
     let systems = |attributes: usize| {
@@ -178,7 +178,7 @@ fn dag_registration_cost_per_attribute_is_pinned() {
     };
     let per_attr = (systems(WIDE) - systems(NARROW)) / STEP;
     assert_eq!(
-        per_attr, 3,
-        "the DAG resolver should cost three nodes per attribute"
+        per_attr, 2,
+        "the DAG resolver should cost two nodes per attribute"
     );
 }

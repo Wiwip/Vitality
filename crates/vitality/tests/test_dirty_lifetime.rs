@@ -2,7 +2,7 @@
 //! and both are now read the same way: *never spreads* still holds, and *never decays* was the bug
 //! D-34 removed (`.auto/decisions.md`, one line at `crates/vitality_core/src/math.rs`), so the
 //! `still dirty` asserts here were inverted in place rather than deleted — see
-//! `AUTO-REPORT-bench-2026-11-07.md` §2 for the probe that settled the old behaviour.
+//! `.auto/AUTO-REPORT-bench-2026-11-07.md` §2 for the probe that settled the old behaviour.
 //!
 //! The mechanism the old version had, in the order it fired:
 //!

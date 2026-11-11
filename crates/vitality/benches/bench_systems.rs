@@ -1,4 +1,4 @@
-//! Criterion entry point for the vitality resolver benches (BENCH-PLAN.md).
+//! Criterion entry point for the vitality resolver benches (`.auto/BENCH-PLAN.md`).
 //!
 //! Only this one bench target exists (`[[bench]] name = "bench_systems", harness = false`), and
 //! cargo turns any *other* top-level `benches/*.rs` into a `harness = true` target that cannot
@@ -196,7 +196,7 @@ fn app_update(c: &mut Criterion) {
 ///
 /// That slope is 2× BENCH-PLAN §3's 2 µs/attr/tick row, so the row's decision — collapse the systems
 /// behind an erased op table regardless of what `recompute/all_attrs` says — reads as met. Read it with
-/// the caveat: the row is keyed on `st`/`static` (`BENCH-PLAN.md:146`), a build this crate cannot
+/// the caveat: the row is keyed on `st`/`static` (`.auto/BENCH-PLAN.md:146`), a build this crate cannot
 /// produce without a manifest edit (the dev-dependency bevy turns `multi_threaded` and
 /// `dynamic_linking` on for every bench, module doc above), so that 2× is one `mt`/`dyn` measurement
 /// held against a threshold set for a build nobody can measure here. Decision D-36 measured the run-to-run
@@ -1365,7 +1365,7 @@ fn scenario_ticks(c: &mut Criterion) {
 
 /// P-12, BENCH-PLAN §2C `leaf/expr_depth` + `leaf/typed_vs_hashmap`: one expression evaluated
 /// through `Arc<dyn Expr>`, through its concrete type, and as typemap lookups. Differences under
-/// ~10 % are noise on this box (D-36). Results: `BENCH-RESULTS.md`, P-12 table.
+/// ~10 % are noise on this box (D-36). Results: `.auto/BENCH-RESULTS.md`, P-12 table.
 fn leaf_expr_shape(c: &mut Criterion) {
     let fixture = expr::expr_fixture();
     let mut group = c.benchmark_group("leaf/expr_shape");

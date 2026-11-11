@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-//! Family B (`BENCH-PLAN.md` §2B): is the effect walk repeated once per attribute (T2)?
+//! Family B (`.auto/BENCH-PLAN.md` §2B): is the effect walk repeated once per attribute (T2)?
 //!
 //! One actor, A attributes, E permanent effects x 1 modifier each, and the only thing the two groups
 //! change is how many of the A attributes carry a `Dirty<T>` when the timed tick runs: one

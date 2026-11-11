@@ -100,6 +100,8 @@ pub struct AttrInfo {
     /// Modifier entities reading this attribute on the actor.
     pub dependents_of: fn(&FilteredEntityRef, AttrComponents, &mut Vec<Entity>),
     pub notify: fn(&mut Commands, Entity, f64, f64),
+    /// Actors of this attribute whose base moved since the last scan, for [`scan_base_writes`].
+    pub base_write_scan: fn(&mut World, AttrId, &mut Vec<(Entity, AttrId)>),
 }
 
 /// Component ids of an attribute and the components that ride along with it, resolved once.
@@ -228,6 +230,7 @@ impl AttributeRegistry {
             resolve: resolve::<T>,
             dependents_of: dependents_of::<T>,
             notify: notify::<T>,
+            base_write_scan: base_write_scan::<T>,
         });
         self.by_type.insert(TypeId::of::<T>(), id);
         self.readers.push(Vec::new());
@@ -448,25 +451,44 @@ impl ModifierTable {
     }
 }
 
-/// Marks `T` dirty on actors whose base moved since the last resolve. A write that leaves the
-/// base where it was, including the resolver's own current-value write, costs a compare.
-pub fn scan_base_writes<T: Attribute>(
-    actors: Query<
-        (Entity, &T, Option<&ModifierTable>),
+/// The scan query of one attribute, kept as a resource so the collapsed scan pays nothing per
+/// attribute beyond building it once.
+#[derive(Resource)]
+struct BaseScanState<T: Attribute> {
+    actors: QueryState<
+        (Entity, &'static T, Option<&'static ModifierTable>),
         (Changed<T>, With<crate::attributes::ManageAttributes>),
     >,
-    registry: Res<AttributeRegistry>,
-    queue: Res<ResolveQueue>,
-    mut batch: Local<Vec<(Entity, AttrId)>>,
-) {
-    let Some(id) = registry.id_of(TypeId::of::<T>()) else {
-        return;
-    };
-    for (entity, attribute, table) in &actors {
-        let base: f64 = attribute.base_value().as_();
-        if table.and_then(|table| table.base(id)) != Some(base) {
-            batch.push((entity, id));
-        }
+}
+
+/// Marks `T` dirty on actors whose base moved since the last scan. A write that leaves the
+/// base where it was, including the resolver's own current-value write, costs a compare.
+fn base_write_scan<T: Attribute>(world: &mut World, id: AttrId, out: &mut Vec<(Entity, AttrId)>) {
+    if !world.contains_resource::<BaseScanState<T>>() {
+        let actors = world.query_filtered();
+        world.insert_resource(BaseScanState::<T> { actors });
     }
-    queue.dirty_batch(&mut batch);
+    world.resource_scope(|world, mut state: Mut<BaseScanState<T>>| {
+        for (entity, attribute, table) in state.actors.iter(world) {
+            let base: f64 = attribute.base_value().as_();
+            if table.and_then(|table| table.base(id)) != Some(base) {
+                out.push((entity, id));
+            }
+        }
+    });
+}
+
+/// One node for every attribute: asks each registered attribute for the actors whose base moved,
+/// so the base-write scan does not add a schedule node per attribute.
+pub fn scan_base_writes(world: &mut World, mut batch: Local<Vec<(Entity, AttrId)>>) {
+    let scans: Vec<_> = world
+        .resource::<AttributeRegistry>()
+        .infos()
+        .iter()
+        .map(|info| (info.id, info.base_write_scan))
+        .collect();
+    for (id, scan) in scans {
+        scan(world, id, &mut batch);
+    }
+    world.resource::<ResolveQueue>().dirty_batch(&mut batch);
 }

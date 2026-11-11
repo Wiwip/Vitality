@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-//! Per-actor identity (`AUTO-REPORT-bench-2026-11-07.md` §4, last bullet).
+//! Per-actor identity (`.auto/AUTO-REPORT-bench-2026-11-07.md` §4, last bullet).
 //!
 //! [`common::prepare_world`](crate::common) builds one `ActorBuilder` template and
 //! `SpawnActorCommand` (`vitality/src/actors.rs:64-68`) replays its `builder_actions` for every

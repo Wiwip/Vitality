@@ -85,6 +85,6 @@ Everything runs on `FixedUpdate`. A headless app needs a `TimeUpdateStrategy` th
 
 ## Performance
 
-`BENCH-RESULTS.md` has the numbers. The short version: at 10 000 actors with 20 attributes and 3
+`.auto/BENCH-RESULTS.md` has the numbers. The short version: at 10 000 actors with 20 attributes and 3
 effects each, moving 10 % of the actors' attributes costs about 1.2 ms a tick single-threaded,
 and moving every attribute of every actor costs about 6 ms with bevy's `multi_threaded` feature.
