@@ -6,7 +6,7 @@
 //! The row §2E asks for is ns/tick against A on a shape with T ticking effects and about one firing
 //! per tick, and the reason A belongs on that axis at all is the system's signature: on v1
 //! `init_effect_attribute` puts one `apply_periodic_effect::<T>` into `FixedUpdate` *per attribute
-//! type* (`vitality_effects/src/lib.rs:158-160`), and that system's `effects` query is not filtered
+//! type* (`vitality_effects/src/lib.rs:160-162`), and that system's `effects` query is not filtered
 //! by `T` (`vitality_effects/src/periodic.rs:154-165`) — only the `modifiers` fetch one line below it
 //! is (`:166`). So every ticking effect entity is visited once per registered attribute and tested
 //! with `timer.just_finished()` each time, and growth against A is the same walk multiplication T2
@@ -14,7 +14,7 @@
 //!
 //! Under `VITALITY_RESOLVER=dag` the multiplication is still there but it is not a schedule
 //! multiplication any more: a registered attribute adds no systems
-//! (`vitality_effects/src/lib.rs:142-152`), just an entry in `PeriodicApplies`, and the app's single
+//! (`vitality_effects/src/lib.rs:144-153`), just an entry in `PeriodicApplies`, and the app's single
 //! `apply_all_periodic_effects` node loops those entries
 //! (`vitality_effects/src/periodic.rs:144-149`). So the same per-attribute walk of the ticking
 //! entities has to be read as one collapsed node walking A times: the per-attribute `PeriodicState`
