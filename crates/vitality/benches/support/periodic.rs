@@ -4,23 +4,39 @@
 //! the attribute count grows.
 //!
 //! The row §2E asks for is ns/tick against A on a shape with T ticking effects and about one firing
-//! per tick, and the reason A belongs on that axis at all is the system's signature:
+//! per tick, and the reason A belongs on that axis at all is the system's signature: on v1
 //! `init_effect_attribute` puts one `apply_periodic_effect::<T>` into `FixedUpdate` *per attribute
-//! type* (`vitality_effects/src/lib.rs:76-88`), and that system's effect query is not filtered by `T`
-//! — only the `modifiers: Query<&AttributeModifier<T>>` fetch is
-//! (`vitality_effects/src/periodic.rs:12-30`). So every ticking effect entity is visited once per
-//! registered attribute and tested with `timer.just_finished()` each time, and growth against A is the
-//! same walk multiplication T2 found on the modifier path, on a second code path.
+//! type* (`vitality_effects/src/lib.rs:158-160`), and that system's `effects` query is not filtered
+//! by `T` (`vitality_effects/src/periodic.rs:154-165`) — only the `modifiers` fetch one line below it
+//! is (`:166`). So every ticking effect entity is visited once per registered attribute and tested
+//! with `timer.just_finished()` each time, and growth against A is the same walk multiplication T2
+//! found on the modifier path, on a second code path.
+//!
+//! Under `VITALITY_RESOLVER=dag` the multiplication is still there but it is not a schedule
+//! multiplication any more: a registered attribute adds no systems
+//! (`vitality_effects/src/lib.rs:142-152`), just an entry in `PeriodicApplies`, and the app's single
+//! `apply_all_periodic_effects` node loops those entries
+//! (`vitality_effects/src/periodic.rs:144-149`). So the same per-attribute walk of the ticking
+//! entities has to be read as one collapsed node walking A times: the per-attribute `PeriodicState`
+//! it drives carries the same unfiltered effect fetch
+//! (`vitality_effects/src/periodic.rs:36-47`) next to the same `AttributeModifier<T>` one (`:48`),
+//! so both modes visit every ticking entity A times and only v1 pays a schedule node for each.
 //!
 //! ## The driver is `tick`, never `run_fixed_tick`
 //!
 //! The shape is driven with [`common::tick`] — a whole `app.update()` — and **not** with
-//! [`common::run_fixed_tick`]. `run_fixed_tick` is `World::run_schedule(FixedUpdate)`: it advances no
-//! clock and it does not run `tick_effect_tickers`, which lives in `Update`
-//! (`vitality_effects/src/lib.rs:63`, `vitality_effects/src/timing.rs:48-55`), so no `EffectTicker`
-//! ever reaches `just_finished()` and the shape fires zero times under it — `common.rs:379-385` says
-//! the same thing. Do not "fix" the group back onto the cheaper driver: it would time an idle scan
-//! wearing a `periodic` label, and `tests/test_bench_periodic.rs` goes red when it happens.
+//! [`common::run_fixed_tick`]. `run_fixed_tick` is `World::run_schedule(FixedUpdate)`, so it does
+//! reach `tick_effect_tickers` (`vitality_effects/src/lib.rs:81-90`,
+//! `vitality_effects/src/timing.rs:49-56`); what it never does is advance the clock, so `Time::delta()`
+//! keeps the 15 625 µs the last `app.update()` charged it under `FixedTimesteps(1)`
+//! (`common.rs:335`) and every `EffectTicker` steps by that stale delta. Measured here by swapping
+//! the driver of [`quiet_window`] / [`firing_stats`] for it: the shape fires just the same — the guard
+//! prints one identical rate under both drivers, because a stale 15 625 µs is exactly one fixed
+//! timestep — and `tests/test_bench_periodic.rs` stays green. So the reason to keep `tick` is not that
+//! the cheaper driver is silent, it is that a stale delta is not a tick anybody asked for and none of
+//! the `Main`-schedule work a frame carries runs around it: ns taken under `run_fixed_tick` is not
+//! comparable with this group's ns/tick. The guard test cannot see the swap, so do not read its green
+//! as licence to make it.
 //!
 //! A tick of this shape is also a whole fixed tick — resolver, timers, and bevy's own per-frame work
 //! (`AssetPlugin` and friends included, because `app.update()` runs `Main`, not `FixedMain` alone).
@@ -32,8 +48,9 @@
 //!
 //! `TimeUpdateStrategy::FixedTimesteps(1)` (set by [`common::build_app_with`]) makes one
 //! [`common::tick`] advance `Time` by exactly one fixed timestep (15 625 µs, bevy's default) and run
-//! `FixedUpdate` once, and bevy's main schedule runs `FixedUpdate` *before* `Update` — `First,
-//! PreUpdate, RunFixedMainLoop, Update, PostUpdate, Last` (`bevy_app-0.20.1/src/main_schedule.rs:225`).
+//! `FixedUpdate` once, and bevy's default main schedule runs `RunFixedMainLoop` — inside which
+//! `FixedMain` runs `FixedUpdate` (`bevy_time-0.20.1/src/fixed.rs:250`) — before `Update`
+//! (`bevy_app-0.20.1/src/main_schedule.rs:224-232` carries all seven labels; only their order matters here).
 //! So the `just_finished()` a timer sets in frame N's `Update` is read by `apply_periodic_effect` in
 //! frame N+1's `FixedUpdate`: a firing is applied one tick after its timer wraps (measured at this tip on
 //! a fresh a=1 shape: first wrap on tick 32, first value move on tick 33). Two consequences this module
@@ -51,7 +68,7 @@
 //!
 //! [`common::prepare_world`] builds each effect as
 //! `EffectBuilder::every_second_permanently(rng.random_range(0.5..1.5))` when its coin lands
-//! (`common.rs:334-341`), so a period is 0.5–1.5 s = [`MIN_PERIOD_TICKS`]–[`MAX_PERIOD_TICKS`] fixed
+//! (`common.rs:365-372`), so a period is 0.5–1.5 s = [`MIN_PERIOD_TICKS`]–[`MAX_PERIOD_TICKS`] fixed
 //! ticks: one instance fires about once every 64 ticks, so "one firing per tick" is an *aggregate*
 //! property of ~64 instances, not a property of any one effect.
 //!
@@ -61,7 +78,8 @@
 //! [`PERIODIC_TICKING_FRACTION`] the seed gives 59 ticking and 61 permanent effects on every point of the
 //! grid (measured: the same 59 at a=1, a=5 and a=20 — the attribute an amount lands on is drawn after the
 //! coin, so A does not move the coin), and [`FiringStats`] then measures the rate that shape actually runs
-//! at — 1.043 firings per tick at this tip — rather than the one 59/64 predicts.
+//! at rather than the one 59/64 predicts. The measured figure is not repeated here: [`point_line`] prints
+//! it beside the id of every point the group runs, and [`FIRED_PER_TICK_BAND`] is what bounds it.
 //!
 //! Two numbers come out of the window, because one is not enough:
 //!
@@ -86,9 +104,12 @@ use bevy::prelude::*;
 use std::time::Duration;
 use vitality::effect::{AppliedEffects, EffectTicker};
 
-/// The A axis of §2E: attribute types registered, i.e. how many copies of `apply_periodic_effect` walk
-/// the effect entities. The same three points `recompute/*` uses, and 20 is the deepest the default
-/// pool serves without declaring a second pool (`common.rs`).
+/// The A axis of §2E: attribute types registered. On v1 that is how many copies of
+/// `apply_periodic_effect` walk the effect entities; under `VITALITY_RESOLVER=dag` it is how many
+/// entries the single `apply_all_periodic_effects` loops (see the module doc), so the axis means the
+/// same walk in both modes but only v1 pays a schedule node for each point. The same three points
+/// `recompute/*` uses, and 20 is the deepest the default pool serves without declaring a second pool
+/// (`common.rs`).
 pub const PERIODIC_ATTRS: [usize; 3] = [1, 5, 20];
 
 /// Effects built per actor. The coin lands on roughly half of them, so this is about twice the T the
@@ -133,10 +154,10 @@ pub const WARM_UP_TICKS: usize = 128;
 /// probe is milliseconds.
 pub const RATE_TICKS: usize = 512;
 
-/// Band for [`FiringStats::fired_per_tick`], the linear measure. The row claims ~1 firing per tick and
-/// measures 1.043 at this tip; the upper bound is what "every effect ticking" trips (that shape measures
-/// 2.061 firings per tick), and the lower bound is what a frozen clock or a world of permanent effects
-/// trips (both measure 0.0).
+/// Band for [`FiringStats::fired_per_tick`], the linear measure. It is what pins the rate the id
+/// quotes — [`point_line`] prints the measured figure per run and no prose here repeats it. The upper
+/// bound is what "every effect ticking" trips (that shape measures 2.061 firings per tick), and the
+/// lower bound is what a frozen clock or a world of permanent effects trips (both measure 0.0).
 pub const FIRED_PER_TICK_BAND: (f64, f64) = (0.55, 1.55);
 
 /// Band for [`FiringStats::moved_ticks`] / window, the saturating measure — 0.658 at this tip (337 of 512
@@ -431,7 +452,7 @@ pub fn mean_firing_amount(plan: &[EffectPlan]) -> f64 {
 ///   field names the marks the shape is *handed* at setup, not what it keeps: a resolve writes only when
 ///   the value it yields differs (`recompute.rs`), so the old ramp (measured first full set on tick
 ///   33/43/85 for A=1/5/20, then every attribute dirty forever) is gone — the residue at the end of a
-///   firing window is only the attributes the last firings moved, measured 3 of 20 at a=20. What still
+///   firing window is only the attributes the last firings moved; the gate test prints it. What still
 ///   holds is that the marks do not move sideways onto attributes that never fired, which is what B-4's
 ///   `marks_decay_and_never_spread` asserts. The gate test re-reads both halves: the residue after the
 ///   firing window, and an all-marked shape of the same spec draining to zero inside

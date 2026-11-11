@@ -17,16 +17,23 @@ use std::collections::VecDeque;
 use vitality::actors::{Actor, SpawnActorCommand};
 use vitality::effect::definition::EffectDef;
 use vitality::effect::modifier::{EffectSubject, ModOp};
-use vitality::effect::{ApplyEffectEvent, Effect, EffectTargeting};
+use vitality::effect::{ApplyEffectEvent, Effect, EffectStackingPolicy, EffectTargeting};
 use vitality::prelude::*;
+use vitality::tags::ChangeTag;
 
-use crate::common::{Attr0, Attr1, Attr2, Attr3};
+use crate::common::{Attr0, Attr1, Attr2, Attr3, Attr4, Attr5, Attr6, Attr7, Attr8};
 
 /// Attributes per actor in every scenario; the owner's target shape.
 pub const ATTRIBUTES: usize = 20;
 pub const EFFECTS_PER_ACTOR: usize = 3;
 /// Settling ticks after the build, so the startup fold is not in the first sample.
 pub const SETTLE_TICKS: usize = 4;
+/// High enough that no run reaches it, so `stack_add` measures the add path and never the clamped
+/// no-op a capped stack takes instead.
+const STACK_CAP: u32 = u32::MAX;
+
+vitality::tag!(Burning);
+vitality::tag!(Immune);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Workload {
@@ -48,10 +55,20 @@ pub enum Workload {
     Combat,
     /// 5 % of the actors despawned and as many spawned per tick.
     Spawn,
+    /// A permanent buff re-applied to 10 % of the actors per tick, each hit adding a stack.
+    StackAdd,
+    /// A buff on a fixed 10 % re-applied every tick, so the refresh is what keeps it up.
+    StackRefresh,
+    /// An instant combo on 20 % of the actors per tick that only lands on the tagged half.
+    TagRequired,
+    /// The same instant combo, blocked on the half the immunity tag covers.
+    Immunity,
+    /// A buff on 10 % of the actors per tick, sized from a value captured at apply.
+    Snapshot,
 }
 
 impl Workload {
-    pub const ALL: [Workload; 9] = [
+    pub const ALL: [Workload; 14] = [
         Workload::Idle,
         Workload::Steady,
         Workload::Storm,
@@ -61,6 +78,11 @@ impl Workload {
         Workload::BuffChurn,
         Workload::Combat,
         Workload::Spawn,
+        Workload::StackAdd,
+        Workload::StackRefresh,
+        Workload::TagRequired,
+        Workload::Immunity,
+        Workload::Snapshot,
     ];
 
     pub fn name(self) -> &'static str {
@@ -74,6 +96,11 @@ impl Workload {
             Workload::BuffChurn => "buff_churn",
             Workload::Combat => "combat",
             Workload::Spawn => "spawn",
+            Workload::StackAdd => "stack_add",
+            Workload::StackRefresh => "stack_refresh",
+            Workload::TagRequired => "tag_required",
+            Workload::Immunity => "immunity",
+            Workload::Snapshot => "snapshot",
         }
     }
 }
@@ -97,6 +124,8 @@ pub struct ScenarioWorld {
     caster: Option<Entity>,
     effect: Option<Handle<EffectDef>>,
     spawned: VecDeque<Entity>,
+    /// The actors `StackRefresh` hits every tick, so one instance is the one being refreshed.
+    window: Vec<Entity>,
 }
 
 pub fn build(workload: Workload, actors: usize) -> ScenarioWorld {
@@ -120,6 +149,7 @@ pub fn build(workload: Workload, actors: usize) -> ScenarioWorld {
         caster: None,
         effect: None,
         spawned: actor_list.iter().copied().collect(),
+        window: Vec::new(),
     };
 
     match workload {
@@ -158,6 +188,64 @@ pub fn build(workload: Workload, actors: usize) -> ScenarioWorld {
                     .build(),
             ));
         }
+        Workload::StackAdd => {
+            world.effect = Some(add_effect(
+                &mut world.app,
+                EffectBuilder::permanent()
+                    .modify::<Attr4>(2.0, ModOp::Add, EffectSubject::Target)
+                    .with_stacking_policy(EffectStackingPolicy::Add {
+                        count: 1,
+                        max_stack: STACK_CAP,
+                    })
+                    .build(),
+            ));
+        }
+        Workload::StackRefresh => {
+            let timestep = world.app.world().resource::<Time<Fixed>>().timestep();
+            world.window = actor_list[..actor_list.len() / 10].to_vec();
+            // long enough to outlive the settle, short enough for the guard test to outlast it
+            world.effect = Some(add_effect(
+                &mut world.app,
+                EffectBuilder::for_seconds(timestep.as_secs_f32() * (SETTLE_TICKS as f32 + 3.0))
+                    .modify::<Attr5>(3.0, ModOp::Add, EffectSubject::Target)
+                    .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
+                    .build(),
+            ));
+            let handle = world.effect.clone().expect("just added");
+            let window = world.window.clone();
+            world.queue_apply(&handle, &window);
+            world.app.world_mut().flush();
+        }
+        Workload::TagRequired => {
+            grant_every_other::<Burning>(&mut world.app, &actor_list);
+            world.effect = Some(add_effect(
+                &mut world.app,
+                EffectBuilder::instant()
+                    .requires_tag::<Burning>()
+                    .modify::<Attr6>(-2.0, ModOp::Add, EffectSubject::Target)
+                    .build(),
+            ));
+        }
+        Workload::Immunity => {
+            grant_every_other::<Immune>(&mut world.app, &actor_list);
+            world.effect = Some(add_effect(
+                &mut world.app,
+                EffectBuilder::instant()
+                    .blocked_by_tag::<Immune>()
+                    .modify::<Attr7>(-2.0, ModOp::Add, EffectSubject::Target)
+                    .build(),
+            ));
+        }
+        Workload::Snapshot => {
+            let timestep = world.app.world().resource::<Time<Fixed>>().timestep();
+            world.effect = Some(add_effect(
+                &mut world.app,
+                // three ticks, plus the two the guard test spends proving the value does not follow
+                EffectBuilder::for_seconds(timestep.as_secs_f32() * (SETTLE_TICKS as f32 + 1.0))
+                    .modify_snapshot::<Attr8>(Attr1::src(), ModOp::Add, EffectSubject::Target)
+                    .build(),
+            ));
+        }
         _ => {}
     }
 
@@ -169,6 +257,19 @@ pub fn build(workload: Workload, actors: usize) -> ScenarioWorld {
 
 fn add_effect(app: &mut App, def: EffectDef) -> Handle<EffectDef> {
     app.world_mut().resource_mut::<Assets<EffectDef>>().add(def)
+}
+
+/// Grants `T` to every other actor, so a tag rule splits the world into two halves the guard test
+/// can tell apart while both halves keep taking applies.
+fn grant_every_other<T: Component + Default>(app: &mut App, actors: &[Entity]) {
+    let world = app.world_mut();
+    for &actor in actors.iter().step_by(2) {
+        let mut commands = world.commands();
+        commands
+            .entity(actor)
+            .queue_silenced(ChangeTag::grant(TagSpec::of::<T>()));
+    }
+    world.flush();
 }
 
 impl ScenarioWorld {
@@ -232,16 +333,10 @@ impl ScenarioWorld {
                     10
                 };
                 let handle = self.effect.clone().expect("workload has an effect");
-                let world = self.app.world_mut();
-                for _ in 0..n / share {
-                    let target = self.actors[self.rng.random_range(0..n)];
-                    world.trigger(ApplyEffectEvent {
-                        entity: target,
-                        targeting: EffectTargeting::new(target, target),
-                        handle: handle.clone(),
-                    });
-                }
-                world.flush();
+                let targets: Vec<Entity> = (0..n / share)
+                    .map(|_| self.actors[self.rng.random_range(0..n)])
+                    .collect();
+                self.queue_apply(&handle, &targets);
             }
             Workload::Spawn => {
                 let count = (n / 20).max(1);
@@ -265,12 +360,62 @@ impl ScenarioWorld {
                     });
                     self.spawned.push_back(entity.id());
                 }
-                world.flush();
+            }
+            Workload::StackAdd | Workload::Snapshot => {
+                let handle = self.effect.clone().expect("workload has an effect");
+                let window = self.round_robin(n / 10);
+                self.queue_apply(&handle, &window);
+            }
+            Workload::StackRefresh => {
+                let handle = self.effect.clone().expect("workload has an effect");
+                let window = self.window.clone();
+                self.queue_apply(&handle, &window);
+            }
+            Workload::TagRequired | Workload::Immunity => {
+                let handle = self.effect.clone().expect("workload has an effect");
+                let window = self.round_robin(n / 5);
+                self.queue_apply(&handle, &window);
             }
         }
     }
 
+    /// `count` actors from the round-robin cursor, which this advances.
+    fn round_robin(&mut self, count: usize) -> Vec<Entity> {
+        let n = self.actors.len();
+        let picked: Vec<Entity> = (0..count)
+            .map(|i| self.actors[(self.cursor + i) % n])
+            .collect();
+        self.cursor += count;
+        picked
+    }
+
+    /// Queues one self-targeted apply per actor, deferred: `World::trigger` dispatches its observers
+    /// inline (`bevy_ecs-0.20.1/src/observer/mod.rs:63-69`), so only a command-queue trigger leaves
+    /// the tag test, the condition eval and the stacking decision for `tick` to time.
+    fn queue_apply(&mut self, handle: &Handle<EffectDef>, targets: &[Entity]) {
+        let world = self.app.world_mut();
+        let mut commands = world.commands();
+        for &target in targets {
+            commands.trigger(ApplyEffectEvent {
+                entity: target,
+                targeting: EffectTargeting::new(target, target),
+                handle: handle.clone(),
+            });
+        }
+    }
+
+    /// The timed unit: one fixed tick, plus the flush that decides *where* this tick's input lands.
+    /// Under the dag resolver it is not what keeps the queued apply inside the window — bevy flushes
+    /// the command queue after every exclusive system
+    /// (`bevy_ecs-0.20.1/src/system/function_system.rs:738`) and `resolve_system` is one, so the
+    /// applies land either way and deleting this flush leaves every scenario guard green. What the
+    /// flush pins is the place: the input is in before any of the tick's systems run, instead of
+    /// mid-tick at whatever exclusive system drains the queue first. A same-tick realism and
+    /// determinism choice, not a measurement boundary.
     pub fn tick(&mut self) {
+        // the applies and spawns `drive` queued land here: a tick that started after they were
+        // applied would time an already-settled world.
+        self.app.world_mut().flush();
         tick(&mut self.app);
     }
 

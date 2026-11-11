@@ -1,5 +1,5 @@
-//! B-3 (BENCH-PLAN §2E): the `periodic/tick_scan` shape really fires about one effect per tick, and
-//! only when the shape is driven by `common::tick` — a whole `app.update()`.
+//! B-3 (BENCH-PLAN §2E): the `periodic/tick_scan` shape really fires about one effect per tick on the
+//! driver the group times — `common::tick`, a whole `app.update()`.
 //!
 //! The claim is checked on *applied results*: the actor's attribute values are read across windows of
 //! `common::tick` calls and the ticks that moved a value are counted. Nothing here reads
@@ -13,9 +13,12 @@
 //! * **the rate**: `fired_per_tick` sits in the band around 1.0 at the shallowest and deepest A of the
 //!   grid, so the row is "T ticking effects at about one firing per tick" and not "an idle scan" and
 //!   not "everything fires at once";
-//! * **the driver**: `fired_per_tick` and the timer advance both come out of `tick`, which is the only
-//!   thing that moves `Time<Fixed>` and `tick_effect_tickers`. Swap the group's driver for
-//!   `common::run_fixed_tick` and both asserts below go red — that is the item's premise;
+//! * **the driver**: the rate and the timer advance both come out of `tick`, the only thing here that
+//!   advances `Time`. `common::run_fixed_tick` is not a silent driver: it runs `tick_effect_tickers`
+//!   too (`vitality_effects/src/lib.rs:81-90`) on the delta the last `tick` charged, so swapping it in
+//!   steps a stale timestep rather than freezing the clock, and this file stays green under the swap
+//!   (measured, both drivers print one rate) — why the group still times `tick` is in
+//!   `benches/support/periodic.rs`;
 //! * **a non-firing window exists and is real**: the first ticks after the shape settles move nothing,
 //!   because the shortest period the generator draws (0.5 s) is [`periodic::MIN_PERIOD_TICKS`] fixed
 //!   ticks. The window is proved live rather than empty — the ticking instances are on the actor, their
@@ -107,8 +110,8 @@ fn periodic_tick_scan_fires_about_once_per_tick() {
         assert!(
             quiet.elapsed_after > quiet.elapsed_before,
             "no ticking timer advanced across the {} quiet ticks of shape {} ({} -> {} s): that \
-             window is empty rather than non-firing, which is what `run_fixed_tick` does to this \
-             shape, so the group would be timing a frozen clock",
+             window is empty rather than non-firing, which is a frozen clock — `run_fixed_tick` \
+             would not trip that, it steps the timers on the delta the last `tick` charged",
             quiet.ticks,
             spec.shape_id(),
             quiet.elapsed_before.as_secs_f64(),
@@ -181,7 +184,7 @@ fn periodic_tick_scan_fires_about_once_per_tick() {
         // `are_different` re-marked every resolve, so the set ramped up and stayed (first full set on
         // tick 33/43/85 for A=1/5/20, and all of them at the end of this window). Since D-34 a mark only
         // lives as long as the write that re-raised it, so the residue here is whatever the last firings
-        // moved — measured 3 of 20 at a=20. Read it, then pin the half the old count stood in for: a
+        // moved, as the print below shows. Read it, then pin the half the old count stood in for: a
         // window in which nothing can fire drains every mark the shape was given.
         let dirty: Vec<&str> = pool
             .iter()

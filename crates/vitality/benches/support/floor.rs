@@ -4,11 +4,18 @@
 //! there is nothing to do. Kept free of criterion so `tests/test_bench_harness.rs` can include it
 //! and prove the shape idle.
 //!
-//! A registered attribute is not only a component: `init_attribute` puts `apply_periodic_effect`,
-//! `apply_modifier_events`, `update_current_value_system`, the two notify systems and `apply_clamps`
-//! into `FixedUpdate` for its type. With no dirty actor every one of them still runs and iterates
-//! nothing, and that is the scheduling floor T1 asks about — BENCH-PLAN §3 collapses the topology
-//! when its slope reaches 2 µs/attr/tick.
+//! A registered attribute is not only a component: on v1 `init_attribute` puts `apply_periodic_effect`,
+//! `apply_modifier_events`, `update_current_value_system`, the two notify systems and
+//! `apply_clamps` into `FixedUpdate` for its type
+//! (`vitality_effects/src/lib.rs:155-172`, `vitality/src/lib.rs:137-141`). With no dirty actor every
+//! one of them still runs and iterates nothing, and that is the scheduling floor T1 asks about —
+//! BENCH-PLAN §3 collapses the topology when its slope reaches 2 µs/attr/tick. That slope is a v1
+//! quantity: under `VITALITY_RESOLVER=dag` a registered attribute adds no system at all, only an entry
+//! in three resources (`vitality_effects/src/lib.rs:142-152`), and the app carries one
+//! `resolve_system`, one `apply_all_modifier_events`, one `scan_base_writes` and one
+//! `apply_all_periodic_effects` for every attribute together
+//! (`vitality_effects/src/lib.rs:95-124`), so the same sweep measures the collapsed scan's per-attribute
+//! query cost rather than a schedule cost, and the two floors are only comparable inside one mode.
 //!
 //! [`floor_shape`] builds the shape, and it clears the dirty markers instead of ticking them away.
 //! A world from `build_app_with` comes back dirty and unresolved: the first resolve has a real fold to

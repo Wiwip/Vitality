@@ -4,7 +4,7 @@
 //! criterion so the gate can include it.
 //!
 //! [`build_app_with`] inserts `TimeUpdateStrategy::FixedTimesteps(1)`, so one [`tick`] is exactly
-//! one fixed tick and [`run_fixed_tick`] is the same tick without the rest of the app. Every random
+//! one fixed tick, while [`run_fixed_tick`] steps `FixedUpdate` on a stale delta. Every random
 //! choice comes from [`seed_rng`], so a [`WorldSpec`] always rebuilds the same world, and
 //! [`WorldSpec::shape_id`] is the label any number taken from it has to carry.
 //!
@@ -408,8 +408,8 @@ pub fn tick(app: &mut App) {
     app.update();
 }
 
-/// Runs the attribute resolver and nothing else. Timers do not advance here, so a periodic effect
-/// only fires on a [`tick`]-driven run.
+/// One `FixedUpdate` on a bare `World`, so `Time` is never advanced: `tick_effect_tickers` still
+/// runs, on the delta the last [`tick`] charged, so a periodic effect fires here too.
 pub fn run_fixed_tick(world: &mut World) {
     world.run_schedule(FixedUpdate);
 }

@@ -516,7 +516,7 @@ const RATIO_TABLE: &str = "recompute ratio table";
 ///
 /// What no guard here can reach is which directory the helper reads. `print_ratios` resolves its own
 /// criterion root from `CARGO_TARGET_DIR` or the nearest ancestor's `target/criterion` and ignores
-/// `CRITERION_HOME` (`support/recompute.rs:205-218`), so a perfectly gated call can still pair this run's
+/// `CRITERION_HOME` (`support/recompute.rs:247-266`), so a perfectly gated call can still pair this run's
 /// rows with files another run of a different `CRITERION_HOME` left in the tree it reads: the rows are
 /// measured, the tree they came from may be another session's. A foreign-path limitation, recorded rather
 /// than fixed.
@@ -995,27 +995,37 @@ fn recompute_many_actors(c: &mut Criterion) {
 /// `ticking_fraction`. Every period is drawn from 0.5–1.5 s = 32–96 fixed ticks, so no single instance
 /// can fire more than once every 32 ticks and "about one firing per tick" is an *aggregate* of those
 /// 59, not a property of any one of them. Measured over 512 ticks after a 128-tick warm-up on this very
-/// shape: **1.043 firings per tick** (Σ value delta 1.524/tick ÷ 1.461 mean firing amount), with a
-/// value moving on 337 of those 512 ticks (0.658). `periodic::probe` prints both per point, and
-/// `tests/test_bench_periodic.rs` re-measures them at a=1 and a=20 — it fails if the shape stops
-/// firing, fires on every tick, or fires twice as often as its id claims.
+/// shape and not repeated here: `periodic::point_line` prints the measured figure beside the id of
+/// every point the group runs and `periodic::FIRED_PER_TICK_BAND` is what bounds it. A value moves on
+/// 337 of those 512 ticks (0.658), and `tests/test_bench_periodic.rs` re-measures both at a=1 and a=20
+/// — it fails if the shape stops firing, fires on every tick, or fires twice as often as its id claims.
 ///
-/// The multiplication this row is read for is in the system's signature: `init_effect_attribute`
-/// registers one `apply_periodic_effect::<T>` per attribute type (`vitality_effects/src/lib.rs:76-88`)
-/// and that system's effect query is not filtered by `T` (`vitality_effects/src/periodic.rs:12-30`), so
+/// The multiplication this row is read for is in the system's signature: on v1 `init_effect_attribute`
+/// registers one `apply_periodic_effect::<T>` per attribute type
+/// (`vitality_effects/src/lib.rs:158-160`) and that system's `effects` query is not filtered by `T`
+/// (`vitality_effects/src/periodic.rs:154-165`) — only the `modifiers` fetch below it is (`:166`) — so
 /// every ticking effect entity is visited and tested with `just_finished()` **once per registered
-/// attribute**. Growth of ns/tick against A is therefore the same walk multiplication `recompute/*`
-/// measures on the modifier path, on a second code path — with the caveat that this shape also carries
-/// 61 permanent effects, whose fold per attribute rides in the same number (`e=120/tick=50` in the id).
+/// attribute**. Under `VITALITY_RESOLVER=dag` no per-type system is registered at all
+/// (`vitality_effects/src/lib.rs:142-152`); the one `apply_all_periodic_effects` node loops the
+/// registered attributes instead (`vitality_effects/src/periodic.rs:144-149`) and each turn of that loop
+/// walks the same unfiltered effect fetch (`:36-47`), so the walk — and with it the A axis — survives
+/// the collapse, on one schedule node instead of A. Growth of ns/tick against A is
+/// therefore the same walk multiplication `recompute/*` measures on the modifier path, on a second code
+/// path — with the caveat that this shape also carries 61 permanent effects, whose fold per attribute
+/// rides in the same number (`e=120/tick=50` in the id).
 ///
 /// ## The timed unit is a whole `app.update()`, and that is not negotiable
 ///
 /// Every sample is [`tick`] — one `app.update()`, exactly one fixed tick under the
 /// `TimeUpdateStrategy::FixedTimesteps(1)` `common::build_app_with` installs. **It has to stay that
-/// way: [`run_fixed_tick`] is `World::run_schedule(FixedUpdate)`, it advances no `Time<Fixed>` and it
-/// does not run `tick_effect_tickers` (which lives in `Update`), so periodic effects cannot fire under
-/// it** (`common.rs:379-385`, `support/periodic.rs`). Re-pointing this group at the cheaper driver
-/// would leave a `periodic/…` id timing an idle scan, and the gate test goes red on exactly that edit.
+/// way: [`run_fixed_tick`] (`common.rs:411-415`) is `World::run_schedule(FixedUpdate)`, which does run
+/// `tick_effect_tickers` (`vitality_effects/src/lib.rs:81-90`) while advancing no clock, so every
+/// ticker steps by the stale 15 625 µs the last `app.update()` charged, and it skips the whole `Main`
+/// schedule around the fixed tick.** It is still not silent: under that driver the shape fires and the
+/// gate test stays green (see `support/periodic.rs`, "The driver is `tick`, never `run_fixed_tick`"),
+/// so re-pointing this group at the cheaper driver costs meaning rather than firings — the id would
+/// print ns per stale timer step, measured without the per-frame work this row prices — and nothing in
+/// the gate can see the swap.
 ///
 /// The consequence is that ns/tick here is resolver **plus** timers **plus** bevy's own per-frame work
 /// (`AssetPlugin`, the `Main`-schedule bookkeeping `run_fixed_tick` skips). `floor/idle_tick` and
@@ -1056,7 +1066,7 @@ fn recompute_many_actors(c: &mut Criterion) {
 /// tabulates a row from, work it did not do. The filter that keeps this group's rows *and* that table is
 /// `periodic/tick_scan|recompute`; a narrower one prints skip lines where those checks and that table
 /// would sit. What neither reaches is the directory the table reads: `print_ratios` ignores
-/// `CRITERION_HOME` (`support/recompute.rs:205-218`), so even a fully gated row can be paired with files
+/// `CRITERION_HOME` (`support/recompute.rs:247-266`), so even a fully gated row can be paired with files
 /// another session left in the `target/criterion` it resolves ([`recompute_ratio`]'s last section). Both
 /// are properties of the guard style and of that helper, not of this group.
 ///
