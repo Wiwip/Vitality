@@ -177,17 +177,22 @@ fn on_execute_task_observer<T: AbilityTask>(
     params: StaticSystemParam<T::SystemParam>,
     mut commands: Commands,
 ) {
-    let ability_id = find_ability_ancestor(trigger.task_id, &tasks, &abilities);
-    let task_item = task_items.get_mut(trigger.task_id).unwrap();
-    let ability_item = ability_items.get_mut(ability_id).expect(&format!(
-        "[{}] AbilityTask error fetching AbilityItem",
-        ability_id
-    ));
-    let caster_id = casters.get(ability_id).expect(&format!(
-        "[{}] Abilities must have an owner caster",
-        ability_id
-    ));
-    let caster_item = caster_items.get_mut(caster_id.0).unwrap();
+    let Some(ability_id) = find_ability_ancestor(trigger.task_id, &tasks, &abilities) else {
+        warn!("[{}] Task has no ability above it.", trigger.task_id);
+        return;
+    };
+    let Ok(caster_id) = casters.get(ability_id) else {
+        warn!("[{ability_id}] Ability has no caster.");
+        return;
+    };
+    let (Ok(task_item), Ok(ability_item), Ok(caster_item)) = (
+        task_items.get_mut(trigger.task_id),
+        ability_items.get_mut(ability_id),
+        caster_items.get_mut(caster_id.0),
+    ) else {
+        warn!("[{}] Task query items don't match their entities.", trigger.task_id);
+        return;
+    };
 
     let mut param_items = params.into_inner();
     let status = T::activate(
@@ -216,17 +221,22 @@ fn on_task_completed_observer<T: AbilityTask>(
     mut caster_items: Query<T::CasterItem>,
     params: StaticSystemParam<T::SystemParam>,
 ) {
-    let ability_id = find_ability_ancestor(trigger.task_id, &tasks, &abilities);
-    let task_item = task_items.get_mut(trigger.task_id).unwrap();
-    let ability_item = ability_items.get_mut(ability_id).expect(&format!(
-        "[{}] AbilityTask error fetching AbilityItem",
-        ability_id
-    ));
-    let caster_id = casters.get(ability_id).expect(&format!(
-        "[{}] Abilities must have an owner caster",
-        ability_id
-    ));
-    let caster_item = caster_items.get_mut(caster_id.0).unwrap();
+    let Some(ability_id) = find_ability_ancestor(trigger.task_id, &tasks, &abilities) else {
+        warn!("[{}] Task has no ability above it.", trigger.task_id);
+        return;
+    };
+    let Ok(caster_id) = casters.get(ability_id) else {
+        warn!("[{ability_id}] Ability has no caster.");
+        return;
+    };
+    let (Ok(task_item), Ok(ability_item), Ok(caster_item)) = (
+        task_items.get_mut(trigger.task_id),
+        ability_items.get_mut(ability_id),
+        caster_items.get_mut(caster_id.0),
+    ) else {
+        warn!("[{}] Task query items don't match their entities.", trigger.task_id);
+        return;
+    };
 
     let mut param_items = params.into_inner();
 
@@ -249,17 +259,22 @@ fn on_task_stopped_observer<T: AbilityTask>(
     mut caster_items: Query<T::CasterItem>,
     params: StaticSystemParam<T::SystemParam>,
 ) {
-    let ability_id = find_ability_ancestor(trigger.task_id, &tasks, &abilities);
-    let task_item = task_items.get_mut(trigger.task_id).unwrap();
-    let ability_item = ability_items.get_mut(ability_id).expect(&format!(
-        "[{}] AbilityTask error fetching AbilityItem",
-        ability_id
-    ));
-    let caster_id = casters.get(ability_id).expect(&format!(
-        "[{}] Abilities must have an owner caster",
-        ability_id
-    ));
-    let caster_item = caster_items.get_mut(caster_id.0).unwrap();
+    let Some(ability_id) = find_ability_ancestor(trigger.task_id, &tasks, &abilities) else {
+        warn!("[{}] Task has no ability above it.", trigger.task_id);
+        return;
+    };
+    let Ok(caster_id) = casters.get(ability_id) else {
+        warn!("[{ability_id}] Ability has no caster.");
+        return;
+    };
+    let (Ok(task_item), Ok(ability_item), Ok(caster_item)) = (
+        task_items.get_mut(trigger.task_id),
+        ability_items.get_mut(ability_id),
+        caster_items.get_mut(caster_id.0),
+    ) else {
+        warn!("[{}] Task query items don't match their entities.", trigger.task_id);
+        return;
+    };
 
     let mut param_items = params.into_inner();
 
@@ -319,7 +334,7 @@ fn find_ability_ancestor(
     current_entity: Entity,
     parent_query: &Query<&TaskOwner>,
     ability_query: &Query<Entity, With<Ability>>,
-) -> Entity {
+) -> Option<Entity> {
     let mut current = current_entity;
 
     // Traverse upwards using the Parent chain
@@ -328,14 +343,14 @@ fn find_ability_ancestor(
 
         // Check if the current parent has the 'Ability' component
         if ability_query.contains(parent_entity) {
-            return parent_entity;
+            return Some(parent_entity);
         }
 
         // Move to the next parent
         current = parent_entity;
     }
 
-    unreachable!("should always have an ability in the hierarchy");
+    None
 }
 
 pub struct DebugInstantTask;

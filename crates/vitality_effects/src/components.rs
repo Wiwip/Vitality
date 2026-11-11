@@ -26,6 +26,16 @@ pub struct EffectInactive;
 #[require(Stacks)]
 pub struct Effect(pub Handle<EffectDef>);
 
+/// Type ids of the tags an effect carries, for erased lookups like cleansing.
+#[derive(Component, Debug, Default, Clone)]
+pub struct EffectTags(pub Vec<std::any::TypeId>);
+
+impl AppliedEffects {
+    pub fn iter(&self) -> impl Iterator<Item = Entity> + '_ {
+        self.0.iter().copied()
+    }
+}
+
 impl Effect {
     pub fn instant() -> EffectBuilder {
         EffectBuilder::new(EffectApplicationPolicy::Instant)

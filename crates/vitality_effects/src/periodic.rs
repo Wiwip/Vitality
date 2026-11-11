@@ -2,7 +2,7 @@ use crate::EffectsRef;
 use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
 use crate::modifier::{ApplyAttributeModifierMessage, AttributeModifier, OwnedModifiers};
-use crate::{Effect, EffectSource, EffectTarget, EffectTicker};
+use crate::{Effect, EffectSource, EffectTarget, EffectTicker, Stacks};
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
 use vitality_core::attributes::Attribute;
@@ -13,6 +13,7 @@ pub(crate) fn apply_periodic_effect<T: Attribute>(
         (
             EffectsRef,
             &Effect,
+            &Stacks,
             &EffectTicker,
             &OwnedModifiers,
             &EffectTarget,
@@ -24,18 +25,19 @@ pub(crate) fn apply_periodic_effect<T: Attribute>(
     mut event_writer: MessageWriter<ApplyAttributeModifierMessage<T>>,
     effect_assets: Res<Assets<EffectDef>>,
 ) {
-    for (effect_ref, effect, timer, owned_modifiers, target, source) in effects.iter() {
+    for (effect_ref, effect, stacks, timer, owned_modifiers, target, source) in effects.iter() {
         if !timer.just_finished() {
             continue;
         }
 
-        let effect_def = effect_assets
-            .get(&effect.0)
-            .ok_or("No effect asset.")
-            .unwrap();
-
-        let source_actor_ref = actors.get(source.0).unwrap();
-        let target_actor_ref = actors.get(target.0).unwrap();
+        let Some(effect_def) = effect_assets.get(&effect.0) else {
+            warn!("Periodic effect {} has no loaded definition.", effect_ref.id());
+            continue;
+        };
+        let (Ok(source_actor_ref), Ok(target_actor_ref)) = (actors.get(source.0), actors.get(target.0))
+        else {
+            continue;
+        };
 
         let context = EffectExprContext {
             target_actor: Some(target_actor_ref),
@@ -67,6 +69,7 @@ pub(crate) fn apply_periodic_effect<T: Attribute>(
                 target_entity: target.0,
                 effect_entity: effect_ref.id(),
                 modifier: applied_modifier,
+                stacks: stacks.current_value(),
             });
         }
     }

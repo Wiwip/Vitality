@@ -73,7 +73,7 @@ impl<T: Attribute> AttributeCalculator<T> {
         let max_f: f64 = max.as_();
 
         let clamped_value = result.clamp(min_f, max_f);
-        T::Property::from_f64(clamped_value).unwrap()
+        T::Property::from_f64(clamped_value).unwrap_or_default()
     }
 
     pub fn combine(self, other: AttributeCalculator<T>) -> AttributeCalculator<T> {
@@ -110,6 +110,29 @@ impl<T: Attribute> AttributeCalculator<T> {
         self.subtractive += other.subtractive;
         self.increase += other.increase;
         self.multiplier *= other.multiplier;
+    }
+
+    /// One modifier applied `stacks` times: additive ops scale, `Mul` compounds, `Set` ignores it.
+    pub fn from_op_stacked(operation: ModOp, value: T::Property, stacks: u32) -> Self {
+        if stacks <= 1 {
+            return Self::from_op(operation, value);
+        }
+        match operation {
+            ModOp::Set => Self::from_op(operation, value),
+            ModOp::Mul => Self {
+                multiplier: value.as_().powi(stacks as i32),
+                ..default()
+            },
+            ModOp::Increase => Self {
+                increase: value.as_() * stacks as f64,
+                ..default()
+            },
+            ModOp::Add | ModOp::Sub => {
+                let scaled = T::Property::from_f64(value.as_() * stacks as f64)
+                    .unwrap_or_else(T::Property::max_value);
+                Self::from_op(operation, scaled)
+            }
+        }
     }
 
     pub fn from_op(operation: ModOp, value: T::Property) -> Self {

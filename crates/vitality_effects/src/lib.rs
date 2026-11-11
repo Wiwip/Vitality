@@ -5,8 +5,10 @@ pub mod condition;
 pub mod conditions;
 pub mod context;
 pub mod definition;
+mod effects_param;
 mod global_effect;
 pub mod graph;
+pub mod lifecycle;
 pub mod modifier;
 mod periodic;
 pub mod registry;
@@ -37,6 +39,10 @@ use vitality_core::schedule::EffectsSet;
 
 pub use application::*;
 pub use builder::EffectBuilder;
+pub use effects_param::Effects;
+pub use lifecycle::{
+    EffectApplied, EffectBlocked, EffectRemovalReason, EffectRemoved, EffectStacksChanged,
+};
 pub use components::*;
 pub use condition::ConditionPlugin;
 pub use global_effect::*;
@@ -54,17 +60,29 @@ pub mod prelude {
 pub struct EffectsPlugin;
 
 impl Plugin for EffectsPlugin {
+    fn is_unique(&self) -> bool {
+        false
+    }
+
     fn build(&self, app: &mut App) {
+        if !vitality_core::first_install::<Self>(app) {
+            return;
+        }
         app.insert_resource(EffectRegistry::default())
             .init_asset::<EffectDef>()
             .register_type::<AppliedEffects>()
             .register_type::<EffectTarget>()
             .register_type::<NodeType>();
 
-        app.add_systems(Update, tick_effect_tickers.in_set(EffectsSet::Prepare))
-            .add_systems(Update, tick_effect_durations.in_set(EffectsSet::Prepare))
-            .add_systems(Update, read_add_stack_event.in_set(EffectsSet::Prepare))
+        // same clock as the resolver and the periodic appliers, so a timer that finishes is seen once
+        app.add_systems(
+            FixedUpdate,
+            (tick_effect_tickers, tick_effect_durations, read_add_stack_event)
+                .chain()
+                .in_set(EffectsSet::Prepare),
+        )
             .add_observer(apply_effect_event_observer)
+            .add_observer(lifecycle::on_effect_removed)
             .add_message::<NotifyAddStackEvent>();
     }
 }
@@ -77,7 +95,9 @@ pub fn init_effect_attribute<T: Attribute>(app: &mut App) {
     app.add_systems(
         FixedUpdate,
         (
-            apply_periodic_effect::<T>.in_set(EffectsSet::Prepare),
+            apply_periodic_effect::<T>
+                .in_set(EffectsSet::Prepare)
+                .after(tick_effect_tickers),
             // A base write is marked here, ahead of the resolve, so the tick that writes a base value
             // is the tick that resolves it. `Notify` runs last in the chain and would cost one tick.
             (

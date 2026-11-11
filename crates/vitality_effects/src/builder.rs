@@ -3,9 +3,10 @@ use crate::application::EffectApplicationPolicy;
 use crate::conditions::IsAttributeWithinBounds;
 use crate::context::EffectExprSchema;
 use crate::definition::EffectDef;
-use crate::modifier::{AttributeModifier, EffectSubject};
+use crate::modifier::{AttributeModifier, Capture, EffectSubject};
 use bevy::ecs::system::IntoObserverSystem;
-use bevy::prelude::{Bundle, Entity, EntityCommands, EntityEvent, Name};
+use bevy::prelude::{Bundle, Component, Entity, EntityCommands, EntityEvent, Name};
+use vitality_core::tags::TagSpec;
 use express_it::expr::{AsExpression, Expr};
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -29,6 +30,10 @@ impl EffectBuilder {
                 on_actor_triggers: vec![],
                 on_effect_triggers: vec![],
                 modifiers: vec![],
+                granted_tags: vec![],
+                required_tags: vec![],
+                blocked_by_tags: vec![],
+                cleanses: vec![],
             },
         }
     }
@@ -81,17 +86,38 @@ impl EffectBuilder {
     ///     .build();
     /// ```
     pub fn modify<T: Attribute>(
-        mut self,
+        self,
         expr: impl AsExpression<T::Property, EffectExprSchema> + Send + Sync + 'static,
         op: ModOp,
         who: EffectSubject,
     ) -> Self {
-        let expr = expr.as_expr();
+        self.push_modifier::<T>(Arc::new(expr.as_expr()), op, who, Capture::Live)
+    }
+
+    /// Like [`Self::modify`], but the expression is evaluated once when the effect is applied and
+    /// never follows later changes of the attributes it reads.
+    pub fn modify_snapshot<T: Attribute>(
+        self,
+        expr: impl AsExpression<T::Property, EffectExprSchema> + Send + Sync + 'static,
+        op: ModOp,
+        who: EffectSubject,
+    ) -> Self {
+        self.push_modifier::<T>(Arc::new(expr.as_expr()), op, who, Capture::Snapshot)
+    }
+
+    fn push_modifier<T: Attribute>(
+        mut self,
+        expr: Arc<dyn Expr<T::Property, EffectExprSchema> + Send + Sync>,
+        operation: ModOp,
+        who: EffectSubject,
+        capture: Capture,
+    ) -> Self {
         self.def.modifiers.push(Box::new(AttributeModifier::<T> {
-            expr: Arc::new(expr),
+            expr,
             value: T::Property::default(),
             who,
-            operation: op,
+            operation,
+            capture,
         }));
         self
     }
@@ -185,6 +211,29 @@ impl EffectBuilder {
                 effect_entity.insert(bundle);
             },
         ));
+        self
+    }
+
+    /// Tags the effect, and grants the tag to the target while the effect exists.
+    pub fn with_tag<T: Component + Default>(mut self) -> Self {
+        self.def.granted_tags.push(TagSpec::of::<T>());
+        self
+    }
+
+    pub fn requires_tag<T: Component + Default>(mut self) -> Self {
+        self.def.required_tags.push(TagSpec::of::<T>());
+        self
+    }
+
+    /// The target is immune to this effect while it carries `T`.
+    pub fn blocked_by_tag<T: Component + Default>(mut self) -> Self {
+        self.def.blocked_by_tags.push(TagSpec::of::<T>());
+        self
+    }
+
+    /// Removes the target's effects tagged `T` when this effect applies.
+    pub fn cleanses<T: Component + Default>(mut self) -> Self {
+        self.def.cleanses.push(TagSpec::of::<T>());
         self
     }
 

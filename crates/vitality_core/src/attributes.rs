@@ -60,58 +60,53 @@ where
     fn set_current_value(&mut self, value: Self::Property);
 
     // Helper to wrap attribute access in an Expression
-    fn src<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
+    fn src<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C, Source>>
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Source>,
     {
         Self::at::<Source, C>()
     }
-    fn dst<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
+    fn dst<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C, Target>>
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Target>,
     {
         Self::at::<Target, C>()
     }
-    fn caster<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
+    fn caster<C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C, Caster>>
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Caster>,
     {
         Self::at::<Caster, C>()
     }
-    fn at<Role, C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
+    fn at<Role: 'static, C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C, Role>>
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Role>,
     {
         Node {
             expr: AttributeVar {
-                fetch_fn: |ctx: &C::ContextItem<'_, '_>| {
-                    ctx.get_actor()
-                        .get::<Self>()
-                        .expect(&format!(
-                            "{} not found on {}",
-                            pretty_type_name::<Self>(),
-                            pretty_type_name::<Role>()
-                        ))
-                        .current_value()
+                fetch_fn: |ctx: &C::ContextItem<'_, '_>| match ctx.get_actor().get::<Self>() {
+                    Some(attribute) => attribute.current_value(),
+                    None => missing::<Self, Role>(),
                 },
                 _marker: Default::default(),
             },
             _marker: Default::default(),
         }
     }
-    fn at_base<Role, C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C>>
+    fn at_base<Role: 'static, C>() -> Node<Self::Property, C, AttributeVar<Self, Self::Property, C, Role>>
     where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Role>,
     {
         Node {
             expr: AttributeVar {
-                fetch_fn: |ctx: &C::ContextItem<'_, '_>| {
-                    ctx.get_actor().get::<Self>().unwrap().base_value()
+                fetch_fn: |ctx: &C::ContextItem<'_, '_>| match ctx.get_actor().get::<Self>() {
+                    Some(attribute) => attribute.base_value(),
+                    None => missing::<Self, Role>(),
                 },
                 _marker: Default::default(),
             },
@@ -214,6 +209,17 @@ where
             _marker: Default::default(),
         }
     }
+}
+
+/// A read of an attribute the actor doesn't have counts as zero.
+#[cold]
+fn missing<T: Attribute, Role>() -> T::Property {
+    bevy::log::warn_once!(
+        "{} not found on {}; reading it as zero",
+        pretty_type_name::<T>(),
+        pretty_type_name::<Role>()
+    );
+    T::Property::default()
 }
 
 #[macro_export]
@@ -367,11 +373,18 @@ where
     }
 }
 
-pub struct AttributeVar<T, N, C: Context> {
-    pub fetch_fn: for<'w, 's> fn(&C::ContextItem<'w, 's>) -> N,
-    _marker: PhantomData<T>,
+/// Dependency key of `T` read through `Role`, as reported by [`Expr::get_dependencies`].
+pub struct DepKey<T, Role>(PhantomData<fn() -> (T, Role)>);
+
+pub fn dep_key<T: 'static, Role: 'static>() -> TypeId {
+    TypeId::of::<DepKey<T, Role>>()
 }
-impl<T, N, C: Context> Clone for AttributeVar<T, N, C> {
+
+pub struct AttributeVar<T, N, C: Context, Role = Source> {
+    pub fetch_fn: for<'w, 's> fn(&C::ContextItem<'w, 's>) -> N,
+    _marker: PhantomData<fn() -> (T, Role)>,
+}
+impl<T, N, C: Context, Role> Clone for AttributeVar<T, N, C, Role> {
     fn clone(&self) -> Self {
         Self {
             fetch_fn: self.fetch_fn,
@@ -379,18 +392,20 @@ impl<T, N, C: Context> Clone for AttributeVar<T, N, C> {
         }
     }
 }
-impl<T: 'static, N: 'static, C: Context + 'static> Expr<N, C> for AttributeVar<T, N, C> {
+impl<T: 'static, N: 'static, C: Context + 'static, Role: 'static> Expr<N, C>
+    for AttributeVar<T, N, C, Role>
+{
     #[inline(always)]
     fn eval(&self, ctx: &C::ContextItem<'_, '_>) -> N {
         (self.fetch_fn)(ctx)
     }
 
     fn get_dependencies(&self, deps: &mut HashSet<TypeId>) {
-        deps.insert(TypeId::of::<T>());
+        deps.insert(dep_key::<T, Role>());
     }
 }
-impl<T, N, C: Context> Copy for AttributeVar<T, N, C> {}
-impl<T, N: fmt::Display, C: Context> fmt::Display for AttributeVar<T, N, C> {
+impl<T, N, C: Context, Role> Copy for AttributeVar<T, N, C, Role> {}
+impl<T, N: fmt::Display, C: Context, Role> fmt::Display for AttributeVar<T, N, C, Role> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", pretty_type_name::<T>())
     }

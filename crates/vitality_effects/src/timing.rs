@@ -1,3 +1,4 @@
+use crate::lifecycle::{EffectRemovalReason, remove_effect};
 use crate::EffectInactive;
 use bevy::prelude::*;
 use bevy::time::Timer;
@@ -39,7 +40,7 @@ pub fn tick_effect_durations(
             if effect_duration.is_finished() {
                 debug!("Effect expired on {}.", entity);
                 par_commands.command_scope(|mut commands| {
-                    commands.entity(entity).despawn();
+                    remove_effect(&mut commands, entity, EffectRemovalReason::Expired);
                 });
             }
         });

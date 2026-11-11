@@ -10,7 +10,8 @@ use std::collections::HashSet;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
-use vitality_core::attributes::Attribute;
+use vitality_core::attributes::{Attribute, dep_key};
+use vitality_core::context::{Source, Target};
 use vitality_core::context::ActorExprContext;
 use vitality_core::util::pretty_type_name;
 
@@ -67,7 +68,11 @@ impl<T: Attribute> Expr<bool, EffectExprSchema> for IsAttributeWithinBounds<T> {
     }
 
     fn get_dependencies(&self, deps: &mut HashSet<TypeId>) {
-        deps.insert(TypeId::of::<T>());
+        match self.who {
+            EffectSubject::Target => deps.insert(dep_key::<T, Target>()),
+            EffectSubject::Source => deps.insert(dep_key::<T, Source>()),
+            EffectSubject::Effect => deps.insert(TypeId::of::<T>()),
+        };
     }
 }
 

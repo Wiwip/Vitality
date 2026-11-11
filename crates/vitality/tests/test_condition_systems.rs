@@ -122,6 +122,8 @@ fn test_attribute_condition() {
         (prepare_effects, prepare_abilities, prepare_actor).chain(),
     );
 
+    // conditions run on the fixed clock, which has no tick in the first update
+    app.update();
     app.update();
 
     let mut query = app.world_mut().query::<(Entity, &Actor, &TestA, &TestB)>();

@@ -82,7 +82,9 @@ impl IntoNeighbors for &DependencyGraph<'_, '_> {
     type Neighbors = vec::IntoIter<Entity>;
 
     fn neighbors(self, node: Self::NodeId) -> Self::Neighbors {
-        let node_type = self.node_type.get(node).expect("Error getting node type.");
+        let Ok(node_type) = self.node_type.get(node) else {
+            return Vec::new().into_iter();
+        };
 
         let neighbours = match *node_type {
             NodeType::Actor => self

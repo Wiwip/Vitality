@@ -1,7 +1,8 @@
 use crate::definition::EffectDef;
-use crate::{Effect, EffectDuration};
+use crate::lifecycle::EffectStacksChanged;
+use crate::systems::MarkActorDirty;
+use crate::{Effect, EffectDuration, EffectTarget};
 use bevy::prelude::*;
-use num_traits::AsPrimitive;
 use vitality_core::attribute;
 use vitality_core::attribute_impl;
 use vitality_core::attributes::Attribute;
@@ -30,67 +31,98 @@ pub struct NotifyAddStackEvent {
 }
 
 impl EffectStackingPolicy {
+    /// Returns the (old, new) stack count when it changed.
     fn apply(
         &self,
         effect_entity: Entity,
         stacks: &mut Query<&mut Stacks, With<Effect>>,
         durations: &mut Query<&mut EffectDuration, With<Effect>>,
-    ) {
+    ) -> Option<(u32, u32)> {
         match self {
             EffectStackingPolicy::Add { count, max_stack } => {
-                // Apply additive stacking, increasing stack count up to max
-                if let Ok(mut stack_count) = stacks.get_mut(effect_entity) {
-                    let mut base_stacks = stack_count.base_value();
-                    base_stacks += count;
-                    stack_count.set_base_value(base_stacks.clamp(1, max_stack.as_()));
-                    stack_count.set_current_value(base_stacks.clamp(1.as_(), max_stack.as_()));
-                } else {
-                    error!(
-                        "Failed to find component Stacks for entity: {:?}",
-                        effect_entity
-                    );
-                }
-            }
-            EffectStackingPolicy::RefreshDuration => {
-                // Reset duration for overridden effects
+                let Ok(mut stack_count) = stacks.get_mut(effect_entity) else {
+                    warn!("Effect {effect_entity} has no Stacks.");
+                    return None;
+                };
+                let old = stack_count.current_value();
+                let new = (old + count).clamp(1, (*max_stack).max(1));
+                // a capped add still refreshes the duration, like a reapplication would
                 if let Ok(mut duration) = durations.get_mut(effect_entity) {
                     duration.reset();
-                } else {
-                    error!(
-                        "Failed to find component EffectApplication for entity: {:?}",
-                        effect_entity
-                    );
                 }
+                if new == old {
+                    return None;
+                }
+                stack_count.set_base_value(new);
+                stack_count.set_current_value(new);
+                Some((old, new))
             }
-            EffectStackingPolicy::None => {
-                error!(
-                    "Effect stacking should not be triggered for effect entity {:?} with incompatible policy (None)",
-                    effect_entity
-                );
+            EffectStackingPolicy::RefreshDuration => {
+                if let Ok(mut duration) = durations.get_mut(effect_entity) {
+                    duration.reset();
+                }
+                None
             }
+            EffectStackingPolicy::None => None,
         }
     }
+}
+
+/// Sets an effect's stack count directly; zero removes the effect.
+pub(crate) fn set_stacks(
+    effect_entity: Entity,
+    count: u32,
+    stacks: &mut Query<&mut Stacks, With<Effect>>,
+) -> Option<(u32, u32)> {
+    let mut stack_count = stacks.get_mut(effect_entity).ok()?;
+    let old = stack_count.current_value();
+    if old == count {
+        return None;
+    }
+    stack_count.set_base_value(count);
+    stack_count.set_current_value(count);
+    Some((old, count))
 }
 
 pub(crate) fn read_add_stack_event(
     mut event_reader: MessageReader<NotifyAddStackEvent>,
     mut stacks: Query<&mut Stacks, With<Effect>>,
     mut applications: Query<&mut EffectDuration, With<Effect>>,
+    targets: Query<&EffectTarget>,
     effect_assets: Res<Assets<EffectDef>>,
+    mut commands: Commands,
 ) {
     for ev in event_reader.read() {
-        let effect_definition = match effect_assets.get(&ev.handle) {
-            Some(effect) => effect,
-            None => {
-                panic!(
-                    "Failed to find effect definition for handle: {:?}",
-                    ev.handle
-                );
-            }
+        let Some(effect_definition) = effect_assets.get(&ev.handle) else {
+            warn!("No effect definition for {:?}", ev.handle);
+            continue;
         };
-
-        effect_definition
-            .stacking_policy
-            .apply(ev.effect_entity, &mut stacks, &mut applications);
+        let Some((old, new)) =
+            effect_definition
+                .stacking_policy
+                .apply(ev.effect_entity, &mut stacks, &mut applications)
+        else {
+            continue;
+        };
+        notify_stacks_changed(ev.effect_entity, old, new, &targets, &mut commands);
     }
+}
+
+pub(crate) fn notify_stacks_changed(
+    effect: Entity,
+    old: u32,
+    new: u32,
+    targets: &Query<&EffectTarget>,
+    commands: &mut Commands,
+) {
+    let Ok(target) = targets.get(effect) else {
+        return;
+    };
+    commands.trigger(MarkActorDirty { entity: target.0 });
+    commands.trigger(EffectStacksChanged {
+        entity: target.0,
+        effect,
+        old,
+        new,
+    });
 }

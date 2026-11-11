@@ -1,37 +1,29 @@
 use crate::actors::{ActorDef, ActorToken, SpawnActorCommand};
 use crate::registry::Registry;
 use bevy::ecs::system::SystemParam;
-use bevy::ecs::system::lifetimeless::Read;
 use bevy::prelude::*;
-use hfsm_bevy::MachineEvent;
-use vitality_abilities::ability_state::{AbilityEvent, AbilityMachine};
-use vitality_abilities::registry::AbilityToken;
-use vitality_abilities::{
-    Ability, AbilityDef, AbilityError, AbilityOf, AbilityRecovery, GrantedAbilities, TargetData,
-};
+use vitality_core::attributes::Attribute;
+use vitality_core::modifier::{AttributeCalculator, ModOp};
+use vitality_core::tags::{ChangeTag, TagSpec};
 use vitality_effects::definition::EffectDef;
 use vitality_effects::registry::EffectToken;
-use vitality_effects::{ApplyEffectEvent, EffectTargeting};
-use vitality_effects::{GlobalActor, GlobalEffects};
+use vitality_effects::{Effects, GlobalActor, GlobalEffects};
 
+/// Actors, effects and attributes in one param. Abilities live in [`vitality_abilities::Abilities`].
 #[derive(SystemParam)]
 pub struct Vitality<'w, 's> {
-    pub global_actor: Query<'w, 's, Entity, With<GlobalActor>>,
-    pub granted_abilities: Query<'w, 's, Read<GrantedAbilities>>,
-    pub ability_entities: Query<'w, 's, (Read<Ability>, Read<AbilityRecovery>)>,
-
+    global_actor: Query<'w, 's, Entity, With<GlobalActor>>,
     pub registry: Registry<'w>,
-
-    pub actors: ResMut<'w, Assets<ActorDef>>,
-    pub effects: ResMut<'w, Assets<EffectDef>>,
-    pub global_effects: ResMut<'w, GlobalEffects>,
-
-    pub commands: Commands<'w, 's>,
+    actor_assets: ResMut<'w, Assets<ActorDef>>,
+    effect_assets: ResMut<'w, Assets<EffectDef>>,
+    global_effects: ResMut<'w, GlobalEffects>,
+    pub effects: Effects<'w, 's>,
+    commands: Commands<'w, 's>,
 }
 
 impl<'s, 'w> Vitality<'w, 's> {
     pub fn add_effect(&mut self, effect: EffectDef) -> Handle<EffectDef> {
-        self.effects.add(effect)
+        self.effect_assets.add(effect)
     }
 
     pub fn get_effect_from_token(&self, token: &EffectToken) -> Handle<EffectDef> {
@@ -44,15 +36,11 @@ impl<'s, 'w> Vitality<'w, 's> {
         source: Entity,
         handle: &Handle<EffectDef>,
     ) {
-        self.commands.trigger(ApplyEffectEvent {
-            entity: target,
-            targeting: EffectTargeting::new(source, target),
-            handle: handle.clone(),
-        });
+        self.effects.apply(source, target, handle);
     }
 
     pub fn apply_effect_to_self(&mut self, source: Entity, handle: &Handle<EffectDef>) {
-        self.apply_effect_to_target(source, source, handle);
+        self.effects.apply_to_self(source, handle);
     }
 
     pub fn apply_dynamic_effect_to_target(
@@ -61,13 +49,8 @@ impl<'s, 'w> Vitality<'w, 's> {
         source: Entity,
         effect: EffectDef,
     ) -> Handle<EffectDef> {
-        let handle = self.effects.add(effect);
-
-        self.commands.trigger(ApplyEffectEvent {
-            entity: target,
-            targeting: EffectTargeting::new(source, target),
-            handle: handle.clone(),
-        });
+        let handle = self.effect_assets.add(effect);
+        self.effects.apply(source, target, &handle);
         handle
     }
 
@@ -80,82 +63,12 @@ impl<'s, 'w> Vitality<'w, 's> {
     }
 
     pub fn add_actor(&mut self, actor: ActorDef) -> Handle<ActorDef> {
-        self.actors.add(actor)
-    }
-
-    pub fn get_ability_from_token(&self, token: &AbilityToken) -> Handle<AbilityDef> {
-        self.registry.ability(token)
-    }
-
-    pub fn get_ability_entity(&self, actor: Entity, handle: &Handle<AbilityDef>) -> Option<Entity> {
-        let granted = self.granted_abilities.get(actor).ok()?;
-        for &ability_entity in granted.iter() {
-            if let Ok((ability, _)) = self.ability_entities.get(ability_entity) {
-                if ability.handle == *handle {
-                    return Some(ability_entity);
-                }
-            }
-        }
-        None
-    }
-
-    pub fn try_activate_by_token(
-        &mut self,
-        entity: Entity,
-        token: &AbilityToken,
-        target_data: TargetData,
-    ) {
-        let handle = self.get_ability_from_token(token);
-
-        let Some(ability_entity) = self.get_ability_entity(entity, &handle) else {
-            warn_once!("Ability does not exist on entity.");
-            return;
-        };
-
-        self.commands.trigger(MachineEvent::<AbilityMachine>::new(
-            ability_entity,
-            AbilityEvent::TryActivate {
-                source: entity,
-                target: target_data,
-            },
-        ));
-    }
-
-    pub fn grant_ability_by_token_unchecked(
-        &mut self,
-        entity: Entity,
-        token: &AbilityToken,
-    ) -> Result<Entity, AbilityError> {
-        let handle = self.get_ability_from_token(&token);
-        self.grant_ability_unchecked(&handle, entity)
-    }
-
-    pub fn grant_ability_unchecked(
-        &mut self,
-        ability: &Handle<AbilityDef>,
-        ability_parent: Entity,
-    ) -> Result<Entity, AbilityError> {
-        let ability_id = self
-            .commands
-            .spawn((
-                Ability {
-                    handle: { ability.clone() },
-                },
-                AbilityOf(ability_parent),
-            ))
-            .id();
-
-        info!("[{:?}] Spawned ability.", ability_id);
-
-        Ok(ability_id)
+        self.actor_assets.add(actor)
     }
 
     pub fn spawn_actor(&mut self, token: &ActorToken) -> EntityCommands<'_> {
         let handle = self.registry.actor(token);
-
-        let mut entity_commands = self.commands.spawn_empty();
-        entity_commands.queue(SpawnActorCommand { handle });
-        entity_commands
+        self.spawn_actor_from_handle(&handle)
     }
 
     pub fn spawn_actor_from_handle(&mut self, handle: &Handle<ActorDef>) -> EntityCommands<'_> {
@@ -167,7 +80,7 @@ impl<'s, 'w> Vitality<'w, 's> {
     }
 
     pub fn add_spawn_actor(&mut self, actor: ActorDef) -> EntityCommands<'_> {
-        let handle = self.actors.add(actor);
+        let handle = self.actor_assets.add(actor);
         self.spawn_actor_from_handle(&handle)
     }
 
@@ -182,23 +95,52 @@ impl<'s, 'w> Vitality<'w, 's> {
         self.insert_actor(entity, &handle);
     }
 
+    /// Writes an attribute's base value; the current value follows on the next resolve.
+    pub fn set_base<T: Attribute>(&mut self, actor: Entity, value: T::Property) {
+        self.modify_base::<T>(actor, ModOp::Set, value);
+    }
+
+    /// Applies one operation to an attribute's base value, like an instant effect would.
+    pub fn modify_base<T: Attribute>(&mut self, actor: Entity, op: ModOp, value: T::Property) {
+        self.commands.entity(actor).queue_silenced(move |mut entity: EntityWorldMut| {
+            if let Some(mut attribute) = entity.get_mut::<T>() {
+                let base = AttributeCalculator::<T>::from_op(op, value).eval(attribute.base_value());
+                attribute.set_base_value(base);
+            }
+        });
+    }
+
+    /// Grants a counted tag that stays until a matching [`Self::revoke_tag`].
+    pub fn grant_tag<T: Component + Default>(&mut self, actor: Entity) {
+        self.commands
+            .entity(actor)
+            .queue_silenced(ChangeTag::grant(TagSpec::of::<T>()));
+    }
+
+    pub fn revoke_tag<T: Component + Default>(&mut self, actor: Entity) {
+        self.commands
+            .entity(actor)
+            .queue_silenced(ChangeTag::revoke(TagSpec::of::<T>()));
+    }
+
     pub fn add_global_effect(&mut self, handle: Handle<EffectDef>) {
         self.global_effects.push(handle);
     }
 
-    /// Gets or create the global effect actor.
-    /// Global effects are attached to this actor and applied to all existing actors.
-    /// This actor can serve as a game state tracker, and the effects can depend on its attributes.
-    pub fn get_global_actor(&mut self) -> Entity {
-        self.global_actor.single().unwrap()
+    /// The actor global effects come from. It is spawned in `PreStartup`, so it is None only
+    /// before the first update.
+    pub fn global_actor(&self) -> Option<Entity> {
+        self.global_actor.single().ok()
     }
 
     pub fn spawn_global_effects(&mut self, target_actor: Entity) {
-        let global_actor = self.get_global_actor();
+        let Some(global_actor) = self.global_actor() else {
+            warn!("No global actor yet; global effects not applied to {target_actor}.");
+            return;
+        };
         let effects: Vec<_> = self.global_effects.clone();
-
         for handle in effects.iter() {
-            self.apply_effect_to_target(target_actor, global_actor, &handle);
+            self.effects.apply(global_actor, target_actor, handle);
         }
     }
 }

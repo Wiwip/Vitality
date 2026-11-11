@@ -5,6 +5,7 @@ mod components;
 pub mod condition;
 pub mod context;
 pub mod definition;
+pub mod lifecycle;
 pub mod registry;
 pub mod subject;
 mod system_param;
@@ -31,13 +32,23 @@ pub mod prelude {
 pub use builder::AbilityBuilder;
 pub use components::*;
 pub use definition::AbilityDef;
+pub use lifecycle::{
+    AbilityActivated, AbilityActivationFailed, AbilityEnded, ActivationError, cooldown_remaining,
+};
 pub use system_param::Abilities;
 pub use systems::ActivateAbility;
 
 pub struct AbilityPlugin;
 
 impl Plugin for AbilityPlugin {
+    fn is_unique(&self) -> bool {
+        false
+    }
+
     fn build(&self, app: &mut App) {
+        if !vitality_core::first_install::<Self>(app) {
+            return;
+        }
         // add_state_machine inserts the definition and the plugin together, so the definition is
         // never missing when a MachineInstance is first inserted.
         app.init_asset::<AbilityDef>()
@@ -64,6 +75,7 @@ pub type AbilityMut<'w, 's> = EntityMutExcept<
         Tasks,
         AbilityOf,
         AbilityRecovery,
+        lifecycle::AbilityEnding,
         (
             MachineInstance<AbilityMachine>,
             MachineInstance<TaskMachine>,
@@ -83,6 +95,7 @@ pub type AbilityRef<'w, 's> = EntityRefExcept<
         Tasks,
         AbilityOf,
         AbilityRecovery,
+        lifecycle::AbilityEnding,
         (
             MachineInstance<AbilityMachine>,
             MachineInstance<TaskMachine>,

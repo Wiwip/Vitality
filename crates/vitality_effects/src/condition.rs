@@ -12,10 +12,17 @@ use vitality_core::schedule::EffectsSet;
 pub struct ConditionPlugin;
 
 impl Plugin for ConditionPlugin {
+    fn is_unique(&self) -> bool {
+        false
+    }
+
     fn build(&self, app: &mut App) {
+        if !vitality_core::first_install::<Self>(app) {
+            return;
+        }
         // activates/deactivates effects based on their conditions
         app.add_systems(
-            Update,
+            FixedUpdate,
             evaluate_effect_conditions.in_set(EffectsSet::Prepare),
         );
     }

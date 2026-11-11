@@ -11,6 +11,7 @@ use vitality_core::attributes::Attribute;
 use vitality_core::context::ActorExprSchema;
 use vitality_core::modifier::AttributeCalculatorCached;
 use vitality_core::mutator::EntityActions;
+use vitality_core::tags::TagSpec;
 use vitality_core::util::pretty_type_name;
 
 pub struct AbilityBuilder {
@@ -24,6 +25,18 @@ pub struct AbilityBuilder {
     on_execute: Vec<Plan<AbilityExprSchema>>,
     recovery_condition: Vec<BoolExpr<ActorExprSchema>>,
     scene: Box<dyn Fn() -> Box<dyn Scene> + Send + Sync>,
+    tags: Vec<TagSpec>,
+    activation_owned_tags: Vec<TagSpec>,
+    activation_requires: Vec<TagSpec>,
+    activation_blocked_by: Vec<TagSpec>,
+    blocks_abilities_with: Vec<TagSpec>,
+    cancels_abilities_with: Vec<TagSpec>,
+}
+
+impl Default for AbilityBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AbilityBuilder {
@@ -34,11 +47,17 @@ impl AbilityBuilder {
             triggers: vec![],
             cost_condition: vec![],
             execution_condition: vec![],
-            cooldown: Box::new(LiteralNode::<f32> { value: f32::MAX }),
+            cooldown: Box::new(LiteralNode::<f32> { value: 0.0 }),
             cost_modifiers: Plan::new(),
             on_execute: vec![],
             recovery_condition: vec![],
             scene: Box::new(|| Box::new(())),
+            tags: vec![],
+            activation_owned_tags: vec![],
+            activation_requires: vec![],
+            activation_blocked_by: vec![],
+            blocks_abilities_with: vec![],
+            cancels_abilities_with: vec![],
         }
     }
 
@@ -84,15 +103,16 @@ impl AbilityBuilder {
             _marker: std::marker::PhantomData,
         };
 
-        let plan = Plan::new().step(step);
-        self.cost_modifiers = plan;
+        // every cost is paid, not just the last one declared
+        let plan = std::mem::replace(&mut self.cost_modifiers, Plan::new());
+        self.cost_modifiers = plan.step(step);
 
         let t_src = express_it::nodes::Node::<T::Property, AbilityExprSchema, _>::new(
             |ctx: &AbilityExprContext| {
+                // a caster without the attribute can't pay
                 ctx.caster_ref
                     .get::<T>()
-                    .expect(&format!("Caster should have {}", pretty_type_name::<T>()))
-                    .current_value()
+                    .map_or(T::Property::default(), |attribute| attribute.current_value())
             },
         );
 
@@ -165,6 +185,34 @@ impl AbilityBuilder {
                 entity_commands.try_insert(T::default());
             },
         ));
+        self.tags.push(TagSpec::of::<T>());
+        self
+    }
+
+    /// The caster carries `T` while this ability is active.
+    pub fn activation_owned_tag<T: Component + Default>(mut self) -> Self {
+        self.activation_owned_tags.push(TagSpec::of::<T>());
+        self
+    }
+
+    pub fn activation_requires<T: Component + Default>(mut self) -> Self {
+        self.activation_requires.push(TagSpec::of::<T>());
+        self
+    }
+
+    /// The caster can't activate this while carrying `T`, e.g. a stun.
+    pub fn activation_blocked_by<T: Component + Default>(mut self) -> Self {
+        self.activation_blocked_by.push(TagSpec::of::<T>());
+        self
+    }
+
+    pub fn blocks_abilities_with<T: Component + Default>(mut self) -> Self {
+        self.blocks_abilities_with.push(TagSpec::of::<T>());
+        self
+    }
+
+    pub fn cancels_abilities_with<T: Component + Default>(mut self) -> Self {
+        self.cancels_abilities_with.push(TagSpec::of::<T>());
         self
     }
 
@@ -196,6 +244,12 @@ impl AbilityBuilder {
             task_scene: self.scene,
             recovery_condition: self.recovery_condition,
             on_execute: self.on_execute,
+            tags: self.tags,
+            activation_owned_tags: self.activation_owned_tags,
+            activation_requires: self.activation_requires,
+            activation_blocked_by: self.activation_blocked_by,
+            blocks_abilities_with: self.blocks_abilities_with,
+            cancels_abilities_with: self.cancels_abilities_with,
         }
     }
 }

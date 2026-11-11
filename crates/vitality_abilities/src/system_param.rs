@@ -4,6 +4,7 @@ use crate::definition::AbilityDef;
 use crate::registry::{AbilityToken, Registry};
 use crate::tasks::TaskScope;
 use crate::tasks::{Task, Tasks};
+use crate::lifecycle::{ActivationError, check_activation};
 use crate::{Ability, AbilityError, AbilityOf, GrantedAbilities, TargetData};
 use bevy::ecs::resource::IsResource;
 use bevy::ecs::system::SystemParam;
@@ -27,6 +28,7 @@ pub struct Abilities<'w, 's> {
         Without<IsResource>,
     >,
     pub tasks: Query<'w, 's, Read<Tasks>, With<Task>>,
+    owners: Query<'w, 's, Read<AbilityOf>>,
     pub registry: Registry<'w>,
     pub machines: MachineQuery<'w, 's, AbilityMachine>,
     pub commands: Commands<'w, 's>,
@@ -181,6 +183,78 @@ impl<'w, 's> Abilities<'w, 's> {
                 error!("[{}] AbilityMachine dispatch failed: {err}", ability_id);
             }
         }
+    }
+
+    /// Same checks the machine runs on activation, without activating.
+    pub fn can_activate(&self, ability: Entity, target: TargetData) -> Result<(), ActivationError> {
+        let (ability_component, ability_ref) = self
+            .abilities
+            .get(ability)
+            .map_err(|_| ActivationError::NotGranted)?;
+        let def = self
+            .registry
+            .ability_definitions()
+            .get(&ability_component.handle)
+            .ok_or(ActivationError::NotGranted)?;
+        let caster = self
+            .owners
+            .get(ability)
+            .map_err(|_| ActivationError::NotGranted)?
+            .0;
+        let (_, caster_ref, _) = self
+            .actors
+            .get(caster)
+            .map_err(|_| ActivationError::NotGranted)?;
+        if self.is_in(ability, AbilityState::Active) {
+            return Err(ActivationError::AlreadyActive);
+        }
+        if self.is_in(ability, AbilityState::Recovery) {
+            return Err(ActivationError::OnCooldown);
+        }
+        let target_ref = match target {
+            TargetData::SelfCast => Some(caster_ref),
+            TargetData::Target(target) => self.actors.get(target).ok().map(|(_, r, _)| r),
+            TargetData::Location(_) => None,
+        };
+        check_activation(def, &caster_ref, &ability_ref, target_ref)
+    }
+
+    fn is_in(&self, ability: Entity, state: AbilityState) -> bool {
+        self.machines.is_in_state(ability, state).unwrap_or(false)
+    }
+
+    pub fn is_active(&self, ability: Entity) -> bool {
+        self.is_in(ability, AbilityState::Active)
+    }
+
+    /// Ends an active ability early; it goes on cooldown as if it had finished.
+    pub fn cancel(&mut self, ability: Entity) {
+        if let Err(err) = self
+            .machines
+            .dispatch_event(ability, AbilityEvent::CancelAbility)
+        {
+            warn!("[{ability}] AbilityMachine dispatch failed: {err}");
+        }
+    }
+
+    pub fn cancel_by_tag<T: Component + Reflect>(&mut self, actor: Entity) {
+        for ability in self.get_abilities_by_tag::<T>(actor) {
+            if self.is_active(ability) {
+                self.cancel(ability);
+            }
+        }
+    }
+
+    /// Removes a granted ability from an actor; an active one is cancelled first.
+    pub fn revoke(&mut self, actor: Entity, handle: &Handle<AbilityDef>) -> bool {
+        let Some(ability) = self.get_ability_entity_by_handle(actor, handle) else {
+            return false;
+        };
+        if self.is_active(ability) {
+            self.cancel(ability);
+        }
+        self.commands.entity(ability).try_despawn();
+        true
     }
 
     pub fn task<'a>(&'a mut self, task_id: Entity) -> TaskScope<'a, 'w, 's> {

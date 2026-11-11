@@ -4,6 +4,7 @@ use express_it::expr::{BoolExpr, StoredExpr};
 use express_it::plan::Plan;
 use vitality_core::context::ActorExprSchema;
 use vitality_core::mutator::EntityActions;
+use vitality_core::tags::TagSpec;
 
 #[derive(Asset, TypePath)]
 pub struct AbilityDef {
@@ -24,4 +25,15 @@ pub struct AbilityDef {
     pub recovery_condition: Vec<BoolExpr<ActorExprSchema>>,
 
     pub on_execute: Vec<Plan<AbilityExprSchema>>,
+
+    /// Inserted on the ability entity; what other abilities block or cancel by.
+    pub tags: Vec<TagSpec>,
+    /// Granted to the caster while the ability is active.
+    pub activation_owned_tags: Vec<TagSpec>,
+    pub activation_requires: Vec<TagSpec>,
+    pub activation_blocked_by: Vec<TagSpec>,
+    /// While active, the caster's abilities with these tags can't activate.
+    pub blocks_abilities_with: Vec<TagSpec>,
+    /// Activating cancels the caster's active abilities with these tags.
+    pub cancels_abilities_with: Vec<TagSpec>,
 }

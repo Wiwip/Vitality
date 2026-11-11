@@ -1,4 +1,5 @@
 use crate::ability_state::AbilityMachine;
+use crate::lifecycle::AbilityEnding;
 use crate::definition::AbilityDef;
 use crate::registry::{AbilityRegistry, AbilityToken};
 use crate::tasks::Tasks;
@@ -38,7 +39,7 @@ impl GrantedAbilities {
 
 #[derive(Component, Clone, Reflect)]
 #[reflect(Component)]
-#[require(Tasks, AbilityRecovery, MachineInstance<AbilityMachine>)]
+#[require(Tasks, AbilityRecovery, AbilityEnding, MachineInstance<AbilityMachine>)]
 pub struct Ability {
     pub handle: Handle<AbilityDef>,
 }

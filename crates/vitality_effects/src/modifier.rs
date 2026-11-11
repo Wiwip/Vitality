@@ -12,7 +12,9 @@ use smol_str::SmolStr;
 use std::collections::HashSet;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
-use vitality_core::AttributeBindings;
+use std::any::TypeId;
+use vitality_core::{AttributeBindings, DepRole};
+use crate::EffectTargeting;
 use vitality_core::math::AbsDiff;
 use vitality_core::modifier::AttributeCalculator;
 pub use vitality_core::modifier::ModOp;
@@ -23,7 +25,7 @@ pub trait Modifier: Send + Sync {
     /// The EntityCommand is the already inserted attribute modifier component.
     fn spawn_persistent_modifier(
         &self,
-        actor_entity: Entity,
+        targeting: &EffectTargeting,
         ctx: &EffectExprContext,
         type_bindings: &AttributeBindings,
         commands: &mut EntityCommands,
@@ -54,6 +56,17 @@ pub struct AttributeModifier<T: Attribute> {
     pub value: T::Property,
     pub who: EffectSubject,
     pub operation: ModOp,
+    pub capture: Capture,
+}
+
+/// Whether a persistent modifier follows the attributes its expression reads.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
+pub enum Capture {
+    /// Re-evaluated whenever a read attribute changes, in the same tick.
+    #[default]
+    Live,
+    /// Evaluated once when the effect is applied.
+    Snapshot,
 }
 
 impl<T> AttributeModifier<T>
@@ -71,6 +84,7 @@ where
             value,
             who,
             operation: modifier,
+            capture: Capture::Live,
         }
     }
 
@@ -86,7 +100,7 @@ where
 {
     fn spawn_persistent_modifier(
         &self,
-        actor_entity: Entity,
+        targeting: &EffectTargeting,
         ctx: &EffectExprContext,
         type_bindings: &AttributeBindings,
         commands: &mut EntityCommands,
@@ -98,22 +112,41 @@ where
             value,
             who: self.who,
             operation: self.operation,
+            capture: self.capture,
         };
         let display = modifier.to_string();
 
-        // Spawn the observer. Watches the actor for attribute value changes.
-        let mut deps = HashSet::default();
-        self.expr.get_dependencies(&mut deps);
-        for dep in deps {
-            let Some(attr_dep) = type_bindings.dependency_inserter(&dep) else {
-                error!(
-                    "Expression dependency {:?} is not a registered attribute dependency for modifier {}",
-                    dep,
-                    pretty_type_name::<T>(),
-                );
-                continue;
-            };
-            attr_dep(actor_entity, commands);
+        if self.capture == Capture::Live {
+            let mut deps = HashSet::default();
+            self.expr.get_dependencies(&mut deps);
+            let mut seen: Vec<(TypeId, Entity)> = Vec::new();
+            for dep in deps {
+                let Some(binding) = type_bindings.dependency(&dep) else {
+                    error!(
+                        "Expression dependency {:?} is not a registered attribute dependency for modifier {}",
+                        dep,
+                        pretty_type_name::<T>(),
+                    );
+                    continue;
+                };
+                let actor = match binding.role {
+                    DepRole::Source | DepRole::Caster => targeting.source(),
+                    DepRole::Target => targeting.target(),
+                };
+                if seen.contains(&(binding.attribute, actor)) {
+                    continue;
+                }
+                // one AttributeDependency<A> per entity, so a second actor for A needs a proxy
+                if seen.iter().any(|(attribute, _)| *attribute == binding.attribute) {
+                    let modifier_entity = commands.id();
+                    let mut spawner = commands.commands();
+                    let mut proxy = spawner.spawn(DependencyProxyOf(modifier_entity));
+                    (binding.insert)(actor, &mut proxy);
+                } else {
+                    (binding.insert)(actor, commands);
+                }
+                seen.push((binding.attribute, actor));
+            }
         }
 
         commands.insert((modifier, Name::new(format!("{}", display))));
@@ -157,7 +190,8 @@ where
             }
             has_changed
         } else {
-            panic!("Could not find attribute {}", pretty_type_name::<T>());
+            warn!("Could not find attribute {}", pretty_type_name::<T>());
+            false
         }
     }
 
@@ -173,6 +207,7 @@ where
             target_entity: target,
             effect_entity: effect,
             modifier: self.clone(),
+            stacks: 1,
         });
     }
 }
@@ -202,16 +237,25 @@ pub struct RecalculateExpression {
 /// When the attribute changes, update the values of dependent AttributeModifier<T>.
 pub fn update_modifier_when_dependencies_changed<T: Attribute>(
     trigger: On<RecalculateExpression>,
+    proxies: Query<&DependencyProxyOf>,
     mut modifiers: Query<(&mut AttributeModifier<T>, &ModifierOf)>,
     effects: Query<(&EffectSource, &EffectTarget)>,
-    actors: Query<EffectsRef, Without<AttributeModifier<T>>>,
+    actors: Query<EffectsRef, (Without<AttributeModifier<T>>, Without<DependencyProxyOf>)>,
     mut commands: Commands,
 ) {
-    let Ok((mut modifier, effect_id)) = modifiers.get_mut(trigger.modifier_entity) else {
+    let modifier_entity = proxies
+        .get(trigger.modifier_entity)
+        .map_or(trigger.modifier_entity, |proxy| proxy.0);
+    let Ok((mut modifier, effect_id)) = modifiers.get_mut(modifier_entity) else {
         return;
     };
-    let (source, target) = effects.get(effect_id.0).unwrap();
-    let [source_ref, target_ref] = actors.get_many([source.0, target.0]).unwrap();
+    let Ok((source, target)) = effects.get(effect_id.0) else {
+        return;
+    };
+    // source == target is the common self-buff, and get_many rejects duplicates
+    let (Ok(source_ref), Ok(target_ref)) = (actors.get(source.0), actors.get(target.0)) else {
+        return;
+    };
 
     let context = EffectExprContext {
         target_actor: Some(target_ref),
@@ -234,6 +278,7 @@ pub struct ApplyAttributeModifierMessage<T: Attribute> {
     pub target_entity: Entity,
     pub effect_entity: Entity,
     pub modifier: AttributeModifier<T>,
+    pub stacks: u32,
 }
 
 pub fn apply_modifier_events<T: Attribute>(
@@ -279,7 +324,8 @@ pub fn apply_modifier<T: Attribute>(
     modifier.update_value(&context);
 
     // Apply the modifier
-    let calculator = AttributeCalculator::<T>::from_op(modifier.operation, modifier.value);
+    let calculator =
+        AttributeCalculator::<T>::from_op_stacked(modifier.operation, modifier.value, trigger.stacks);
     let new_base_value = calculator.eval(base_value);
 
     let has_changed = new_base_value.are_different(base_value);
@@ -362,7 +408,16 @@ impl From<ActorSubject> for SmolStr {
     }
 }
 
-/// The target entity of this effect.
+/// Stands in for a modifier that reads one attribute from two actors.
+#[derive(Component, Reflect, Debug)]
+#[relationship(relationship_target = DependencyProxies)]
+pub struct DependencyProxyOf(pub Entity);
+
+#[derive(Component, Reflect, Debug)]
+#[relationship_target(relationship = DependencyProxyOf, linked_spawn)]
+pub struct DependencyProxies(Vec<Entity>);
+
+/// The effect this modifier belongs to.
 #[derive(Component, Reflect, Debug)]
 #[relationship(relationship_target = OwnedModifiers)]
 pub struct ModifierOf(pub Entity);

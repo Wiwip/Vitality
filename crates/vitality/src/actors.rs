@@ -48,8 +48,10 @@ impl EntityCommand for SpawnActorCommand {
 
         entity.world_scope(|world| {
             world.resource_scope(|world, actor_assets: Mut<Assets<ActorDef>>| {
-                actor_assets.get(&self.handle).unwrap();
-                let actor_def = actor_assets.get(&self.handle).unwrap();
+                let Some(actor_def) = actor_assets.get(&self.handle) else {
+                    warn!("Actor {:?} has no loaded definition; {actor_entity} left empty.", self.handle);
+                    return;
+                };
 
                 let mut queue = {
                     let mut queue = CommandQueue::default();

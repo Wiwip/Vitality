@@ -1,4 +1,5 @@
-use crate::attributes::{Attribute, AttributeDependency, ReflectAccessAttribute};
+use crate::attributes::{Attribute, AttributeDependency, ReflectAccessAttribute, dep_key};
+use crate::context::{Caster, Source, Target};
 use crate::modifier::AttributeCalculatorCached;
 use crate::schedule::EffectsSet;
 use crate::util::pretty_type_name;
@@ -19,6 +20,7 @@ pub mod math;
 pub mod modifier;
 pub mod mutator;
 pub mod schedule;
+pub mod tags;
 pub mod util;
 pub mod view;
 
@@ -37,11 +39,30 @@ pub mod prelude {
     pub use bevy::prelude::ReflectComponent;
 }
 
+#[derive(Resource, Default)]
+struct InstalledPlugins(bevy::platform::collections::HashSet<TypeId>);
+
+/// True the first time it is called for `P` in this app; vitality plugins use it so adding
+/// one twice, or after a plugin that already brings it, is a no-op instead of a panic.
+pub fn first_install<P: 'static>(app: &mut App) -> bool {
+    app.world_mut()
+        .get_resource_or_init::<InstalledPlugins>()
+        .0
+        .insert(TypeId::of::<P>())
+}
+
 /// Registers the schedule sets and resources every other vitality crate builds on.
 pub struct CorePlugin;
 
 impl Plugin for CorePlugin {
+    fn is_unique(&self) -> bool {
+        false
+    }
+
     fn build(&self, app: &mut App) {
+        if !crate::first_install::<Self>(app) {
+            return;
+        }
         app.init_resource::<AppAttributeBindings>()
             .init_schedule(PreUpdate)
             .init_schedule(PostUpdate);
@@ -71,23 +92,54 @@ pub struct AppAttributeBindings {
     pub internal: Arc<RwLock<AttributeBindings>>,
 }
 
+/// Which actor of an expression's context a dependency reads from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum DepRole {
+    Source,
+    Target,
+    Caster,
+}
+
+#[derive(Clone, Copy)]
+pub struct DepBinding {
+    pub role: DepRole,
+    /// The attribute's own type id, shared by all of its role keys.
+    pub attribute: TypeId,
+    /// Makes the modifier entity being built a dependent of `T` on the given actor.
+    pub insert: fn(Entity, &mut EntityCommands),
+}
+
 #[derive(Default)]
 pub struct AttributeBindings {
     type_id_map: HashMap<SmolStr, TypeId>,
-    insert_dependency_functions: HashMap<TypeId, fn(Entity, &mut EntityCommands)>,
+    dependencies: HashMap<TypeId, DepBinding>,
 }
 
 impl AttributeBindings {
     fn add<T: Attribute>(&mut self) {
         self.bind_type_id::<T>();
 
-        self.insert_dependency_functions
-            .insert(TypeId::of::<T>(), Self::dependency_fn::<T>);
+        let insert = Self::dependency_fn::<T>;
+        // a bare type id predates roles and always meant the source
+        for (key, role) in [
+            (TypeId::of::<T>(), DepRole::Source),
+            (dep_key::<T, Source>(), DepRole::Source),
+            (dep_key::<T, Target>(), DepRole::Target),
+            (dep_key::<T, Caster>(), DepRole::Caster),
+        ] {
+            self.dependencies.insert(
+                key,
+                DepBinding {
+                    role,
+                    attribute: TypeId::of::<T>(),
+                    insert,
+                },
+            );
+        }
     }
 
-    /// The function that makes `entity` a dependency of the attribute with this type id.
-    pub fn dependency_inserter(&self, type_id: &TypeId) -> Option<fn(Entity, &mut EntityCommands)> {
-        self.insert_dependency_functions.get(type_id).copied()
+    pub fn dependency(&self, type_id: &TypeId) -> Option<DepBinding> {
+        self.dependencies.get(type_id).copied()
     }
 
     // Binds the AttributeId to a specific TypeId used for reflection

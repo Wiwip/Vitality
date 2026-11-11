@@ -1,6 +1,5 @@
 use bevy::ecs::component::{ComponentId, Components};
 use bevy::prelude::*;
-use bevy::text::FontSourceTemplate;
 use ptree::{TreeBuilder, write_tree};
 use std::any::TypeId;
 use vitality_abilities::tasks::Tasks;
@@ -30,8 +29,8 @@ fn create_overlay() -> impl Scene {
         }
         Children [
             Text("Debug Overlay")
+            // bevy's default font: the repo's ttf is git-ignored and was missing on fresh clones
             TextFont {
-                font: FontSourceTemplate::Handle("fonts/JetBrainsMono-Regular.ttf"),
                 font_size: px(12.0),
             }
             DebugOverlayMarker

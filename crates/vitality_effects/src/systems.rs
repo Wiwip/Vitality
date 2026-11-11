@@ -3,7 +3,7 @@ use crate::graph::{DependencyGraph, NodeType};
 use crate::modifier::OwnedModifiers;
 use crate::modifier::RecalculateExpression;
 use crate::prelude::*;
-use crate::{EffectSource, EffectStatusParam, EffectTarget};
+use crate::{EffectSource, EffectStatusParam, EffectTarget, Stacks};
 use bevy::prelude::*;
 use bevy::reflect::TypeRegistryArc;
 use petgraph::visit::IntoNeighbors;
@@ -52,7 +52,7 @@ pub fn update_current_value_system<T: Attribute>(
     statuses: Query<EffectStatusParam>,
     attributes: Query<AttributeQueryDataReadOnly<T>>,
     attribute_refs: Query<EffectsRef>,
-    effects: Query<(&OwnedModifiers, &EffectSource, &EffectTarget)>,
+    effects: Query<(&OwnedModifiers, &EffectSource, &EffectTarget, Option<&Stacks>)>,
     modifiers: Query<&AttributeModifier<T>>,
     mut commands: Commands,
     type_registry: Res<AppTypeRegistry>,
@@ -94,7 +94,7 @@ fn update_effect_tree_attributes<T: Attribute>(
     statuses: &Query<EffectStatusParam>,
     attributes: &Query<AttributeQueryDataReadOnly<T>>,
     attribute_refs: &Query<EffectsRef>,
-    effects: &Query<(&OwnedModifiers, &EffectSource, &EffectTarget)>,
+    effects: &Query<(&OwnedModifiers, &EffectSource, &EffectTarget, Option<&Stacks>)>,
     modifiers: &Query<&AttributeModifier<T>>,
     commands: &mut Commands,
     type_registry: &TypeRegistryArc,
@@ -148,7 +148,8 @@ fn update_effect_tree_attributes<T: Attribute>(
             calculator
         }
         NodeType::Effect => {
-            let Ok((modifier_entities, _source, _target)) = effects.get(current_entity) else {
+            let Ok((modifier_entities, _source, _target, stacks)) = effects.get(current_entity)
+            else {
                 // Effect has no modifiers, return default calculator.
                 return AttributeCalculator::default();
             };
@@ -168,7 +169,12 @@ fn update_effect_tree_attributes<T: Attribute>(
                         return None;
                     }
 
-                    let calc = AttributeCalculator::from_op(modifier.operation, modifier.value);
+                    let stacks = stacks.map_or(1, |stacks| stacks.current_value());
+                    let calc = AttributeCalculator::from_op_stacked(
+                        modifier.operation,
+                        modifier.value,
+                        stacks,
+                    );
 
                     Some(calc)
                 })

@@ -88,18 +88,17 @@ fn setup_ability(mut registry: RegistryMut) {
 struct Player;
 
 fn setup_actor(mut vitality: Vitality) {
+    let fireball = vitality.registry.ability(&FIREBALL);
     let actor = ActorBuilder::new()
         .name("Actor".into())
         .with::<Health>(10.0)
         .with::<Damage>(2.0)
         .clamp::<Health>(0.0, 1.0)
         .insert((DebugOverlayMarker, Player))
+        .grant_ability(&fireball)
         .build();
 
     let entity = vitality.add_spawn_actor(actor).id();
-    vitality
-        .grant_ability_by_token_unchecked(entity, &FIREBALL)
-        .expect("Failed to grant ability");
 
     let effect = EffectBuilder::permanent()
         .modify::<Health>(10.0, ModOp::Add, EffectSubject::Target)

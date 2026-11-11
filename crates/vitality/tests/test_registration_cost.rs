@@ -53,9 +53,10 @@ const STEP: usize = WIDE - NARROW;
 const SYSTEMS_PER_ATTR_BASELINE: usize = 6;
 const COMPONENTS_PER_ATTR_BASELINE: usize = 10;
 
-/// Fixed `FixedUpdate` nodes at zero attributes, i.e. the measured `20 - 2 * 6` of the never-run graph.
+/// Fixed `FixedUpdate` nodes at zero attributes, i.e. the measured `24 - 2 * 6` of the never-run graph.
 /// The companion of the slope above: a node added at plugin build time is a +1 here, not a slope change.
-const SYSTEMS_INTERCEPT_BASELINE: usize = 8;
+/// 8 → 12 when the effect tickers, durations, stack events and conditions moved off `Update`.
+const SYSTEMS_INTERCEPT_BASELINE: usize = 12;
 
 fn spec(attributes: usize) -> WorldSpec {
     WorldSpec {
@@ -133,7 +134,7 @@ fn registration_cost_per_attribute_is_pinned() {
         intercept <= SYSTEMS_INTERCEPT_BASELINE,
         "measured {intercept} fixed scheduled nodes: FixedUpdate systems_len() is {} at {NARROW} \
          attributes, i.e. {SYSTEMS_PER_ATTR_BASELINE} per attribute plus a fixed {intercept}; the \
-         intercept baseline is {SYSTEMS_INTERCEPT_BASELINE} (the never-run graph, 8 + 6a), not the {} \
+         intercept baseline is {SYSTEMS_INTERCEPT_BASELINE} (the never-run graph, 12 + 6a), not the {} \
          a compiled schedule counts",
         narrow.systems,
         SYSTEMS_INTERCEPT_BASELINE + 2,

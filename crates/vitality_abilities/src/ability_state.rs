@@ -2,7 +2,11 @@ use crate::AbilityRef;
 use crate::context::AbilityExprContext;
 use crate::definition::AbilityDef;
 use crate::registry::Registry;
-use crate::systems::{ActivateAbility, can_activate_ability};
+use crate::lifecycle::{
+    AbilityActivated, AbilityActivationFailed, AbilityEnded, AbilityEnding, ActivationError,
+    change_blocks, check_activation,
+};
+use crate::systems::ActivateAbility;
 use crate::task_states::TaskMachine;
 use crate::task_states::{TaskEvent, TaskState};
 use crate::tasks::Tasks;
@@ -16,12 +20,12 @@ use bevy::ecs::system::lifetimeless::{Read, Write};
 use bevy::log::{error, warn};
 use bevy::prelude::{Commands, Entity, Query, Res, Without};
 use bevy::prelude::{RelationshipTarget, debug};
-use express_it::expr::BoolExpr;
-use hfsm_bevy::{Access, EventResult, MachineDefinition, MachineState};
+use hfsm_bevy::{Access, EventResult, MachineDefinition, MachineEvent, MachineState};
 use hfsm_bevy::{ExternalContext, LocalContext, Machine, MachineQuery, StateId, StateTimer};
 use std::time::Duration;
 use vitality_core::attributes::Attribute;
-use vitality_core::context::ActorExprContext;
+use vitality_core::tags::ChangeTag;
+use vitality_core::view::ActorRead;
 
 pub struct AbilityMachine;
 impl Machine for AbilityMachine {
@@ -50,6 +54,7 @@ pub struct AbilityContext {
     pub ability_id: Entity,
     pub recovery_timer: Write<AbilityRecovery>,
     pub timers: Write<StateTimer<AbilityMachine>>,
+    pub ending: Write<AbilityEnding>,
 }
 impl LocalContext for AbilityContext {
     type Item<'w, 's> = <Self as QueryData>::Item<'w, 's>;
@@ -104,91 +109,108 @@ impl MachineState<AbilityMachine> for ReadyState {
     fn on_enter(&self, _ctx: &mut Access<AbilityMachine>) {}
 
     fn on_event(&self, ctx: &mut Access<AbilityMachine>, event: &AbilityEvent) -> EventResult {
-        debug!("on_event: {:?}", event);
-        match event {
-            AbilityEvent::TryActivate {
-                source,
-                target: target_data,
-            } => {
-                let Ok((ability, ability_ref)) = ctx.external.abilities.get(ctx.ability_id) else {
+        let AbilityEvent::TryActivate {
+            source,
+            target: target_data,
+        } = event
+        else {
+            return EventResult::Ignored;
+        };
+        let (source, target_data) = (*source, *target_data);
+        let ability_id = ctx.ability_id;
+
+        let Ok((ability, ability_ref)) = ctx.external.abilities.get(ability_id) else {
+            return EventResult::Ignored;
+        };
+        let Ok((caster_ref, _)) = ctx.external.actors.get(source) else {
+            warn!("[{ability_id}] The Actor({source}) has no GrantedAbilities");
+            return EventResult::Ignored;
+        };
+        let target_ref = match target_data {
+            TargetData::SelfCast => Some(caster_ref),
+            TargetData::Target(target) => {
+                let Ok((target_ref, _)) = ctx.external.actors.get(target) else {
                     return EventResult::Ignored;
                 };
-
-                let Ok((source_entity_ref, _actor_abilities)) = ctx.external.actors.get(*source)
-                else {
-                    warn!(
-                        "[{}] The Actor({}) has no GrantedAbilities",
-                        ctx.ability_id, source
-                    );
-                    return EventResult::Ignored;
-                };
-
-                let target_entity_ref = match target_data {
-                    TargetData::SelfCast => Some(source_entity_ref),
-                    TargetData::Target(target) => {
-                        let Ok((entity, _)) = ctx.external.actors.get(*target) else {
-                            return EventResult::Ignored;
-                        };
-                        Some(entity)
-                    }
-                    _ => None,
-                };
-
-                let ability_spec = ctx
-                    .external
-                    .registry
-                    .ability_assets
-                    .get(&ability.handle.clone())
-                    .ok_or("No ability asset.")
-                    .unwrap();
-
-                // Checks if we meet the Actor-based conditions (i.e. is not stunned)
-                let context = ActorExprContext {
-                    actor_context: source_entity_ref.into(),
-                };
-                let meets_actor_exec_conditions = ability_spec
-                    .execution_conditions
-                    .iter()
-                    .all(|expr| expr.eval(&context));
-
-                if !meets_actor_exec_conditions {
-                    return EventResult::Ignored;
-                }
-
-                let context = AbilityExprContext {
-                    caster_ref: source_entity_ref,
-                    ability_ref,
-                    target_ref: target_entity_ref,
-                };
-
-                let can_activate =
-                    can_activate_ability(&context, &ability_spec, &BoolExpr::new(|_ctx| true))
-                        .ok()
-                        .unwrap_or(false);
-
-                if can_activate {
-                    ctx.internal_events.push_back(AbilityEvent::Activate);
-
-                    ctx.external.commands.trigger(BeginAbility {
-                        source: *source,
-                        ability: ctx.ability_id,
-                    });
-                    ctx.external.commands.trigger(ActivateAbility {
-                        target: target_data.clone(),
-                        source: *source,
-                        ability: ctx.ability_id,
-                    });
-                    ctx.external.commands.trigger(ExecuteAbility {
-                        target: target_data.clone(),
-                        source: *source,
-                        ability: ctx.ability_id,
-                    });
-                }
-                EventResult::Handled
+                Some(target_ref)
             }
+            TargetData::Location(_) => None,
+        };
+        let Some(def) = ctx.external.registry.ability_assets.get(&ability.handle) else {
+            warn!("[{ability_id}] Ability has no loaded definition.");
+            return EventResult::Ignored;
+        };
 
-            _ => EventResult::Ignored,
+        if let Err(reason) = check_activation(def, &caster_ref, &ability_ref, target_ref) {
+            ctx.external.commands.trigger(AbilityActivationFailed {
+                entity: ability_id,
+                caster: source,
+                reason,
+            });
+            return EventResult::Handled;
         }
+
+        // cancel before granting our own blocks, so a cancel-and-replace pair works
+        if !def.cancels_abilities_with.is_empty() {
+            if let Ok((_, granted)) = ctx.external.actors.get(source) {
+                for other in granted.iter().copied().filter(|other| *other != ability_id) {
+                    let Ok((_, other_ref)) = ctx.external.abilities.get(other) else {
+                        continue;
+                    };
+                    if def
+                        .cancels_abilities_with
+                        .iter()
+                        .any(|tag| other_ref.has_type(tag.type_id))
+                    {
+                        ctx.external.commands.trigger(MachineEvent::<AbilityMachine>::new(
+                            other,
+                            AbilityEvent::CancelAbility,
+                        ));
+                    }
+                }
+            }
+        }
+
+        let mut caster = ctx.external.commands.entity(source);
+        for tag in &def.activation_owned_tags {
+            caster.queue_silenced(ChangeTag::grant(*tag));
+        }
+        change_blocks(
+            &mut caster,
+            def.blocks_abilities_with.iter().map(|tag| tag.type_id).collect(),
+            true,
+        );
+
+        ctx.internal_events.push_back(AbilityEvent::Activate);
+        ctx.external.commands.trigger(AbilityActivated {
+            entity: ability_id,
+            caster: source,
+        });
+        ctx.external.commands.trigger(BeginAbility {
+            source,
+            ability: ability_id,
+        });
+        ctx.external.commands.trigger(ActivateAbility {
+            target: target_data,
+            source,
+            ability: ability_id,
+        });
+        ctx.external.commands.trigger(ExecuteAbility {
+            target: target_data,
+            source,
+            ability: ability_id,
+        });
+        EventResult::Handled
+    }
+}
+
+fn report_busy(ctx: &mut Access<AbilityMachine>, event: &AbilityEvent, reason: ActivationError) {
+    if let AbilityEvent::TryActivate { source, .. } = event {
+        ctx.external.commands.trigger(AbilityActivationFailed {
+            entity: ctx.ability_id,
+            caster: *source,
+            reason,
+        });
     }
 }
 
@@ -196,6 +218,7 @@ struct ActiveState;
 impl MachineState<AbilityMachine> for ActiveState {
     fn on_enter(&self, ctx: &mut Access<AbilityMachine>) {
         debug!("[{}] Ability enter ActiveState", ctx.ability_id);
+        ctx.local.ending.cancelled = false;
         let Ok(tasks) = ctx.external.tasks.get(ctx.ability_id) else {
             error!("Activated an unavailable ability.");
             return;
@@ -219,8 +242,42 @@ impl MachineState<AbilityMachine> for ActiveState {
         }
     }
 
+    fn on_event(&self, ctx: &mut Access<AbilityMachine>, event: &AbilityEvent) -> EventResult {
+        match event {
+            AbilityEvent::CancelAbility => ctx.local.ending.cancelled = true,
+            AbilityEvent::TryActivate { .. } => {
+                report_busy(ctx, event, ActivationError::AlreadyActive);
+                return EventResult::Handled;
+            }
+            _ => {}
+        }
+        EventResult::Ignored
+    }
+
     fn on_exit(&self, ctx: &mut Access<AbilityMachine>) {
         debug!("[{}] Ability exit ActiveState", ctx.ability_id);
+        let ability_id = ctx.ability_id;
+        let Ok(caster) = ctx.external.casters.get(ability_id).map(|of| of.0) else {
+            return;
+        };
+        if let Ok((ability, _)) = ctx.external.abilities.get(ability_id)
+            && let Some(def) = ctx.external.ability_assets.get(&ability.handle)
+            && let Ok(mut caster_commands) = ctx.external.commands.get_entity(caster)
+        {
+            for tag in &def.activation_owned_tags {
+                caster_commands.queue_silenced(ChangeTag::revoke(*tag));
+            }
+            change_blocks(
+                &mut caster_commands,
+                def.blocks_abilities_with.iter().map(|tag| tag.type_id).collect(),
+                false,
+            );
+        }
+        ctx.external.commands.trigger(AbilityEnded {
+            entity: ability_id,
+            caster,
+            cancelled: ctx.local.ending.cancelled,
+        });
     }
 }
 
@@ -232,27 +289,38 @@ impl MachineState<AbilityMachine> for RecoveryState {
         // Reset recovery elapsed timer
         ctx.local.recovery_timer.set_base_value(0.0);
 
-        let (ability, ability_ref) = ctx.external.abilities.get(ctx.ability_id).unwrap();
-        let ability_def = ctx.external.ability_assets.get(&ability.handle).unwrap();
-
-        let owner_id = ctx.external.casters.get(ctx.ability_id).unwrap();
-        let (caster_ref, _) = ctx.external.actors.get(owner_id.0).unwrap();
-
-        let actor_context = AbilityExprContext {
-            caster_ref,
-            target_ref: None,
-            ability_ref,
+        let ability_id = ctx.ability_id;
+        let cooldown = (|| {
+            let (ability, ability_ref) = ctx.external.abilities.get(ability_id).ok()?;
+            let ability_def = ctx.external.ability_assets.get(&ability.handle)?;
+            let owner_id = ctx.external.casters.get(ability_id).ok()?;
+            let (caster_ref, _) = ctx.external.actors.get(owner_id.0).ok()?;
+            let actor_context = AbilityExprContext {
+                caster_ref,
+                target_ref: None,
+                ability_ref,
+            };
+            Some(ability_def.cooldown.eval(&actor_context))
+        })();
+        let Some(cooldown) = cooldown else {
+            warn!("[{ability_id}] Could not evaluate the cooldown; recovering immediately.");
+            ctx.internal_events.push_back(AbilityEvent::Recovered);
+            return;
         };
-        let new_cooldown = ability_def.cooldown.eval(&actor_context);
 
-        // Sets the recovery timer cooldown. Uses a snapshotting model.
-        ctx.local.timers.set_timer(
-            Duration::from_secs_f32(new_cooldown),
-            AbilityEvent::Recovered,
-            AbilityState::Recovery,
-        );
+        // non-finite or negative cooldowns would panic in Duration
+        let cooldown = if cooldown.is_finite() { cooldown.max(0.0) } else { 0.0 };
+        if cooldown == 0.0 {
+            ctx.internal_events.push_back(AbilityEvent::Recovered);
+        } else {
+            ctx.local.timers.set_timer(
+                Duration::from_secs_f32(cooldown),
+                AbilityEvent::Recovered,
+                AbilityState::Recovery,
+            );
+        }
 
-        for task_id in ctx.external.tasks.iter_descendants(ctx.ability_id) {
+        for task_id in ctx.external.tasks.iter_descendants(ability_id) {
             if ctx
                 .external
                 .task_machines
@@ -269,6 +337,14 @@ impl MachineState<AbilityMachine> for RecoveryState {
                 }
             }
         }
+    }
+
+    fn on_event(&self, ctx: &mut Access<AbilityMachine>, event: &AbilityEvent) -> EventResult {
+        if matches!(event, AbilityEvent::TryActivate { .. }) {
+            report_busy(ctx, event, ActivationError::OnCooldown);
+            return EventResult::Handled;
+        }
+        EventResult::Ignored
     }
 
     fn on_exit(&self, ctx: &mut Access<AbilityMachine>) {

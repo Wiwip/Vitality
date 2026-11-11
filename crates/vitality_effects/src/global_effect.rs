@@ -18,7 +18,14 @@ pub struct GlobalEffect;
 pub struct GlobalEffectPlugin;
 
 impl Plugin for GlobalEffectPlugin {
+    fn is_unique(&self) -> bool {
+        false
+    }
+
     fn build(&self, app: &mut App) {
+        if !vitality_core::first_install::<Self>(app) {
+            return;
+        }
         app.add_systems(PreStartup, spawn_global_actor);
         app.insert_resource(GlobalEffects::default());
 

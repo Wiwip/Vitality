@@ -9,8 +9,14 @@ pub fn on_add_ability(
     ability_assets: Res<Assets<AbilityDef>>,
     mut commands: Commands,
 ) {
-    let (ability, ability_of) = abilities.get(trigger.entity).unwrap();
-    let ability_def = ability_assets.get(&ability.handle).unwrap();
+    let Ok((ability, ability_of)) = abilities.get(trigger.entity) else {
+        warn!("[{}] Ability added without an owner.", trigger.entity);
+        return;
+    };
+    let Some(ability_def) = ability_assets.get(&ability.handle) else {
+        warn!("[{}] Ability has no loaded definition.", trigger.entity);
+        return;
+    };
 
     let mut ability_entity_commands = commands.entity(trigger.entity);
     for mutator in &ability_def.mutators {

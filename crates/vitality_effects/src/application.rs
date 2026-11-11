@@ -1,9 +1,11 @@
 use crate::EffectTargeting;
-use crate::EffectsMut;
+use crate::EffectsRef;
+use crate::lifecycle::{EffectApplied, EffectBlocked, EffectRemovalReason, remove_effect};
+use crate::EffectTags;
+use crate::systems::MarkActorDirty;
 use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
 use crate::graph::NodeType;
-use crate::modifier::Modifier;
 use crate::modifier::ModifierOf;
 use crate::timing::{EffectDuration, EffectTicker};
 use crate::{
@@ -12,10 +14,11 @@ use crate::{
 use bevy::asset::Assets;
 use bevy::asset::Handle;
 use bevy::ecs::resource::IsResource;
-use bevy::log::debug;
 use bevy::prelude::*;
 use std::cmp::PartialEq;
 use vitality_core::AppAttributeBindings;
+use vitality_core::tags::ChangeTag;
+use vitality_core::view::ActorRead;
 
 /// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
@@ -129,66 +132,66 @@ pub struct ApplyEffectEvent {
     pub handle: Handle<EffectDef>,
 }
 
+type ActorQuery<'w, 's> =
+    Query<'w, 's, (Option<&'static AppliedEffects>, EffectsRef<'static, 'static>), (Without<Effect>, Without<IsResource>)>;
+
 impl ApplyEffectEvent {
-    fn apply_instant_effect(
+    fn context<'a>(
         &self,
-        actors: &mut Query<
-            (Option<&AppliedEffects>, EffectsMut),
-            (Without<Effect>, Without<IsResource>),
-        >,
-        commands: &mut Commands,
-        effect: &EffectDef,
-    ) -> Result<(), BevyError> {
-        debug!("Applying instant effect to {}", self.targeting.target());
-
-        let Ok((_, source_actor_ref)) = actors.get(self.targeting.source()) else {
+        actors: &'a ActorQuery,
+    ) -> Option<(Option<&'a AppliedEffects>, EffectExprContext<'a, 'a>)> {
+        let Ok((_, source)) = actors.get(self.targeting.source()) else {
             warn!("Failed to get source actor: {}", self.targeting.source());
-            return Ok(());
+            return None;
         };
-        let Ok((_, target_actor_ref)) = actors.get(self.targeting.target()) else {
+        let Ok((applied, target)) = actors.get(self.targeting.target()) else {
             warn!("Failed to get target actor: {}", self.targeting.target());
-            return Ok(());
+            return None;
         };
-
-        let context = EffectExprContext {
-            target_actor: Some(target_actor_ref),
-            source_actor: source_actor_ref,
-            effect_holder: source_actor_ref, // TODO: Make optional
-        };
-
-        // Determines whether the effect should activate
-        let should_apply = effect
-            .activate_conditions
-            .iter()
-            .all(|condition| condition.eval(&context));
-
-        if !should_apply {
-            debug!("Effect not applied.");
-            return Ok(());
-        }
-
-        self.apply_modifiers(actors, &mut effect.modifiers.iter(), commands);
-        Ok(())
+        Some((
+            applied,
+            EffectExprContext {
+                target_actor: Some(target),
+                source_actor: source,
+                effect_holder: source,
+            },
+        ))
     }
 
-    fn apply_modifiers<'a, I>(
+    fn passes_tag_rules(&self, effect: &EffectDef, ctx: &EffectExprContext) -> bool {
+        let Some(target) = &ctx.target_actor else {
+            return true;
+        };
+        effect
+            .required_tags
+            .iter()
+            .all(|tag| target.has_type(tag.type_id))
+            && !effect
+                .blocked_by_tags
+                .iter()
+                .any(|tag| target.has_type(tag.type_id))
+    }
+
+    fn cleanse(
         &self,
-        _actors: &'a mut Query<
-            (Option<&AppliedEffects>, EffectsMut),
-            (Without<Effect>, Without<IsResource>),
-        >,
-        modifiers: &mut I,
+        effect: &EffectDef,
+        applied: Option<&AppliedEffects>,
+        effect_tags: &Query<&EffectTags>,
         commands: &mut Commands,
-    ) where
-        I: Iterator<Item = &'a Box<dyn Modifier>>,
-    {
-        for modifier in modifiers {
-            modifier.apply_delayed(
-                self.targeting.source(),
-                self.targeting.target(),
-                self.entity,
-                commands,
-            );
+    ) {
+        if effect.cleanses.is_empty() {
+            return;
+        }
+        let Some(applied) = applied else {
+            return;
+        };
+        for other in applied.iter() {
+            let Ok(tags) = effect_tags.get(other) else {
+                continue;
+            };
+            if effect.cleanses.iter().any(|tag| tags.0.contains(&tag.type_id)) {
+                remove_effect(commands, other, EffectRemovalReason::Cleansed);
+            }
         }
     }
 
@@ -196,85 +199,55 @@ impl ApplyEffectEvent {
         &self,
         commands: &mut Commands,
         effect: &EffectDef,
-        actors: &mut Query<
-            (Option<&AppliedEffects>, EffectsMut),
-            (Without<Effect>, Without<IsResource>),
-        >,
-        effects: &mut Query<&Effect>,
+        applied: Option<&AppliedEffects>,
+        context: &EffectExprContext,
+        effects: &Query<&Effect>,
         add_stack_event: &mut MessageWriter<NotifyAddStackEvent>,
-        type_bindings: AppAttributeBindings,
-    ) -> Result<(), BevyError> {
-        // We want to know whether an effect with the same handle already points to the actor
-        let (optional_effects, _) = actors.get_mut(self.targeting.target())?;
-        let effects_on_actor = match optional_effects {
-            None => {
-                vec![]
-            }
-            Some(effects_on_actor) => {
-                let effects = effects_on_actor.iter().filter_map(|effect_entity| {
-                    let Ok(other_effect) = effects.get(effect_entity) else {
-                        return None;
-                    };
-                    if other_effect.0.id() == self.handle.id() {
-                        Some(effect_entity)
-                    } else {
-                        None
-                    }
+        type_bindings: &AppAttributeBindings,
+    ) -> Option<Entity> {
+        if !matches!(effect.stacking_policy, EffectStackingPolicy::None) {
+            let existing = applied.and_then(|applied| {
+                applied.iter().find(|other| {
+                    effects
+                        .get(*other)
+                        .is_ok_and(|other| other.0.id() == self.handle.id())
+                })
+            });
+            if let Some(existing) = existing {
+                add_stack_event.write(NotifyAddStackEvent {
+                    effect_entity: existing,
+                    handle: self.handle.clone(),
                 });
-                effects.collect::<Vec<_>>()
-            }
-        };
-
-        match effect.stacking_policy {
-            EffectStackingPolicy::None => {
-                // Continue spawning effect
-            }
-            EffectStackingPolicy::Add { .. } | EffectStackingPolicy::RefreshDuration => {
-                if effects_on_actor.len() > 0 {
-                    debug!("Effect already exists on actor. Adding stacks per definition.");
-                    add_stack_event.write(NotifyAddStackEvent {
-                        effect_entity: *effects_on_actor.first().unwrap(),
-                        handle: self.handle.clone(),
-                    });
-                    return Ok(());
-                }
+                return None;
             }
         }
 
-        let (_, source_actor_ref) = actors.get(self.targeting.source())?;
-        let (_, target_actor_ref) = actors.get(self.targeting.target())?;
-
-        let context = EffectExprContext {
-            target_actor: Some(target_actor_ref),
-            source_actor: source_actor_ref,
-            effect_holder: source_actor_ref, // TODO: Should this be the source actor? The effect doesn't exist for instant effects.
-        };
-
-        // Determines whether the effect should activate
-        let should_be_applied = effect
+        if !effect
             .attach_conditions
             .iter()
-            .all(|condition| condition.eval(&context));
-
-        if !should_be_applied {
-            return Ok(());
+            .all(|condition| condition.eval(context))
+        {
+            return None;
         }
 
+        let target = self.targeting.target();
         let mut effect_commands = commands.spawn_empty();
         let effect_entity = effect_commands.id();
         for effect_fn in &effect.effect_fn {
-            effect_fn(&mut effect_commands, self.targeting.target());
+            effect_fn(&mut effect_commands, target);
         }
 
-        // Spawns the effect entity
         effect_commands.insert((
             NodeType::Effect,
-            EffectTarget(self.targeting.target()),
+            EffectTarget(target),
             EffectSource(self.targeting.source()),
             Effect(self.handle.clone()),
+            EffectTags(effect.granted_tags.iter().map(|tag| tag.type_id).collect()),
         ));
+        for tag in effect.granted_tags.iter().copied() {
+            effect_commands.queue(move |mut entity: EntityWorldMut| tag.insert_on(&mut entity));
+        }
 
-        // Converts the policy to components that can be added to the entity
         let (duration, ticker) = effect.application_policy.to_bundles();
         if let Some(duration) = duration {
             effect_commands.insert(duration);
@@ -282,65 +255,99 @@ impl ApplyEffectEvent {
         if let Some(ticker) = ticker {
             effect_commands.insert(ticker);
         }
+        for triggers in &effect.on_effect_triggers {
+            triggers.apply(&mut effect_commands);
+        }
 
-        // Spawn effect modifiers
-        let bindings = type_bindings.internal.read().unwrap();
-        effect.modifiers.iter().for_each(|modifier| {
+        let bindings = type_bindings.internal.read().unwrap_or_else(|err| err.into_inner());
+        for modifier in &effect.modifiers {
             let mut entity_commands = commands.spawn(ModifierOf(effect_entity));
             modifier.spawn_persistent_modifier(
-                source_actor_ref.id(),
-                &context,
+                &self.targeting,
+                context,
                 &bindings,
                 &mut entity_commands,
             );
-        });
+        }
 
-        // Spawn effect triggers
+        let mut target_commands = commands.entity(target);
+        for tag in &effect.granted_tags {
+            target_commands.queue_silenced(ChangeTag::grant(*tag));
+        }
         for triggers in &effect.on_actor_triggers {
-            let mut entity_commands = commands.entity(self.entity);
-            triggers.apply(&mut entity_commands);
+            triggers.apply(&mut target_commands);
         }
 
-        // Spawn effect triggers
-        for triggers in &effect.on_effect_triggers {
-            let mut entity_commands = commands.entity(self.targeting.target());
-            triggers.apply(&mut entity_commands);
-        }
-
-        Ok(())
+        Some(effect_entity)
     }
 }
 
 pub(crate) fn apply_effect_event_observer(
     trigger: On<ApplyEffectEvent>,
-    mut actors: Query<
-        (Option<&AppliedEffects>, EffectsMut),
-        (Without<Effect>, Without<IsResource>),
-    >,
-    mut effects: Query<&Effect>,
+    actors: ActorQuery,
+    effects: Query<&Effect>,
+    effect_tags: Query<&EffectTags>,
     effect_assets: Res<Assets<EffectDef>>,
     mut writer: MessageWriter<NotifyAddStackEvent>,
     mut commands: Commands,
     type_bindings: Res<AppAttributeBindings>,
-) -> Result<(), BevyError> {
-    let effect = effect_assets
-        .get(&trigger.handle)
-        .ok_or("No effect asset.")?;
+) {
+    let Some(effect) = effect_assets.get(&trigger.handle) else {
+        warn!("Effect {:?} has no loaded definition.", trigger.handle);
+        return;
+    };
+    let Some((applied, context)) = trigger.context(&actors) else {
+        return;
+    };
+    let source = trigger.targeting.source();
+    let target = trigger.targeting.target();
 
-    if effect.application_policy.should_apply_now() {
-        trigger.apply_instant_effect(&mut actors, &mut commands, effect)?;
+    if !trigger.passes_tag_rules(effect, &context) {
+        commands.trigger(EffectBlocked {
+            entity: target,
+            source,
+            handle: trigger.handle.clone(),
+        });
+        return;
     }
 
-    if effect.application_policy != EffectApplicationPolicy::Instant {
-        trigger.spawn_persistent_effect(
-            &mut commands,
-            effect,
-            &mut actors,
-            &mut effects,
-            &mut writer,
-            type_bindings.clone(),
-        )?;
+    trigger.cleanse(effect, applied, &effect_tags, &mut commands);
+
+    if effect.application_policy == EffectApplicationPolicy::Instant {
+        if !effect
+            .activate_conditions
+            .iter()
+            .all(|condition| condition.eval(&context))
+        {
+            return;
+        }
+        for modifier in &effect.modifiers {
+            modifier.apply_delayed(source, target, trigger.entity, &mut commands);
+        }
+        commands.trigger(EffectApplied {
+            entity: target,
+            source,
+            effect: None,
+            handle: trigger.handle.clone(),
+        });
+        return;
     }
 
-    Ok(())
+    if let Some(effect_entity) = trigger.spawn_persistent_effect(
+        &mut commands,
+        effect,
+        applied,
+        &context,
+        &effects,
+        &mut writer,
+        &type_bindings,
+    ) {
+        commands.trigger(MarkActorDirty { entity: target });
+        commands.trigger(EffectApplied {
+            entity: target,
+            source,
+            effect: Some(effect_entity),
+            handle: trigger.handle.clone(),
+        });
+    }
 }
