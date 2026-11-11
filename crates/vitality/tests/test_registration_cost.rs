@@ -24,7 +24,8 @@
 //! passes silently, and whoever cuts registration cost owns lowering these baselines in the same
 //! commit. The fixed half is pinned for `systems_len()` only — the fixed part of `components().len()`
 //! (120 of the 140 at two attributes) is `MinimalPlugins`/`AssetPlugin` infrastructure, which moves
-//! with the harness plugin set for reasons this file has nothing to do with.
+//! with the harness plugin set for reasons this file has nothing to do with. The two DAG counters are
+//! the exception: exact numbers, so a leaner DAG has to re-measure them in the same commit too.
 //!
 //! The shape is 1 actor, 0 effects and 0 modifiers on purpose: this prices *registration*, and every
 //! per-actor or per-effect component would be charged into the per-attribute slope. Both widths come
@@ -58,6 +59,14 @@ const COMPONENTS_PER_ATTR_BASELINE: usize = 11;
 /// The companion of the slope above: a node added at plugin build time is a +1 here, not a slope change.
 /// 8 → 12 when the effect tickers, durations, stack events and conditions moved off `Update`.
 const SYSTEMS_INTERCEPT_BASELINE: usize = 12;
+
+/// Every scheduled node in a DAG app at [`NARROW`] attributes, summed over all its schedules. Exact,
+/// both directions: the fourth once-per-app node `EffectsPlugin`'s DAG branch would add is a +1 here.
+const DAG_SYSTEMS_BASELINE: usize = 46;
+
+/// Observers a DAG app carries at [`NARROW`] attributes: the once-per-app ones and none per
+/// attribute. An observer is not a schedule node, so only this counter can see one.
+const DAG_OBSERVERS_BASELINE: usize = 12;
 
 fn spec(attributes: usize) -> WorldSpec {
     WorldSpec {
@@ -159,26 +168,84 @@ fn registration_cost_per_attribute_is_pinned() {
     );
 }
 
-/// The DAG resolver keeps no `FixedUpdate` node per attribute: the periodic fires, the instant base
-/// writes, the base-write scan and the walk itself are each one system for every attribute.
+/// The DAG resolver registers nothing per attribute: the periodic fires, the instant base writes, the
+/// base-write scan and the walk are each one node for the whole app, and v1's per-attribute systems
+/// and observers sit behind the early return in `init_effect_attribute`.
+///
+/// Counted over the whole app rather than over `FixedUpdate`, and exact rather than one-sided: the
+/// slope-only read stayed green for a node parked in `PreUpdate` and for a fourth once-per-app node.
+/// What neither counter can reach is what an attribute installs on its first tick — `measure_dag`
+/// never ticks the app, so the per-attribute resources and query caches stay unpinned.
 #[test]
 fn dag_registration_cost_per_attribute_is_pinned() {
-    let systems = |attributes: usize| {
-        let mut app = App::new();
-        app.insert_resource(vitality::ResolverMode::Dag);
-        app.add_plugins((
-            MinimalPlugins,
-            AssetPlugin::default(),
-            vitality::AttributesPlugin,
-        ));
-        for attr in &ATTRIBUTE_POOL[..attributes] {
-            (attr.register)(&mut app);
-        }
-        app.get_schedule(FixedUpdate).unwrap().systems_len()
-    };
-    let per_attr = (systems(WIDE) - systems(NARROW)) / STEP;
-    assert_eq!(
-        per_attr, 0,
-        "the DAG resolver should cost no node per attribute"
+    let narrow = measure_dag(NARROW);
+    let wide = measure_dag(WIDE);
+
+    pin_dag(
+        "scheduled node",
+        narrow.systems,
+        wide.systems,
+        DAG_SYSTEMS_BASELINE,
     );
+    pin_dag(
+        "observer",
+        narrow.observers,
+        wide.observers,
+        DAG_OBSERVERS_BASELINE,
+    );
+}
+
+/// Pins one DAG counter on two numbers: the exact count at [`NARROW`] attributes and a delta of
+/// exactly zero to [`WIDE`]. Two messages, because a red pin has to say which half moved.
+fn pin_dag(counter: &str, narrow: usize, wide: usize, baseline: usize) {
+    let delta = wide as isize - narrow as isize;
+    assert_eq!(
+        delta, 0,
+        "the DAG {counter} count grew by {delta} between {NARROW} and {WIDE} attributes ({narrow} \
+         -> {wide}, {STEP} attributes apart): the per-attribute delta is pinned at 0, and the \
+         fixed half is pinned separately at {baseline}.",
+    );
+    assert_eq!(
+        narrow, baseline,
+        "the fixed DAG {counter} count moved: a DAG app at {NARROW} attributes carries {narrow}, \
+         the baseline is {baseline}. The per-attribute delta (0) is pinned separately.",
+    );
+}
+
+/// The two structural counters a DAG app is pinned on.
+#[derive(Clone, Copy, Debug)]
+struct DagCounters {
+    /// Every scheduled node the app owns, summed over every schedule in it.
+    systems: usize,
+    /// Observer entities, which no schedule count can see.
+    observers: usize,
+}
+
+/// The same plugin set [`build_app_with`] uses, so the fixed half holds the once-per-app nodes
+/// `EffectsPlugin` puts in the DAG branch. Never ticked, so `systems_len()` reads the graph.
+fn measure_dag(attributes: usize) -> DagCounters {
+    let mut app = App::new();
+    app.insert_resource(vitality::ResolverMode::Dag);
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        vitality::AttributesPlugin,
+    ));
+    for attr in &ATTRIBUTE_POOL[..attributes] {
+        (attr.register)(&mut app);
+    }
+    let systems = app
+        .world()
+        .get_resource::<Schedules>()
+        .expect("the harness app has no schedules to count systems in")
+        .iter()
+        .map(|(_, schedule)| schedule.systems_len())
+        .sum();
+    let mut observers = app.world_mut().query::<&Observer>();
+    let counters = DagCounters {
+        systems,
+        observers: observers.iter(app.world()).count(),
+    };
+    println!("B-1 dag a={attributes}: {counters:?}");
+    counters
 }
