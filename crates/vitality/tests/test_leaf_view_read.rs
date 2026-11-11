@@ -64,7 +64,7 @@ where
     leaf::leaf_view(world, query, actor)
 }
 
-/// generic in the view for the same reason: a bare `V` has only the trait `get`
+/// generic so `view.get` can only bind the trait `get`
 fn through_view<V, T>(view: &V) -> Option<&T>
 where
     V: ActorRead,

@@ -6,6 +6,7 @@ use vitality_core::CorePlugin;
 use vitality_core::attributes::Attribute;
 use vitality_core::init_core_attribute;
 use vitality_core::schedule::EffectsSet;
+pub use vitality_effects::ResolverMode;
 use vitality_effects::{
     ConditionPlugin, EffectsPlugin, GlobalEffectPlugin, Stacks, init_effect_attribute,
 };
@@ -83,11 +84,17 @@ impl Plugin for AttributesPlugin {
 #[derive(Default)]
 pub struct VitalityPlugin {
     attributes: Vec<fn(&mut App)>,
+    resolver: Option<ResolverMode>,
 }
 
 impl VitalityPlugin {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn resolver(mut self, mode: ResolverMode) -> Self {
+        self.resolver = Some(mode);
+        self
     }
 
     pub fn attribute<T: Attribute>(mut self) -> Self {
@@ -102,6 +109,9 @@ impl Plugin for VitalityPlugin {
     }
 
     fn build(&self, app: &mut App) {
+        if let Some(mode) = self.resolver {
+            app.insert_resource(mode);
+        }
         app.add_plugins(AttributesPlugin);
         for register in &self.attributes {
             register(app);
@@ -120,6 +130,10 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     init_effect_attribute::<T>(app);
 
     app.register_type::<Clamp<T>>();
+    // the DAG resolver evaluates clamps inside its walk
+    if vitality_effects::resolver_mode(app) == ResolverMode::Dag {
+        return;
+    }
     app.add_systems(
         FixedUpdate,
         apply_clamps::<T>

@@ -1,11 +1,10 @@
 use crate::actors::{Actor, ActorDef};
 use bevy::prelude::*;
-use express_it::expr::Expr;
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 use std::marker::PhantomData;
 use vitality_core::CurrentValueChanged;
-use vitality_core::attributes::{Attribute, dep_key};
-use vitality_core::context::{ActorExprContext, ActorExprSchema, Source};
+use vitality_core::attributes::{Attribute, ClampBounds, dep_key};
+use vitality_core::context::{ActorExprContext, Source};
 use vitality_core::modifier::AttributeCalculatorCached;
 
 pub use vitality_core::attributes::Clamp;
@@ -40,16 +39,11 @@ pub fn clamp_dependency_changed<D: Attribute>(
     };
     let mut entity = commands.entity(trigger.entity);
     for key in [dep_key::<D, Source>(), TypeId::of::<D>()] {
-        for mark in def.clamp_dependents.get(&key).into_iter().flatten() {
+        for (_, mark) in def.clamp_dependents.get(&key).into_iter().flatten() {
             mark(&mut entity);
         }
     }
 }
-
-type ClampExprs<T> = (
-    Box<dyn Expr<<T as Attribute>::Property, ActorExprSchema> + Send + Sync>,
-    Box<dyn Expr<<T as Attribute>::Property, ActorExprSchema> + Send + Sync>,
-);
 
 /// Re-evaluates stale limits, then clamps base and current value of `T`.
 pub fn apply_clamps<T: Attribute>(
@@ -61,10 +55,9 @@ pub fn apply_clamps<T: Attribute>(
                 Or<(Changed<T>, Added<Clamp<T>>, With<ClampStale<T>>)>,
             ),
         >,
-        Query<(&Actor, EntityRef)>,
+        Query<EntityRef>,
         Query<(&mut T, &AttributeCalculatorCached<T>, &mut Clamp<T>)>,
     )>,
-    actor_assets: Res<Assets<ActorDef>>,
     mut commands: Commands,
     mut candidates: Local<Vec<Entity>>,
     mut limits: Local<Vec<(Entity, T::Property, T::Property)>>,
@@ -79,23 +72,16 @@ pub fn apply_clamps<T: Attribute>(
     {
         let actors = set.p1();
         for &entity in candidates.iter() {
-            let Ok((actor, attribute_ref)) = actors.get(entity) else {
+            let Ok(attribute_ref) = actors.get(entity) else {
                 continue;
             };
-            let Some(def) = actor_assets.get(&actor.0) else {
-                continue;
-            };
-            let Some(exprs) = def.clamp_exprs.get(&TypeId::of::<T>()) else {
-                continue;
-            };
-            let any_ref: &dyn Any = exprs.as_ref();
-            let Some((min_expr, max_expr)) = any_ref.downcast_ref::<ClampExprs<T>>() else {
+            let Some(bounds) = attribute_ref.get::<ClampBounds<T>>() else {
                 continue;
             };
             let context = ActorExprContext {
                 actor_context: attribute_ref.into(),
             };
-            limits.push((entity, min_expr.eval(&context), max_expr.eval(&context)));
+            limits.push((entity, bounds.min.eval(&context), bounds.max.eval(&context)));
         }
     }
 

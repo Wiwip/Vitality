@@ -135,3 +135,37 @@ fn a_chain_of_actors_converges() {
     assert_eq!(current::<Armor>(&app, b), 40.0);
     assert_eq!(current::<Power>(&app, c), 40.0);
 }
+
+#[test]
+fn the_dag_resolver_settles_a_chain_in_one_tick() {
+    if mode() != vitality::ResolverMode::Dag {
+        return;
+    }
+    let mut app = app();
+    let a = spawn(&mut app, hero_def());
+    let b = spawn(&mut app, hero_def().with::<Power>(0.0));
+    let c = spawn(&mut app, hero_def().with::<Power>(0.0));
+    let armor_from_power = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Armor>(Power::src(), ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+    let power_from_armor = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Power>(Armor::src(), ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+    apply(&mut app, a, b, &armor_from_power);
+    apply(&mut app, b, c, &power_from_armor);
+    ticks(&mut app, 2);
+
+    set_power(&mut app, a, 40.0);
+    ticks(&mut app, 1);
+    assert_eq!(
+        current::<Power>(&app, c),
+        40.0,
+        "a -> b -> c within one tick"
+    );
+}

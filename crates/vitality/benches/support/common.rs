@@ -34,6 +34,22 @@ use vitality::{AttributesPlugin, init_attribute};
 /// Every bench draws from the same seed (BENCH-PLAN §1.6).
 pub const SEED: u64 = 7;
 
+/// `VITALITY_RESOLVER=dag` builds harness worlds on the DAG resolver. The default stays v1 because
+/// most of this harness instruments v1's internals (`Dirty<T>`, `MarkNodeDirty`).
+pub fn resolver_mode() -> vitality::ResolverMode {
+    match std::env::var("VITALITY_RESOLVER").as_deref() {
+        Ok("dag") => vitality::ResolverMode::Dag,
+        _ => vitality::ResolverMode::PerAttribute,
+    }
+}
+
+pub fn resolver_label() -> &'static str {
+    match resolver_mode() {
+        vitality::ResolverMode::Dag => "dag",
+        vitality::ResolverMode::PerAttribute => "v1",
+    }
+}
+
 /// The build a number came from: `st`/`mt` from the `multi_threaded` feature, `static`/`dyn` from `dyn`.
 pub fn build_label() -> &'static str {
     match (cfg!(feature = "multi_threaded"), cfg!(feature = "dyn")) {
@@ -308,6 +324,7 @@ pub fn build_app_with(spec: &WorldSpec, attrs: &'static [AttrSpec]) -> App {
     let attrs = &attrs[..spec.attributes_per_actor];
 
     let mut app = App::new();
+    app.insert_resource(resolver_mode());
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
     for attr in attrs {
         // Called, not `add_plugins`: every `fn(&mut App)` pointer shares one TypeId, so bevy would

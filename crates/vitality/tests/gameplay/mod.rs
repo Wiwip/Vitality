@@ -25,12 +25,21 @@ tag!(Casting);
 /// bevy's default fixed timestep, so `ManualDuration(STEP)` gives exactly one fixed tick per update.
 pub const STEP: Duration = Duration::from_micros(15625);
 
+/// `VITALITY_RESOLVER=v1` runs the suite against the per-attribute resolver.
+pub fn mode() -> vitality::ResolverMode {
+    match std::env::var("VITALITY_RESOLVER").as_deref() {
+        Ok("v1") => vitality::ResolverMode::PerAttribute,
+        _ => vitality::ResolverMode::Dag,
+    }
+}
+
 pub fn app() -> App {
     let mut app = App::new();
     app.add_plugins((
         MinimalPlugins,
         AssetPlugin::default(),
         VitalityPlugin::new()
+            .resolver(mode())
             .attribute::<Health>()
             .attribute::<MaxHealth>()
             .attribute::<Mana>()

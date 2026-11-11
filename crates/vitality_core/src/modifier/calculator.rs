@@ -112,6 +112,22 @@ impl<T: Attribute> AttributeCalculator<T> {
         self.multiplier *= other.multiplier;
     }
 
+    pub fn from_parts(
+        set: Option<T::Property>,
+        additive: T::Property,
+        subtractive: T::Property,
+        increase: f64,
+        multiplier: f64,
+    ) -> Self {
+        Self {
+            set,
+            additive,
+            subtractive,
+            increase,
+            multiplier,
+        }
+    }
+
     /// One modifier applied `stacks` times: additive ops scale, `Mul` compounds, `Set` ignores it.
     pub fn from_op_stacked(operation: ModOp, value: T::Property, stacks: u32) -> Self {
         if stacks <= 1 {

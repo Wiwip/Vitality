@@ -315,6 +315,7 @@ macro_rules! tag {
 }
 
 #[derive(Component, Default, Debug, Copy, Clone)]
+#[require(crate::registry::ModifierTable)]
 pub struct ManageAttributes;
 
 /// Bounds on an attribute's base and current value, kept up to date by the facade from the
@@ -348,6 +349,17 @@ impl<T: Attribute> Clamp<T> {
             value
         }
     }
+}
+
+pub type ClampExpr<T> = std::sync::Arc<
+    dyn Expr<<T as Attribute>::Property, crate::context::ActorExprSchema> + Send + Sync,
+>;
+
+/// The expressions a [`Clamp`]'s limits come from, evaluated against the actor itself.
+#[derive(Component, Clone)]
+pub struct ClampBounds<T: Attribute> {
+    pub min: ClampExpr<T>,
+    pub max: ClampExpr<T>,
 }
 
 #[derive(QueryData, Debug)]

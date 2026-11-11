@@ -122,7 +122,7 @@
 //!
 //! The table above came from `.auto/l4-evidence/l4-head.log` and `.auto/l4-evidence/l4-after.log`, like
 //! the four files the `delta` discussion cites. Those six, plus `.auto/l4-evidence/tally.log` (the
-//! `clear_dirty` tally: the `TALLY marked=`/`cleared=` lines a test run prints), are the seven logs
+//! `clear_dirty` tally: the `TALLY marked=`/`cleared=` lines printed by the instrumented run), are the seven logs
 //! under `.auto/l4-evidence/`, gitignored there rather than files in the tree (`.auto/LOG.md` cites the
 //! directory, not the logs inside it), which is why every number here carries its band. The one line
 //! that belongs in this file is the shape of the answer, with the build tag on the number itself

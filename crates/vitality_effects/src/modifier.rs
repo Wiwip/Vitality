@@ -3,6 +3,7 @@ use crate::EffectsMut;
 use crate::EffectsRef;
 use crate::context::{EffectExprContext, EffectExprContextMut, EffectExprSchema};
 use crate::prelude::*;
+use crate::resolver::ModifierSlot;
 use crate::systems::MarkNodeDirty;
 use crate::{EffectSource, EffectTarget};
 use bevy::ecs::resource::IsResource;
@@ -17,6 +18,7 @@ use vitality_core::attributes::record_dependencies;
 use vitality_core::math::AbsDiff;
 use vitality_core::modifier::AttributeCalculator;
 pub use vitality_core::modifier::ModOp;
+use vitality_core::num_traits::AsPrimitive;
 use vitality_core::util::pretty_type_name;
 use vitality_core::{AttributeBindings, DepRole};
 
@@ -151,7 +153,12 @@ where
             }
         }
 
-        commands.insert((modifier, Name::new(format!("{}", display))));
+        let slot = ModifierSlot {
+            attribute: TypeId::of::<T>(),
+            op: modifier.operation,
+            value: modifier.value.as_(),
+        };
+        commands.insert((modifier, slot, Name::new(format!("{}", display))));
     }
     fn apply_immediate(&self, context: &mut EffectExprContextMut) -> bool {
         let immutable_context = EffectExprContext {

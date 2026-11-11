@@ -51,7 +51,8 @@ const STEP: usize = WIDE - NARROW;
 /// The measured slopes, so a regression is red rather than merely slower. Measured values are printed
 /// in the assert messages too.
 const SYSTEMS_PER_ATTR_BASELINE: usize = 6;
-const COMPONENTS_PER_ATTR_BASELINE: usize = 10;
+// 10 -> 11: the attribute registry pre-registers ClampBounds<T>
+const COMPONENTS_PER_ATTR_BASELINE: usize = 11;
 
 /// Fixed `FixedUpdate` nodes at zero attributes, i.e. the measured `24 - 2 * 6` of the never-run graph.
 /// The companion of the slope above: a node added at plugin build time is a +1 here, not a slope change.
@@ -155,5 +156,29 @@ fn registration_cost_per_attribute_is_pinned() {
         narrow.reflected,
         wide.reflected,
         slope(narrow.reflected, wide.reflected, "AppTypeRegistry len()"),
+    );
+}
+
+/// The DAG resolver keeps three `FixedUpdate` nodes per attribute (periodic, instant base writes,
+/// base-write scan); the walk itself is one system for every attribute.
+#[test]
+fn dag_registration_cost_per_attribute_is_pinned() {
+    let systems = |attributes: usize| {
+        let mut app = App::new();
+        app.insert_resource(vitality::ResolverMode::Dag);
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            vitality::AttributesPlugin,
+        ));
+        for attr in &ATTRIBUTE_POOL[..attributes] {
+            (attr.register)(&mut app);
+        }
+        app.get_schedule(FixedUpdate).unwrap().systems_len()
+    };
+    let per_attr = (systems(WIDE) - systems(NARROW)) / STEP;
+    assert_eq!(
+        per_attr, 3,
+        "the DAG resolver should cost three nodes per attribute"
     );
 }

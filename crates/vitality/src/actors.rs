@@ -2,14 +2,17 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use express_it::expr::{AsExpression, Expr};
 use smol_str::SmolStr;
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Arc;
 use vitality_abilities::{Ability, AbilityDef, AbilityOf, GrantedAbilities};
-use vitality_core::attributes::{Attribute, ManageAttributes};
+use vitality_core::AppAttributeBindings;
+use vitality_core::attributes::{Attribute, ClampBounds, ManageAttributes};
 use vitality_core::context::ActorExprSchema;
 use vitality_core::modifier::AttributeCalculatorCached;
 use vitality_core::mutator::EntityActions;
 use vitality_core::num_traits::{AsPrimitive, Num};
+use vitality_core::registry::AttributeRegistry;
 use vitality_effects::definition::EffectDef;
 use vitality_effects::graph::NodeType;
 use vitality_effects::{ApplyEffectEvent, EffectTargeting};
@@ -24,11 +27,8 @@ pub struct ActorDef {
     pub abilities: Vec<Handle<AbilityDef>>,
     pub effects: Vec<Handle<EffectDef>>,
 
-    // The value below is hidden behind 'Any' but actually:
-    // Box<(Expr<T::Property>, Expr<T::Property>)>
-    pub clamp_exprs: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
-    /// Per dependency key read by a clamp, what marks that clamp stale.
-    pub clamp_dependents: HashMap<TypeId, Vec<fn(&mut EntityCommands)>>,
+    /// Per dependency key read by a clamp: the clamped attribute and what marks its clamp stale.
+    pub clamp_dependents: HashMap<TypeId, Vec<(TypeId, fn(&mut EntityCommands))>>,
 }
 
 #[derive(Component, Clone, Debug, Deref)]
@@ -85,6 +85,8 @@ impl EntityCommand for SpawnActorCommand {
                     queue
                 };
 
+                register_clamp_edges(world, actor_def);
+
                 // Sends the event that will apply the effects to the entity
                 for effect in actor_def.effects.iter() {
                     world.trigger(ApplyEffectEvent {
@@ -101,6 +103,32 @@ impl EntityCommand for SpawnActorCommand {
     }
 }
 
+/// Clamped attributes read their limits' attributes, so those resolve first.
+fn register_clamp_edges(world: &mut World, def: &ActorDef) {
+    if def.clamp_dependents.is_empty() {
+        return;
+    }
+    let bindings = world.resource::<AppAttributeBindings>().clone();
+    let bindings = bindings
+        .internal
+        .read()
+        .unwrap_or_else(|err| err.into_inner());
+    let mut registry = world.resource_mut::<AttributeRegistry>();
+    for (key, clamped) in &def.clamp_dependents {
+        let Some(read) = bindings
+            .dependency(key)
+            .and_then(|binding| registry.id_of(binding.attribute))
+        else {
+            continue;
+        };
+        for (clamped_type, _) in clamped {
+            if let Some(reader) = registry.id_of(*clamped_type) {
+                registry.add_edge(read, reader);
+            }
+        }
+    }
+}
+
 pub struct ActorBuilder {
     actor: ActorDef,
 }
@@ -114,7 +142,6 @@ impl ActorBuilder {
                 builder_actions: Default::default(),
                 abilities: vec![],
                 effects: vec![],
-                clamp_exprs: Default::default(),
                 clamp_dependents: Default::default(),
             },
         }
@@ -161,23 +188,16 @@ impl ActorBuilder {
                 .clamp_dependents
                 .entry(dep)
                 .or_default()
-                .push(mark_clamp_stale::<T>);
+                .push((TypeId::of::<T>(), mark_clamp_stale::<T>));
         }
 
-        let min_erased: Box<dyn Expr<T::Property, ActorExprSchema> + Send + Sync> =
-            Box::new(min_expr);
-        let max_erased: Box<dyn Expr<T::Property, ActorExprSchema> + Send + Sync> =
-            Box::new(max_expr);
-        let stored_exprs: Box<dyn Any + Send + Sync> = Box::new((min_erased, max_erased));
-
-        // Insert expressions
-        self.actor
-            .clamp_exprs
-            .insert(TypeId::of::<T>(), stored_exprs);
-
+        let bounds = ClampBounds::<T> {
+            min: Arc::new(min_expr),
+            max: Arc::new(max_expr),
+        };
         self.actor.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
-                entity_commands.insert(Clamp::<T>::new());
+                entity_commands.insert((Clamp::<T>::new(), bounds.clone()));
             },
         ));
 

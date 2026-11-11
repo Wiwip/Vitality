@@ -117,7 +117,7 @@ Evidence for every line below was read from `../hfsm-rs` and from the pinned `be
 - after: B-1
 - test: add to `tests/test_bench_harness.rs` a test that each shape's dirty set before the timed tick is the literal expected one (storm: every attribute of every actor; no-op: written value equals the old one), as `test_recompute_ratio` does after the P-6 fix. Mutation: change the shape's dirty pick and the test must fail.
 - origin: owner
-- status: todo (unparked: D-34 landed in 42d3b52)
+- status: done on feat/api-and-resolver: folded into `benches/support/scenario.rs` as `scenario/storm` and `scenario/no_op_write`, pinned by `tests/test_bench_scenario.rs`
 
 ## B-3: periodic tick_scan bench
 - change: BENCH-PLAN §2E (P-9), `periodic/tick_scan` only: T ticking effects with about one firing per tick, A in {1,5,20}, reported as ns/tick against A. New `benches/support/periodic.rs` wired through `bench_systems.rs`. Subtract the in-shape idle floor the way `recompute::ratio_row` does and reuse its noise guard rather than writing a second one.
@@ -178,10 +178,10 @@ Evidence for every line below was read from `../hfsm-rs` and from the pinned `be
 - change: `crates/vitality/benches/support/cross_actor.rs:125` "lines a test run prints" -> "lines printed by the instrumented run" (no TALLY print exists in crates/); `crates/vitality/tests/test_leaf_view_read.rs:67` "for the same reason" -> "generic so `view.get` can only bind the trait `get`".
 - test: none (comments only); the gate stays green.
 - origin: judge
-- status: todo
+- status: done on feat/api-and-resolver
 
 ## P-12: expression tree vs typemap cost
 - change: BENCH-PLAN P-12. State the ~10 % floor (D-36) in the group doc before any number, and re-derive every quoted number from the table in the same doc comment.
 - test: harness test per the usual rule; bench compile check `cargo bench --offline --locked --no-run`.
 - origin: owner
-- status: todo
+- status: done on feat/api-and-resolver: `leaf/expr_shape` group, `benches/support/expr.rs`, `tests/test_bench_expr.rs`; numbers in BENCH-RESULTS.md

@@ -42,6 +42,8 @@ mod alloc_count;
 mod common;
 #[path = "support/cross_actor.rs"]
 mod cross_actor;
+#[path = "support/expr.rs"]
+mod expr;
 #[path = "support/floor.rs"]
 mod floor;
 #[path = "support/guard.rs"]
@@ -60,6 +62,8 @@ mod many_actors;
 mod periodic;
 #[path = "support/recompute.rs"]
 mod recompute;
+#[path = "support/scenario.rs"]
+mod scenario;
 
 use crate::alloc_count::{Calibration, Counts};
 use crate::common::{
@@ -1324,7 +1328,70 @@ fn alloc_column(
 }
 
 /// Every bench group hangs off here.
+/// Game-shaped ticks at 1k/5k/10k actors (`support/scenario.rs`). Owner's budget at 10k actors:
+/// `steady` under 2 ms, `storm` under 8 ms. Set `VITALITY_SCENARIO_ACTORS=10000` to run one size.
+fn scenario_ticks(c: &mut Criterion) {
+    let sizes: Vec<usize> = match std::env::var("VITALITY_SCENARIO_ACTORS") {
+        Ok(list) => list
+            .split(',')
+            .filter_map(|n| n.trim().parse().ok())
+            .collect(),
+        Err(_) => vec![1_000, 5_000, 10_000],
+    };
+    let mut group = c.benchmark_group("scenario");
+    group.sample_size(10);
+    group.warm_up_time(std::time::Duration::from_millis(500));
+    group.measurement_time(std::time::Duration::from_secs(3));
+    for &actors in &sizes {
+        for workload in scenario::Workload::ALL {
+            let id = scenario::scenario_id(workload, actors);
+            let mut world = scenario::build(workload, actors);
+            group.bench_function(id.trim_start_matches("scenario/"), |b| {
+                b.iter_custom(|iters| {
+                    let mut total = std::time::Duration::ZERO;
+                    for _ in 0..iters {
+                        world.drive();
+                        let start = std::time::Instant::now();
+                        world.tick();
+                        total += start.elapsed();
+                    }
+                    total
+                })
+            });
+        }
+    }
+    group.finish();
+}
+
+/// P-12, BENCH-PLAN §2C `leaf/expr_depth` + `leaf/typed_vs_hashmap`: one expression evaluated
+/// through `Arc<dyn Expr>`, through its concrete type, and as typemap lookups. Differences under
+/// ~10 % are noise on this box (D-36). Results: `BENCH-RESULTS.md`, P-12 table.
+fn leaf_expr_shape(c: &mut Criterion) {
+    let fixture = expr::expr_fixture();
+    let mut group = c.benchmark_group("leaf/expr_shape");
+    for (nodes, erased) in &fixture.erased {
+        let nodes = *nodes;
+        let label = common::build_label();
+        group.bench_function(format!("erased/nodes={nodes}/{label}"), |b| {
+            b.iter(|| black_box(expr::eval_erased(&fixture, erased)))
+        });
+        group.bench_function(format!("mono/nodes={nodes}/{label}"), |b| {
+            b.iter(|| black_box(expr::eval_mono(&fixture, black_box(nodes))))
+        });
+        group.bench_function(format!("typemap/nodes={nodes}/{label}"), |b| {
+            b.iter(|| black_box(expr::eval_typemap(&fixture, black_box(nodes))))
+        });
+    }
+    group.finish();
+}
+
 fn resolver_benches(c: &mut Criterion) {
+    if std::env::var_os("VITALITY_SCENARIOS_ONLY").is_some() {
+        scenario_ticks(c);
+        return;
+    }
+    scenario_ticks(c);
+    leaf_expr_shape(c);
     app_update(c);
     floor_idle_tick(c);
     leaf_access_paths(c);

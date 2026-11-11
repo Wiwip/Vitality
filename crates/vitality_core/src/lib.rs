@@ -19,6 +19,7 @@ pub mod context;
 pub mod math;
 pub mod modifier;
 pub mod mutator;
+pub mod registry;
 pub mod schedule;
 pub mod tags;
 pub mod util;
@@ -64,6 +65,8 @@ impl Plugin for CorePlugin {
             return;
         }
         app.init_resource::<AppAttributeBindings>()
+            .init_resource::<registry::AttributeRegistry>()
+            .init_resource::<registry::ResolveQueue>()
             .init_schedule(PreUpdate)
             .init_schedule(PostUpdate);
 
@@ -173,6 +176,11 @@ pub fn init_core_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<T>();
     app.register_type::<AttributeCalculatorCached<T>>();
     app.register_type_data::<T, ReflectAccessAttribute>();
+
+    app.world_mut()
+        .resource_scope(|world, mut registry: Mut<registry::AttributeRegistry>| {
+            registry.register::<T>(world);
+        });
 
     // Register u64->TypeId bindings for expressions
     app.world_mut()

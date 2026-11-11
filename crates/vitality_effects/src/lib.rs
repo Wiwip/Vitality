@@ -12,6 +12,7 @@ pub mod lifecycle;
 pub mod modifier;
 mod periodic;
 pub mod registry;
+pub mod resolver;
 mod stacks;
 pub mod systems;
 mod targeting;
@@ -35,6 +36,7 @@ use crate::systems::{
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 use bevy::prelude::*;
 use vitality_core::attributes::Attribute;
+use vitality_core::registry::scan_base_writes;
 use vitality_core::schedule::EffectsSet;
 
 pub use application::*;
@@ -46,6 +48,7 @@ pub use global_effect::*;
 pub use lifecycle::{
     EffectApplied, EffectBlocked, EffectRemovalReason, EffectRemoved, EffectStacksChanged,
 };
+pub use resolver::ResolverMode;
 pub use stacks::*;
 pub use targeting::EffectTargeting;
 pub use timing::*;
@@ -88,13 +91,49 @@ impl Plugin for EffectsPlugin {
         .add_observer(apply_effect_event_observer)
         .add_observer(lifecycle::on_effect_removed)
         .add_message::<NotifyAddStackEvent>();
+
+        if resolver_mode(app) == ResolverMode::Dag {
+            app.init_resource::<resolver::ModifierRecalcs>()
+                .add_systems(
+                    FixedUpdate,
+                    resolver::resolve_system.in_set(EffectsSet::UpdateCurrentValues),
+                )
+                .add_observer(resolver::mark_actor_dirty_dag);
+        }
     }
+}
+
+/// The resolver this app runs; insert a [`ResolverMode`] before adding the plugins to choose.
+pub fn resolver_mode(app: &App) -> ResolverMode {
+    app.world()
+        .get_resource::<ResolverMode>()
+        .copied()
+        .unwrap_or_default()
 }
 
 /// Registers the effect-side systems for an attribute. Pair with `vitality_core::init_core_attribute`.
 pub fn init_effect_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<AttributeModifier<T>>();
     app.add_message::<ApplyAttributeModifierMessage<T>>();
+
+    if resolver_mode(app) == ResolverMode::Dag {
+        app.world_mut()
+            .get_resource_or_init::<resolver::ModifierRecalcs>()
+            .register::<T>();
+        app.add_systems(
+            FixedUpdate,
+            (
+                apply_periodic_effect::<T>
+                    .in_set(EffectsSet::Prepare)
+                    .after(tick_effect_tickers),
+                apply_modifier_events::<T>.in_set(EffectsSet::UpdateBaseValues),
+                scan_base_writes::<T>
+                    .in_set(EffectsSet::UpdateCurrentValues)
+                    .before(resolver::resolve_system),
+            ),
+        );
+        return;
+    }
 
     app.add_systems(
         FixedUpdate,
