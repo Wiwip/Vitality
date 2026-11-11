@@ -6,6 +6,7 @@ use crate::prelude::*;
 use crate::resolver::ModifierSlot;
 use crate::systems::MarkNodeDirty;
 use crate::{EffectSource, EffectTarget};
+use bevy::ecs::message::MessageCursor;
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
 use bevy::prelude::{Component, Entity, EntityCommands, Reflect, reflect_trait};
@@ -288,6 +289,92 @@ pub struct ApplyAttributeModifierMessage<T: Attribute> {
     pub effect_entity: Entity,
     pub modifier: AttributeModifier<T>,
     pub stacks: u32,
+}
+
+/// Drains one attribute's [`ApplyAttributeModifierMessage`] queue; [`ModifierApplies`] holds one per
+/// registered attribute so instant modifiers cost a single `FixedUpdate` node for the whole app.
+type ModifierApply = fn(&mut World);
+
+#[derive(Resource, Default)]
+pub struct ModifierApplies(Vec<(TypeId, ModifierApply)>);
+
+impl ModifierApplies {
+    pub fn register<T: Attribute>(&mut self) {
+        let attribute = TypeId::of::<T>();
+        if !self
+            .0
+            .iter()
+            .any(|(registered, _)| *registered == attribute)
+        {
+            self.0.push((attribute, apply_queued_modifiers_of::<T>));
+        }
+    }
+}
+
+/// The message cursor and actor query of one attribute, kept as a resource so the collapsed node
+/// pays nothing per attribute beyond building them once.
+#[derive(Resource)]
+struct ApplyState<T: Attribute> {
+    cursor: MessageCursor<ApplyAttributeModifierMessage<T>>,
+    actors: QueryState<EffectsMut<'static, 'static>, Without<IsResource>>,
+}
+
+/// What [`apply_modifier_events`] does for one attribute, from world state instead of system state.
+fn apply_queued_modifiers_of<T: Attribute>(world: &mut World) {
+    if !world.contains_resource::<ApplyState<T>>() {
+        let actors = world.query_filtered();
+        world.insert_resource(ApplyState::<T> {
+            cursor: Default::default(),
+            actors,
+        });
+    }
+
+    // the messages ride out of the world so the actor query can hold it at the same time
+    let changed = world.resource_scope(
+        |world, messages: Mut<Messages<ApplyAttributeModifierMessage<T>>>| {
+            world.resource_scope(|world, mut state: Mut<ApplyState<T>>| {
+                let state = &mut *state;
+                let mut changed = Vec::new();
+                {
+                    let mut actors = state.actors.query_mut(world);
+                    for ev in state.cursor.read(&messages) {
+                        match apply_modifier(ev, &mut actors) {
+                            Ok(true) => changed.push(ev.target_entity),
+                            Err(err) => debug!("Failed to apply modifier {}. {}", ev.modifier, err),
+                            _ => {}
+                        }
+                    }
+                }
+                changed
+            })
+        },
+    );
+
+    if changed.is_empty() {
+        return;
+    }
+    let mut commands = world.commands();
+    for entity in changed {
+        commands.trigger(MarkNodeDirty::<T> {
+            entity,
+            phantom_data: Default::default(),
+        });
+    }
+    world.flush();
+}
+
+/// One node for every attribute: asks each registered attribute to apply the modifier messages it
+/// queued, so an instant modifier costs one schedule node however many attributes the app has.
+pub fn apply_all_modifier_events(world: &mut World, mut applies: Local<Vec<ModifierApply>>) {
+    let Some(registry) = world.get_resource::<ModifierApplies>() else {
+        return;
+    };
+    applies.clear();
+    applies.extend(registry.0.iter().map(|(_, apply)| *apply));
+
+    for apply in applies.iter() {
+        apply(world);
+    }
 }
 
 pub fn apply_modifier_events<T: Attribute>(

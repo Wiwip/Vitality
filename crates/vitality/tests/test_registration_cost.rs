@@ -159,8 +159,8 @@ fn registration_cost_per_attribute_is_pinned() {
     );
 }
 
-/// The DAG resolver keeps two `FixedUpdate` nodes per attribute (periodic, instant base writes);
-/// both the base-write scan and the walk itself are one system for every attribute.
+/// The DAG resolver keeps one `FixedUpdate` node per attribute (periodic); the instant base writes,
+/// the base-write scan and the walk itself are each one system for every attribute.
 #[test]
 fn dag_registration_cost_per_attribute_is_pinned() {
     let systems = |attributes: usize| {
@@ -178,7 +178,7 @@ fn dag_registration_cost_per_attribute_is_pinned() {
     };
     let per_attr = (systems(WIDE) - systems(NARROW)) / STEP;
     assert_eq!(
-        per_attr, 2,
-        "the DAG resolver should cost two nodes per attribute"
+        per_attr, 1,
+        "the DAG resolver should cost one node per attribute"
     );
 }
