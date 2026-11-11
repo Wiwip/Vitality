@@ -190,6 +190,34 @@ fn cancel_ends_an_active_ability_and_returns_its_owned_tag() {
 }
 
 #[test]
+fn an_ability_that_runs_to_its_end_is_not_reported_cancelled() {
+    let mut app = app();
+    let spell = ability(
+        &mut app,
+        AbilityBuilder::new()
+            .set_tasks(|| bsn! { Tasks [ @wait_task(0.25) ] })
+            .build(),
+    );
+    let caster = caster_with(&mut app, &[&spell]);
+    record_all(&mut app);
+
+    activate(&mut app, caster, &spell);
+    ticks(&mut app, ticks_for(0.25) - 3);
+    assert!(
+        recorded::<AbilityEnded>(&app).is_empty(),
+        "the task is still running"
+    );
+
+    ticks(&mut app, 4);
+    let ended = recorded::<AbilityEnded>(&app);
+    assert_eq!(ended.len(), 1);
+    assert!(
+        !ended[0].cancelled,
+        "a task that finished on its own is not a cancel"
+    );
+}
+
+#[test]
 fn activating_one_ability_cancels_others_by_tag() {
     let mut app = app();
     let channel = channel(&mut app);

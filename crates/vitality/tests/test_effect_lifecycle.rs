@@ -188,3 +188,33 @@ fn removal_by_source_and_by_tag_only_hits_matching_effects() {
         "the tag goes with its last effect"
     );
 }
+
+#[test]
+fn an_effect_that_loses_its_source_reports_despawned() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    let enemy = spawn(&mut app, hero_def());
+    let curse = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Power>(5.0, ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+    record::<EffectRemoved>(&mut app);
+
+    apply(&mut app, enemy, hero, &curse);
+    ticks(&mut app, 1);
+    assert_eq!(current::<Power>(&app, hero), 15.0);
+    let curse_entity = with_effects(&mut app, move |effects| effects.on(hero))[0];
+
+    // EffectSource is a linked_spawn relationship, so the effect entity dies with its caster
+    app.world_mut().despawn(enemy);
+    ticks(&mut app, 1);
+
+    let events = recorded::<EffectRemoved>(&app);
+    assert_eq!(events.len(), 1, "the despawn still reports a removal");
+    assert_eq!(events[0].reason, EffectRemovalReason::Despawned);
+    assert_eq!(events[0].entity, hero, "the event names the target actor");
+    assert_eq!(events[0].effect, curse_entity);
+    assert_eq!(current::<Power>(&app, hero), 10.0, "the buff dies with it");
+}
