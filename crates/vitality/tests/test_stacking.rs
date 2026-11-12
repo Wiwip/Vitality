@@ -1,7 +1,9 @@
 mod gameplay;
 
+use bevy::prelude::Assets;
 use gameplay::*;
 use vitality::effect::EffectStackingPolicy;
+use vitality::effect::definition::EffectDef;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 
@@ -113,6 +115,73 @@ fn refresh_policy_restarts_the_duration() {
 
     ticks(&mut app, ticks_for(0.2));
     assert_eq!(current::<Power>(&app, hero), 10.0);
+}
+
+/// The guard sits below the `Instant` branch, and an instant application spawns no entity of its
+/// own, so the ordering only bites while the target still carries an instance of the handle.
+#[test]
+fn instant_effect_with_a_stacking_policy_applies_but_never_stacks() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    let drain = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Mana>(-10.0, ModOp::Add, EffectSubject::Target)
+            .with_stacking_policy(EffectStackingPolicy::Add {
+                count: 1,
+                max_stack: 3,
+            })
+            .build(),
+    );
+    record::<EffectApplied>(&mut app);
+    record::<EffectStacksChanged>(&mut app);
+
+    apply(&mut app, hero, hero, &drain);
+    ticks(&mut app, 1);
+    let held = with_effects(&mut app, move |e| e.on(hero))[0];
+    assert_eq!(
+        base::<Mana>(&app, hero),
+        50.0,
+        "a buff never touches the base"
+    );
+
+    // the same asset reloaded as instant, with its permanent instance still applied
+    app.world_mut()
+        .resource_mut::<Assets<EffectDef>>()
+        .get_mut(&drain)
+        .expect("the effect asset is loaded")
+        .application_policy = EffectApplicationPolicy::Instant;
+
+    apply(&mut app, hero, hero, &drain);
+    ticks(&mut app, 1);
+
+    assert_eq!(
+        base::<Mana>(&app, hero),
+        40.0,
+        "the instant application must still write its modifier"
+    );
+    assert_eq!(
+        with_effects(&mut app, move |e| e.stacks(held)),
+        Some(1),
+        "an instant application never adds a stack"
+    );
+    let changes: Vec<(u32, u32)> = recorded::<EffectStacksChanged>(&app)
+        .iter()
+        .map(|change| (change.old, change.new))
+        .collect();
+    assert_eq!(
+        changes,
+        Vec::new(),
+        "the instant branch must not queue a stack event"
+    );
+    let applied = recorded::<EffectApplied>(&app);
+    assert_eq!(applied.len(), 2);
+    assert_eq!(applied[0].effect, Some(held));
+    assert_eq!(
+        applied[1].effect, None,
+        "the instant application spawns no entity"
+    );
+    assert_eq!(with_effects(&mut app, move |e| e.on(hero)).len(), 1);
 }
 
 #[test]
