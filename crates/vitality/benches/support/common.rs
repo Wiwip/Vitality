@@ -314,6 +314,16 @@ pub fn seed_rng() -> StdRng {
 /// to be true clears markers itself rather than paying that work: see `floor::prepare_floor` and
 /// `recompute::recompute_shape`; `test_recompute_ratio` pins the all-dirty build.
 pub fn build_app_with(spec: &WorldSpec, attrs: &'static [AttrSpec]) -> App {
+    build_app_at(spec, attrs, resolver_mode())
+}
+
+/// [`build_app_with`] on a resolver the caller picked, so a guard can name the mode it covers instead
+/// of inheriting it from `VITALITY_RESOLVER`.
+pub fn build_app_at(
+    spec: &WorldSpec,
+    attrs: &'static [AttrSpec],
+    mode: vitality::ResolverMode,
+) -> App {
     assert!(
         spec.attributes_per_actor <= attrs.len(),
         "shape {} needs a pool of {}, only {} attributes declared",
@@ -324,7 +334,7 @@ pub fn build_app_with(spec: &WorldSpec, attrs: &'static [AttrSpec]) -> App {
     let attrs = &attrs[..spec.attributes_per_actor];
 
     let mut app = App::new();
-    app.insert_resource(resolver_mode());
+    app.insert_resource(mode);
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
     for attr in attrs {
         // Called, not `add_plugins`: every `fn(&mut App)` pointer shares one TypeId, so bevy would

@@ -1,5 +1,8 @@
 //! R-5: the resolver is parallel *across* actors only, so rebuilding the same world with the actors
-//! spawned in the opposite order has to land on the same numbers.
+//! spawned in the opposite order has to land on the same numbers, tick by tick and not only once
+//! everything has settled.
+//!
+//! Both resolvers are covered by name, not by the `VITALITY_RESOLVER` the gate happens to set.
 //!
 //! `benches/support/common.rs::actor_entities` sorts by `Entity`, which is exactly what hides an
 //! ordering effect, so nothing here keys on spawn order: every read goes through the [`Who`]
@@ -10,6 +13,7 @@ mod gameplay;
 use bevy::prelude::*;
 use gameplay::*;
 use std::collections::BTreeMap;
+use vitality::ResolverMode;
 use vitality::actors::ActorBuilder;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
@@ -23,8 +27,8 @@ const ACTORS: [&str; 3] = ["alpha", "beta", "gamma"];
 
 /// The deepest chain in [`world`] is three cross-actor hops (alpha.Power -> beta.Armor ->
 /// gamma.Armor -> beta.Health) plus the clamp hop into alpha.Health, and v1 settles one hop per fixed
-/// tick, so eight ticks leaves room on either resolver. The asserts after the comparison check that
-/// instead of trusting it.
+/// tick, so eight ticks leaves room on either resolver. The two worlds are compared on every one of
+/// those ticks, and the asserts after the comparison check that they really had settled.
 const TICKS: usize = 8;
 
 /// Every value the comparison reads, current and base.
@@ -69,8 +73,11 @@ fn def(who: &'static str) -> ActorBuilder {
 
 /// Builds the world with `order` as the spawn order. The seven links are always applied in the same
 /// identity order, so spawn order is the only difference between two calls.
-fn world(order: [&'static str; 3]) -> (App, BTreeMap<&'static str, Entity>) {
-    let mut app = app();
+fn world(
+    order: [&'static str; 3],
+    resolver: ResolverMode,
+) -> (App, BTreeMap<&'static str, Entity>) {
+    let mut app = app_in(resolver);
     let mut by_id = BTreeMap::new();
     for who in order {
         by_id.insert(who, spawn(&mut app, def(who)));
@@ -170,10 +177,28 @@ fn visit_order(by_id: &BTreeMap<&'static str, Entity>) -> Vec<&'static str> {
 }
 
 #[test]
-fn the_result_does_not_depend_on_actor_order() {
-    let resolver = mode();
-    let (mut forward, forward_ids) = world(ACTORS);
-    let (mut backward, backward_ids) = world(["gamma", "beta", "alpha"]);
+fn the_dag_result_does_not_depend_on_actor_order() {
+    compare_spawn_orders(ResolverMode::Dag);
+}
+
+#[test]
+fn the_per_attribute_result_does_not_depend_on_actor_order() {
+    compare_spawn_orders(ResolverMode::PerAttribute);
+}
+
+fn compare_spawn_orders(resolver: ResolverMode) {
+    let (mut forward, forward_ids) = world(ACTORS, resolver);
+    let (mut backward, backward_ids) = world(["gamma", "beta", "alpha"], resolver);
+    assert_eq!(
+        vitality::effect::resolver_mode(&forward),
+        resolver,
+        "the forward world was not built on the resolver this guard names"
+    );
+    assert_eq!(
+        vitality::effect::resolver_mode(&backward),
+        resolver,
+        "the backward world was not built on the resolver this guard names"
+    );
 
     // if both worlds walked the actors in the same order the comparison below would prove nothing
     let mut opposite_of_forward = visit_order(&forward_ids);
@@ -186,24 +211,31 @@ fn the_result_does_not_depend_on_actor_order() {
         visit_order(&backward_ids),
     );
 
-    ticks(&mut forward, TICKS);
-    ticks(&mut backward, TICKS);
-    let left = values(&forward, &forward_ids);
-    let right = values(&backward, &backward_ids);
-
-    let diffs: Vec<String> = left
-        .iter()
-        .zip(&right)
-        .filter(|((_, _, a), (_, _, b))| a != b)
-        .map(|((who, label, a), (_, _, b))| format!("{who}.{label}: forward {a} != backward {b}"))
-        .collect();
-    assert!(
-        diffs.is_empty(),
-        "after {TICKS} fixed ticks on {resolver:?}, {} of {} values differ:\n{}",
-        diffs.len(),
-        left.len(),
-        diffs.join("\n"),
-    );
+    // both worlds have run the same number of updates by here, so they are comparable every tick.
+    // Comparing only the settled vectors would let one world resolve an actor a tick later and pass.
+    let mut left = values(&forward, &forward_ids);
+    let mut right = values(&backward, &backward_ids);
+    for tick in 1..=TICKS {
+        ticks(&mut forward, 1);
+        ticks(&mut backward, 1);
+        left = values(&forward, &forward_ids);
+        right = values(&backward, &backward_ids);
+        let diffs: Vec<String> = left
+            .iter()
+            .zip(&right)
+            .filter(|((_, _, a), (_, _, b))| a != b)
+            .map(|((who, label, a), (_, _, b))| {
+                format!("{who}.{label}: forward {a} != backward {b}")
+            })
+            .collect();
+        assert!(
+            diffs.is_empty(),
+            "after {tick} fixed ticks on {resolver:?}, {} of {} values differ:\n{}",
+            diffs.len(),
+            left.len(),
+            diffs.join("\n"),
+        );
+    }
 
     // a difference is only worth reporting if both sides had already settled
     ticks(&mut forward, 4);

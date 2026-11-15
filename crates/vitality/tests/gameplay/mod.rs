@@ -34,12 +34,18 @@ pub fn mode() -> vitality::ResolverMode {
 }
 
 pub fn app() -> App {
+    app_in(mode())
+}
+
+/// `app()` on a resolver this caller picked, for the guards that have to cover both modes whatever
+/// the environment says.
+pub fn app_in(mode: vitality::ResolverMode) -> App {
     let mut app = App::new();
     app.add_plugins((
         MinimalPlugins,
         AssetPlugin::default(),
         VitalityPlugin::new()
-            .resolver(mode())
+            .resolver(mode)
             .attribute::<Health>()
             .attribute::<MaxHealth>()
             .attribute::<Mana>()

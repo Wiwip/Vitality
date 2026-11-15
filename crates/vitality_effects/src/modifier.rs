@@ -319,7 +319,7 @@ struct ApplyState<T: Attribute> {
     actors: QueryState<EffectsMut<'static, 'static>, Without<IsResource>>,
 }
 
-/// What [`apply_modifier_events`] does for one attribute, from world state instead of system state.
+/// Marks nothing: only DAG-mode attributes are listed, so no `mark_node_dirty_observer` exists; `scan_base_writes` runs after.
 fn apply_queued_modifiers_of<T: Attribute>(world: &mut World) {
     if !world.contains_resource::<ApplyState<T>>() {
         let actors = world.query_filtered();
@@ -330,37 +330,19 @@ fn apply_queued_modifiers_of<T: Attribute>(world: &mut World) {
     }
 
     // the messages ride out of the world so the actor query can hold it at the same time
-    let changed = world.resource_scope(
+    world.resource_scope(
         |world, messages: Mut<Messages<ApplyAttributeModifierMessage<T>>>| {
             world.resource_scope(|world, mut state: Mut<ApplyState<T>>| {
                 let state = &mut *state;
-                let mut changed = Vec::new();
-                {
-                    let mut actors = state.actors.query_mut(world);
-                    for ev in state.cursor.read(&messages) {
-                        match apply_modifier(ev, &mut actors) {
-                            Ok(true) => changed.push(ev.target_entity),
-                            Err(err) => debug!("Failed to apply modifier {}. {}", ev.modifier, err),
-                            _ => {}
-                        }
+                let mut actors = state.actors.query_mut(world);
+                for ev in state.cursor.read(&messages) {
+                    if let Err(err) = apply_modifier(ev, &mut actors) {
+                        debug!("Failed to apply modifier {}. {}", ev.modifier, err);
                     }
                 }
-                changed
-            })
+            });
         },
     );
-
-    if changed.is_empty() {
-        return;
-    }
-    let mut commands = world.commands();
-    for entity in changed {
-        commands.trigger(MarkNodeDirty::<T> {
-            entity,
-            phantom_data: Default::default(),
-        });
-    }
-    world.flush();
 }
 
 /// One node for every attribute: asks each registered attribute to apply the modifier messages it

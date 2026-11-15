@@ -8,7 +8,8 @@
 //! `app.update()`, which is exactly one fixed tick under the harness clock.
 
 use crate::common::{
-    ATTRIBUTE_POOL, WorldSpec, actor_entities, build_label, resolver_label, seed_rng, tick,
+    ATTRIBUTE_POOL, WorldSpec, actor_entities, build_app_at, build_label, resolver_label,
+    resolver_mode, seed_rng, tick,
 };
 use bevy::prelude::*;
 use rand::RngExt;
@@ -129,6 +130,11 @@ pub struct ScenarioWorld {
 }
 
 pub fn build(workload: Workload, actors: usize) -> ScenarioWorld {
+    build_in(workload, actors, resolver_mode())
+}
+
+/// [`build`] on a resolver the caller picked, for the guards that pin both of them.
+pub fn build_in(workload: Workload, actors: usize, mode: vitality::ResolverMode) -> ScenarioWorld {
     let spec = WorldSpec {
         attributes_per_actor: ATTRIBUTES,
         effects_per_actor: EFFECTS_PER_ACTOR,
@@ -137,7 +143,7 @@ pub fn build(workload: Workload, actors: usize) -> ScenarioWorld {
         dirty_fraction: 0.0,
         ticking_fraction: 0.0,
     };
-    let mut app = spec.build_app();
+    let mut app = build_app_at(&spec, ATTRIBUTE_POOL, mode);
     let actor_list = actor_entities(app.world_mut());
     let mut world = ScenarioWorld {
         app,

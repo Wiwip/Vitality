@@ -271,8 +271,8 @@ fn a_fire_due_on_the_expiry_tick_beats_the_expiry() {
     // node has to write its fire before tick_effect_durations despawns the effect. v1 declares no
     // such edge and leaves the tie-break open (D-53), so only the behaviour above is shared.
     if mode() == vitality::ResolverMode::Dag {
-        // a schedule moves its systems out of its graph the first time it runs, so the edges are read
-        // off a fresh app of the same shape rather than this one
+        // read off an app whose FixedUpdate never ran: running a schedule moves its systems out of the
+        // graph, so this panics on a ticked one; gameplay::app()'s one update only primes bevy's clock.
         let built = gameplay::app();
         let schedule = built
             .world()

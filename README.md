@@ -110,13 +110,28 @@ that page is a one-liner and holds no contract. Short version:
   effect still reports itself applied. The reverse order is not that case: `Dag` at
   `EffectsPlugin::build` with the attributes registered under `PerAttribute` runs as a mixed-mode
   app — vitality's own attributes keep the DAG nodes, the later ones take the per-attribute path —
-  and applies and fires like a plain per-attribute app. That mixed mode runs, but no test pins it.
+  and applies and fires like a plain per-attribute app. It pays both paths though: the later
+  attributes are also picked up by the mode-blind `scan_base_writes`, which walks every registered
+  attribute each tick, by `resolve_system` whenever anything is queued, and by the global
+  `mark_actor_dirty_dag` observer — and nothing orders `resolve_system` against
+  `update_current_value_system::<T>`. That mixed mode runs, but no test pins it.
   A mode inserted after the plugins are built changes nothing: all three reads of it are at build.
   Whether that stays a contract or becomes a first-install guard inside
   `init_effect_attribute` is open (D-52).
 
 ## Performance
 
-`.auto/BENCH-RESULTS.md` has the numbers. The short version: at 10 000 actors with 20 attributes and 3
-effects each, moving 10 % of the actors' attributes costs about 1.2 ms a tick single-threaded,
-and moving every attribute of every actor costs about 6 ms with bevy's `multi_threaded` feature.
+The numbers come from the `scenario` group of `crates/vitality/benches/bench_systems.rs`, which
+measures them rather than storing them. The short version, from the 2026-11-10/11 runs on a shared
+24-core box where absolute values move ~10 % run to run: at 10 000 actors with 20 attributes and 3
+effects each, moving 10 % of the actors' attributes — the `steady` workload — cost roughly 1.2 ms a
+tick single-threaded, and moving every attribute of every actor — `storm` — roughly 6 ms with bevy's
+`multi_threaded` feature. That `storm` figure has not been retaken since the per-attribute
+`FixedUpdate` nodes were collapsed. Both are DAG-resolver ticks, so their criterion ids are
+`scenario/steady/actors=10000/a=20/e=3/dag/st-static` and
+`scenario/storm/actors=10000/a=20/e=3/dag/mt-static`: `Workload::ALL` names the workloads and
+`scenario_id` builds that id, both in `crates/vitality/benches/support/scenario.rs`, and criterion
+matches a trailing filter against the full id as a regex, so
+`VITALITY_SCENARIOS_ONLY=1 VITALITY_RESOLVER=dag VITALITY_SCENARIO_ACTORS=10000 cargo bench
+--offline --locked -p vitality --bench bench_systems -- 'scenario/(steady|storm)/'` is how they are
+taken — add `--features multi_threaded` for the `storm` figure.

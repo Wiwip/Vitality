@@ -44,7 +44,10 @@
 //!   reverse order is not that case: `Dag` at `EffectsPlugin::build` with the attributes registered
 //!   under `PerAttribute` gives a mixed-mode app — the framework's own attributes keep the collapsed
 //!   DAG nodes, the ones registered later take the per-attribute path — and it applies and fires like
-//!   a plain per-attribute app. It runs; nothing here pins it. Inserting a mode once the
+//!   a plain per-attribute app while paying both paths: the mode-blind `scan_base_writes` walks them
+//!   every tick, `resolve_system` walks them whenever anything is queued, `mark_actor_dirty_dag` is a
+//!   global observer, and nothing orders `resolve_system` against
+//!   `update_current_value_system::<T>`. It runs; nothing here pins it. Inserting a mode once the
 //!   plugins are all built changes nothing — the mode is read only at
 //!   `EffectsPlugin::build`, at `init_effect_attribute` (`vitality_effects/src/lib.rs:95`, `:144`)
 //!   and in the clamp branch of `init_attribute`, all of them build time. `ResolverMode::default()`
