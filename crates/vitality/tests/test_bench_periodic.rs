@@ -76,9 +76,9 @@ fn periodic_tick_scan_fires_about_once_per_tick() {
         );
         assert!(
             shape.markers_at_handoff > 0,
-            "settling shape {} found no Dirty<T> when prepare_floor took it over, so the walk that \
-             reports a settled world never saw one and the quiet-window assert below proves \
-             nothing",
+            "settling shape {} found no mark when prepare_floor took it over (`Dirty<T>` on v1, \
+             `ResolveQueue` entries on dag), so the read that reports a settled world never saw one \
+             and the quiet-window assert below proves nothing",
             spec.shape_id(),
         );
         assert!(

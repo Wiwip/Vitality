@@ -32,8 +32,8 @@
 //! spending resolve work that a timed tick would then be paying for.
 
 use crate::common::{
-    ATTRIBUTE_POOL, AttrSpec, POOL_LEN, WorldSpec, actor_entities, build_app_with, run_fixed_tick,
-    tick,
+    ATTRIBUTE_POOL, AttrSpec, POOL_LEN, WorldSpec, actor_entities, build_app_with,
+    queued_entity_count, resolver_mode, run_fixed_tick, tick,
 };
 use bevy::ecs::component::ComponentId;
 use bevy::prelude::*;
@@ -94,13 +94,15 @@ pub fn floor_pool(attributes: usize) -> &'static [AttrSpec] {
 pub struct FloorShape {
     pub app: App,
     pub actors: Vec<Entity>,
-    /// Dirty entities in the unprepared world. Kept so a guard can show the walk in
-    /// [`dirty_entity_count`] really does see a `Dirty<T>` — a walk that sees none also reports 0 for
-    /// a world full of them, and then "no `Dirty<T>` survives" proves nothing.
+    /// Entities the resolver still owed work when the world was built. On v1 that is the walk in
+    /// [`dirty_entity_count`] over `Dirty<T>`; under dag it is the entities `ResolveQueue` holds marks
+    /// for, which is all the build leaves them as. Kept so a guard can show the read really does see
+    /// a mark — a read that sees none also reports 0 for a world full of them, and then "no mark
+    /// survives" proves nothing.
     pub dirty_at_build: usize,
-    /// `Dirty<T>` components the world carried when [`prepare_floor`] took it over. Since L-4 that is
-    /// the same number as [`FloorShape::dirty_at_build`]: the settle tick consumes the marks, so
-    /// [`clear_dirty`] has nothing left to remove. Zero means the build dirtied nothing at all.
+    /// Marks the world carried when [`prepare_floor`] took it over. Since L-4 that is the same number
+    /// as [`FloorShape::dirty_at_build`]: the settle tick consumes them, so [`clear_dirty`] has nothing
+    /// left to remove. Zero means the build marked nothing at all.
     pub markers_at_handoff: usize,
 }
 
@@ -122,7 +124,7 @@ pub fn floor_spec(attributes: usize, actors: usize) -> WorldSpec {
 /// `HarnessWorld::attrs()` is how a guard checks that the shape registered what it declared.
 pub fn floor_shape(spec: &WorldSpec, pool: &'static [AttrSpec]) -> FloorShape {
     let mut app = build_app_with(spec, pool);
-    let dirty_at_build = dirty_entity_count(app.world());
+    let dirty_at_build = pending_entity_count(app.world());
     let (markers_at_handoff, cleared) = prepare_floor_tallies(&mut app);
     // Nothing to fold on a floor point, so a mark still standing after the settle tick is one the
     // resolve did not consume, and `clear_dirty` is what hides that.
@@ -166,12 +168,12 @@ pub fn prepare_floor(app: &mut App) -> usize {
     prepare_floor_tallies(app).0
 }
 
-/// [`prepare_floor`] with both tallies: `(dirty entities at handoff, Dirty<T> markers clear_dirty
+/// [`prepare_floor`] with both tallies: `(entities with marks at handoff, Dirty<T> markers clear_dirty
 /// removed after the settle tick)`. The two are not in the same unit — one entity carries one marker per
 /// attribute — and a caller that needs the second one is pinning the settle tick's own work, not its
 /// shape's.
 pub fn prepare_floor_tallies(app: &mut App) -> (usize, usize) {
-    let marked = dirty_entity_count(app.world());
+    let marked = pending_entity_count(app.world());
     tick(app);
     let cleared = clear_dirty(app.world_mut());
     run_fixed_tick(app.world_mut());
@@ -223,6 +225,15 @@ pub fn dirty_entity_count(world: &World) -> usize {
         })
         .map(|archetype| archetype.entities().len())
         .sum()
+}
+
+/// [`dirty_entity_count`]'s claim read in whichever resolver the app runs: v1 keeps its marks as
+/// `Dirty<T>` components, dag in `ResolveQueue`, and only the first of those is a component.
+pub fn pending_entity_count(world: &World) -> usize {
+    match resolver_mode() {
+        vitality::ResolverMode::PerAttribute => dirty_entity_count(world),
+        vitality::ResolverMode::Dag => queued_entity_count(world),
+    }
 }
 
 /// A dirty entity split by the kind of entity carrying the marker. [`dirty_entity_count`]'s bare

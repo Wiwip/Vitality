@@ -20,7 +20,9 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
+use std::any::TypeId;
 use std::marker::PhantomData;
+use std::sync::Once;
 use vitality::actors::{Actor, ActorBuilder};
 use vitality::attributes::Attribute;
 use vitality::context::Vitality;
@@ -30,6 +32,7 @@ use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::effect::systems::{Dirty, MarkNodeDirty};
 use vitality::prelude::*;
 use vitality::{AttributesPlugin, init_attribute};
+use vitality_core::registry::{AttrId, AttributeRegistry, Mark, ResolveQueue};
 
 /// Every bench draws from the same seed (BENCH-PLAN §1.6).
 pub const SEED: u64 = 7;
@@ -37,10 +40,24 @@ pub const SEED: u64 = 7;
 /// `VITALITY_RESOLVER=dag` builds harness worlds on the DAG resolver. The default stays v1 because
 /// most of this harness instruments v1's internals (`Dirty<T>`, `MarkNodeDirty`).
 pub fn resolver_mode() -> vitality::ResolverMode {
-    match std::env::var("VITALITY_RESOLVER").as_deref() {
+    let mode = match std::env::var("VITALITY_RESOLVER").as_deref() {
         Ok("dag") => vitality::ResolverMode::Dag,
         _ => vitality::ResolverMode::PerAttribute,
-    }
+    };
+    // the gameplay suite defaults the other way round, so no run gets to wonder which one it was in
+    static ANNOUNCED: Once = Once::new();
+    ANNOUNCED.call_once(|| {
+        let label = match mode {
+            vitality::ResolverMode::Dag => "dag",
+            vitality::ResolverMode::PerAttribute => "v1",
+        };
+        eprintln!(
+            "::vitality bench harness:: RESOLVER={label} BUILD={} VITALITY_RESOLVER={:?}",
+            build_label(),
+            std::env::var("VITALITY_RESOLVER").unwrap_or_default(),
+        );
+    });
+    mode
 }
 
 pub fn resolver_label() -> &'static str {
@@ -68,6 +85,8 @@ pub struct AttrSpec {
     pub name: &'static str,
     /// `init_attribute::<T>` registration, run once per app.
     pub register: fn(&mut App),
+    /// What [`AttributeRegistry::id_of`] answers, so a dag read can find this attribute's `AttrId`.
+    pub type_id: TypeId,
     add_attribute: fn(ActorBuilder, Value) -> ActorBuilder,
     /// Adds one `ModOp::Add` modifier for `T` with `EffectSubject::Target`.
     add_modifier: fn(EffectBuilder, Value, EffectSubject) -> EffectBuilder,
@@ -86,6 +105,7 @@ impl AttrSpec {
         Self {
             name,
             register: init_attribute::<T>,
+            type_id: TypeId::of::<T>(),
             add_attribute: insert_attr::<T>,
             add_modifier: add_modifier::<T>,
             base_of: base_of::<T>,
@@ -485,4 +505,66 @@ pub fn mark_dirty_fraction(
     // Without this the `Dirty<T>` inserts are still queued and the returned count is fiction.
     world.flush();
     wanted
+}
+
+/// A read of the marks the resolver still owes, taken without spending them: dag's [`ResolveQueue`]
+/// offers `take` and nothing else, so every entry is handed back before `read` returns.
+fn with_queued_marks<R>(
+    world: &World,
+    read: impl FnOnce(&[(Entity, Mark)], &[(Entity, AttrId)]) -> R,
+) -> R {
+    let queue = world.resource::<ResolveQueue>();
+    let (marks, pairs) = queue.take();
+    let out = read(&marks, &pairs);
+    for (entity, mark) in marks {
+        queue.push(entity, mark);
+    }
+    for (entity, attribute) in pairs {
+        queue.dirty(entity, attribute);
+    }
+    out
+}
+
+/// Entities the DAG resolver owes work for, actor or node: the dag twin of
+/// [`floor::dirty_entity_count`], which cannot see anything but v1's `Dirty<T>`.
+pub fn queued_entity_count(world: &World) -> usize {
+    with_queued_marks(world, |marks, pairs| {
+        let mut entities: Vec<Entity> = marks
+            .iter()
+            .map(|(entity, _)| *entity)
+            .chain(pairs.iter().map(|(entity, _)| *entity))
+            .collect();
+        entities.sort();
+        entities.dedup();
+        entities.len()
+    })
+}
+
+/// The attributes of `pool` the running resolver owes `actor`, in pool order — v1's `Dirty<T>`
+/// components, dag's [`ResolveQueue`] marks. One claim in two stores: "a tick on this actor resolves
+/// these attributes".
+pub fn pending_attrs(world: &World, pool: &[AttrSpec], actor: Entity) -> Vec<&'static str> {
+    if resolver_mode() == vitality::ResolverMode::PerAttribute {
+        return pool
+            .iter()
+            .filter(|attr| attr.is_dirty(world, actor))
+            .map(|attr| attr.name)
+            .collect();
+    }
+    let registry = world.resource::<AttributeRegistry>();
+    with_queued_marks(world, |marks, pairs| {
+        pool.iter()
+            .filter(|attr| match registry.id_of(attr.type_id) {
+                Some(id) => {
+                    marks.iter().any(|(entity, mark)| {
+                        *entity == actor && (mark.dirty.contains(id) || mark.regather.contains(id))
+                    }) || pairs
+                        .iter()
+                        .any(|(entity, attribute)| *entity == actor && *attribute == id)
+                }
+                None => false,
+            })
+            .map(|attr| attr.name)
+            .collect()
+    })
 }

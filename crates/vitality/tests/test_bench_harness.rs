@@ -207,17 +207,37 @@ fn floor_shape_builds() {
         }
     }
 
-    // Positive control for the walk below: `build_app_with` returns after Startup only, so the
+    // Positive control for the walk below: on v1 `build_app_with` returns after Startup only, so the
     // `Insert<T>` observers have dirtied every attribute of every actor and nothing has resolved.
     // A walk that could not see this would also report 0 after the prepare tick, and the floor would
-    // be measured on a world nobody proved was clean.
-    assert!(
-        shape.dirty_at_build > 0,
-        "the world was already clean when build_app_with returned ({} dirty entities found by the \
-         walk): either the resolver ran during the build, or `dirty_entity_count` cannot see a \
-         Dirty<T> at all and its 0 below proves nothing",
-        shape.dirty_at_build
-    );
+    // be measured on a world nobody proved was clean. dag registers no `Insert<T>` observer at all
+    // (`init_effect_attribute` returns before `on_add_attribute`) and a floor shape has no effect to
+    // apply, so its build really does hand over an empty queue: pin that 0, and pin the same read
+    // seeing work on a shape that does mark, or the 0 is the read being blind, not the world clean.
+    match common::resolver_mode() {
+        vitality::ResolverMode::PerAttribute => assert!(
+            shape.dirty_at_build > 0,
+            "the world was already clean when build_app_with returned ({} dirty entities found by \
+             the walk): either the resolver ran during the build, or `dirty_entity_count` cannot see \
+             a Dirty<T> at all and its 0 below proves nothing",
+            shape.dirty_at_build
+        ),
+        vitality::ResolverMode::Dag => {
+            assert_eq!(
+                shape.dirty_at_build, 0,
+                "a floor shape was handed {} queued marks: dag dirties an actor through \
+                 `MarkActorDirty`, which a shape with no effect never triggers, so anything above 0 \
+                 here means something else starts a floor shape dirty and its timed ticks resolve",
+                shape.dirty_at_build
+            );
+            let with_effects = common::build_app_with(&tiny_spec(), common::ATTRIBUTE_POOL);
+            assert!(
+                common::queued_entity_count(with_effects.world()) > 0,
+                "the queued-mark read finds no entry even on a shape that applies effects, so the 0 \
+                 above proves the read is blind rather than the floor build clean",
+            );
+        }
+    }
 
     assert_eq!(
         floor::dirty_entity_count(world),
@@ -458,13 +478,13 @@ fn test_recompute_ratio() {
         spec.shape_id(),
         fresh_actors.len()
     );
-    let dirty_at_build = recompute::dirty_names(fresh.world(), pool, fresh_actors[0]);
+    let dirty_at_build = common::pending_attrs(fresh.world(), pool, fresh_actors[0]);
     assert_eq!(
         dirty_at_build,
         pool_names(pool),
-        "the built world is dirty on {} of {} attributes ({dirty_at_build:?}): the claim that a \
-         fresh build is dirty on all of them is what makes `clear_dirty` necessary in \
-         recompute_shape, so if it is false the settle has to be rethought",
+        "the built world is marked on {} of {} attributes ({dirty_at_build:?}): the claim that a \
+         fresh build marks all of them (`Dirty<T>` on v1, `ResolveQueue` marks on dag) is what makes \
+         `clear_dirty` necessary in recompute_shape, so if it is false the settle has to be rethought",
         dirty_at_build.len(),
         RECOMPUTE_ATTRIBUTES
     );
@@ -681,7 +701,8 @@ fn mark_dirty_fraction_marks_are_visible() {
     );
     assert!(
         cleared > 0,
-        "the build left no marker to clear, so a 0 below proves nothing (see test_recompute_ratio)"
+        "the build left no mark to clear (`Dirty<T>` on v1, `ResolveQueue` entries on dag), so a 0 \
+         below proves nothing (see test_recompute_ratio)",
     );
     assert!(
         dirty_by_actor(app.world(), pool, &actors).is_empty(),

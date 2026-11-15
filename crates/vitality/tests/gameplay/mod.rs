@@ -27,10 +27,23 @@ pub const STEP: Duration = Duration::from_micros(15625);
 
 /// `VITALITY_RESOLVER=v1` runs the suite against the per-attribute resolver.
 pub fn mode() -> vitality::ResolverMode {
-    match std::env::var("VITALITY_RESOLVER").as_deref() {
+    let mode = match std::env::var("VITALITY_RESOLVER").as_deref() {
         Ok("v1") => vitality::ResolverMode::PerAttribute,
         _ => vitality::ResolverMode::Dag,
-    }
+    };
+    // the bench harness defaults the other way round, so no run gets to wonder which one it was in
+    static ANNOUNCED: std::sync::Once = std::sync::Once::new();
+    ANNOUNCED.call_once(|| {
+        let label = match mode {
+            vitality::ResolverMode::Dag => "dag",
+            vitality::ResolverMode::PerAttribute => "v1",
+        };
+        eprintln!(
+            "::vitality gameplay harness:: RESOLVER={label} VITALITY_RESOLVER={:?}",
+            std::env::var("VITALITY_RESOLVER").unwrap_or_default(),
+        );
+    });
+    mode
 }
 
 pub fn app() -> App {
