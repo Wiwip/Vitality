@@ -91,7 +91,7 @@ The attribute pipeline (the `EffectsSet` chain) runs on `FixedUpdate`, so a head
 
 The contract, with what each break looks like from inside an app, is the `vitality` crate-level doc,
 i.e. the crate's own rustdoc page (`crates/vitality/src/lib.rs`). Not `vitality::AttributesPlugin`:
-that page is a one-liner and holds no contract. Short version:
+that page is a three-line pointer to it and holds no contract. Short version:
 
 - Register attributes with `vitality::init_attribute::<T>()` in the plugin's `build`. `Plugin::finish`
   only runs when the app runner calls `App::finish()`, which `App::update()` never does, and an

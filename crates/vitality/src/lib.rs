@@ -1,5 +1,96 @@
 //! Gameplay attributes, effects and abilities for Bevy.
 //!
+//! # Getting started
+//!
+//! The README's scenario, run: register the attributes and the tag, build the actor with
+//! [`ActorBuilder`], apply a burn that scales with `Power`. With
+//! [`TimeUpdateStrategy`](bevy::time::TimeUpdateStrategy)::`ManualDuration` one `update` is one
+//! fixed tick, so the update count is the number of seconds.
+//!
+//! ```
+//! use bevy::ecs::system::RunSystemOnce;
+//! use bevy::prelude::*;
+//! use bevy::time::TimeUpdateStrategy;
+//! use std::time::Duration;
+//! use vitality::actors::ActorBuilder;
+//! use vitality::effect::modifier::{EffectSubject, ModOp};
+//! use vitality::prelude::*;
+//! use vitality::{attribute, tag};
+//!
+//! attribute!(Health, f32);
+//! attribute!(MaxHealth, f32);
+//! attribute!(Power, f32);
+//! tag!(Burning);
+//!
+//! // bevy's default fixed timestep
+//! const STEP: Duration = Duration::from_micros(15_625);
+//! const TICKS_PER_SECOND: usize = 64;
+//!
+//! let mut app = App::new();
+//! app.add_plugins((
+//!     MinimalPlugins,
+//!     AssetPlugin::default(),
+//!     VitalityPlugin::new()
+//!         .attribute::<Health>()
+//!         .attribute::<MaxHealth>()
+//!         .attribute::<Power>(),
+//! ))
+//! .insert_resource(TimeUpdateStrategy::ManualDuration(STEP));
+//!
+//! // the first update primes the fixed clock and runs no tick of it
+//! app.update();
+//!
+//! let hero = app
+//!     .world_mut()
+//!     .run_system_once(|mut vitality: Vitality| {
+//!         vitality
+//!             .add_spawn_actor(
+//!                 ActorBuilder::new()
+//!                     .name("Hero")
+//!                     .with::<Health>(100.0)
+//!                     .with::<MaxHealth>(100.0)
+//!                     .with::<Power>(10.0)
+//!                     .clamp::<Health>(0.0, MaxHealth::src())
+//!                     .build(),
+//!             )
+//!             .id()
+//!     })
+//!     .unwrap();
+//!
+//! // one tick before the burn: applied in the spawning system, the apply event beats the spawn
+//! app.update();
+//! let burn = app
+//!     .world_mut()
+//!     .run_system_once(|mut vitality: Vitality| {
+//!         vitality.add_effect(
+//!             EffectBuilder::every_second_for_duration(1.0, 5.0)
+//!                 .with_tag::<Burning>()
+//!                 .modify::<Health>(Power::src(), ModOp::Sub, EffectSubject::Target)
+//!                 .build(),
+//!         )
+//!     })
+//!     .unwrap();
+//! app
+//!     .world_mut()
+//!     .run_system_once(move |mut vitality: Vitality| vitality.apply_effect_to_self(hero, &burn))
+//!     .unwrap();
+//!
+//! let health = |app: &App| app.world().get::<Health>(hero).unwrap().current_value();
+//! let burning = |app: &App| app.world().get::<Burning>(hero).is_some();
+//!
+//! for _ in 0..TICKS_PER_SECOND {
+//!     app.update();
+//! }
+//! assert_eq!(health(&app), 90.0, "one fire a second, one Power each");
+//! assert!(burning(&app), "the hero carries Burning while the burn lasts");
+//!
+//! for _ in 0..(4 * TICKS_PER_SECOND) {
+//!     app.update();
+//! }
+//! assert_eq!(health(&app), 50.0, "five fires in the five seconds, not one more");
+//! assert!(!burning(&app), "the tag goes with the effect");
+//! ```
+//!
 //! # Wiring a plugin
 //!
 //! [`AttributesPlugin`] owns the app-wide state everything else reads and [`init_attribute`] writes
