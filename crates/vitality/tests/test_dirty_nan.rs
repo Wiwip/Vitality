@@ -570,8 +570,8 @@ fn the_dirty_count_is_actors_and_never_the_effect_nodes() {
     );
 
     let world = app.world();
-    report("at the mark (flushed)", world, &pool, &actors);
-    let marked_actors = actors_with_marks(world, &pool, &actors);
+    report("at the mark (flushed)", world, pool, &actors);
+    let marked_actors = actors_with_marks(world, pool, &actors);
     let split = dirty_split(world);
     assert_split_matches_count(world, &split, "at the mark");
     assert_eq!(
@@ -602,7 +602,7 @@ fn the_dirty_count_is_actors_and_never_the_effect_nodes() {
     for number in 1..=2 {
         tick(&mut app);
         let world = app.world();
-        report(&format!("tick {number}"), world, &pool, &actors);
+        report(&format!("tick {number}"), world, pool, &actors);
         assert_node_markers_are_being_cleaned(
             world,
             &mut previous,
@@ -628,7 +628,7 @@ fn the_dirty_count_is_actors_and_never_the_effect_nodes() {
     }
 
     let world = app.world();
-    report(&format!("tick {HORIZON}"), world, &pool, &actors);
+    report(&format!("tick {HORIZON}"), world, pool, &actors);
     // The number B-4 printed and nobody asserted, now pinned as a composition: all of it actors, none
     // of it the shape's 8 effect entities or their modifiers.
     let split = dirty_split(world);
@@ -712,19 +712,19 @@ fn a_nan_resolve_decays_its_mark_and_freezes_what_it_would_notify() {
          nothing here can show whether a NaN resolve writes it",
     );
     assert_eq!(
-        dirty_names(world, &pool, source),
+        dirty_names(world, pool, source),
         ["NanAttr", "NanDep"],
         "marking the source through `mark_dirty_fraction` left it carrying {:?}; with the helper's \
          `world.flush()` gone those inserts are still queued commands and this file's whole NaN half \
          reads a world nothing was marked on",
-        dirty_names(world, &pool, source),
+        dirty_names(world, pool, source),
     );
     let reader_at_nan = dep.current(world, reader).unwrap();
     assert!(
-        dirty_names(world, &pool, reader).is_empty(),
+        dirty_names(world, pool, reader).is_empty(),
         "the reader {reader:?} carries {:?} the moment the NaN is written, before a single tick has \
          resolved anything",
-        dirty_names(world, &pool, reader),
+        dirty_names(world, pool, reader),
     );
     assert_eq!(
         reader_at_nan, reader_moved,
@@ -742,14 +742,14 @@ fn a_nan_resolve_decays_its_mark_and_freezes_what_it_would_notify() {
         let attr_reader = after[2] - before[2];
         let dep_reader = after[3] - before[3];
         let world = app.world();
-        let marks = dirty_names(world, &pool, source);
+        let marks = dirty_names(world, pool, source);
         println!(
             "B-4c nan tick {number}: source marks {marks:?} NanAttr base={} current={} \
              (frozen {frozen}); reader marks {:?} NanDep current={}; marks raised src-attr={attr_source} \
              src-dep={dep_source} reader-attr={attr_reader} reader-dep={dep_reader}",
             nan.base(world, source).unwrap(),
             nan.current(world, source).unwrap(),
-            dirty_names(world, &pool, reader),
+            dirty_names(world, pool, reader),
             dep.current(world, reader).unwrap(),
         );
         assert_node_markers_are_being_cleaned(
@@ -839,8 +839,8 @@ fn a_nan_resolve_decays_its_mark_and_freezes_what_it_would_notify() {
     let attr_source = after[0] - before[0];
     let dep_reader = after[3] - before[3];
     let world = app.world();
-    let marks = dirty_names(world, &pool, source);
-    let reader_marks = dirty_names(world, &pool, reader);
+    let marks = dirty_names(world, pool, source);
+    let reader_marks = dirty_names(world, pool, reader);
     println!(
         "B-4c nan bare mark: source marks {marks:?} reader marks {reader_marks:?}; marks raised \
          src-attr={attr_source} reader-dep={dep_reader}"
@@ -934,8 +934,8 @@ fn a_nan_left_in_current_value_leaves_its_dependent_dirty_and_stale() {
     for number in 1..=NAN_HORIZON {
         tick(&mut app);
         let world = app.world();
-        let source_marks = dirty_names(world, &pool, source);
-        let reader_marks = dirty_names(world, &pool, reader);
+        let source_marks = dirty_names(world, pool, source);
+        let reader_marks = dirty_names(world, pool, reader);
         let reader_now = dep.current(world, reader).unwrap();
         println!(
             "B-4c stale tick {number}: source marks {source_marks:?} NanAttr base={} current={}; \

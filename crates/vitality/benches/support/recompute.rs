@@ -75,7 +75,7 @@ impl Dirtied {
 
     /// The attributes of `pool` this shape leaves dirty. `One` is always the pool's first entry, so
     /// the ratio's two sides dirty the same attribute of the same generated world.
-    pub fn pick<'a>(self, pool: &'a [AttrSpec]) -> &'a [AttrSpec] {
+    pub fn pick(self, pool: &[AttrSpec]) -> &[AttrSpec] {
         match self {
             Self::None => &pool[..0],
             Self::One => &pool[..1],
@@ -327,10 +327,10 @@ pub fn estimate(root: &Path, group: &str, bench_id: &str) -> Result<Estimate, Re
         Ok(meta) => meta,
         Err(_) => return Err(Refusal::Missing(path)),
     };
-    if let Some(built) = binary_mtime() {
-        if meta.modified().is_ok_and(|written| written < built) {
-            return Err(Refusal::Stale(path));
-        }
+    if let Some(built) = binary_mtime()
+        && meta.modified().is_ok_and(|written| written < built)
+    {
+        return Err(Refusal::Stale(path));
     }
     let text = match std::fs::read_to_string(&path) {
         Ok(text) => text,
@@ -707,7 +707,7 @@ pub fn ratio_row(a: usize, none: &Estimate, one: &Estimate, all: &Estimate) -> R
     let walk = one.ns - none.ns;
     RatioRow::Ratios {
         raw: all.ns / (a as f64 * one.ns),
-        marginal: (walk > 0.0).then(|| (all.ns - none.ns) / (a as f64 * walk)),
+        marginal: (walk > 0.0).then_some((all.ns - none.ns) / (a as f64 * walk)),
     }
 }
 

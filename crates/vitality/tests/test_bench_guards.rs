@@ -371,7 +371,7 @@ fn checking_fns(sources: &[Source]) -> Vec<Checker> {
     let parsed: Vec<(&str, Vec<String>, Vec<i32>)> = sources
         .iter()
         .map(|(module, text)| {
-            let lines: Vec<String> = text.lines().map(|line| code(line)).collect();
+            let lines: Vec<String> = text.lines().map(code).collect();
             let depths = depth_before(&lines);
             (module.as_str(), lines, depths)
         })
@@ -434,9 +434,8 @@ fn fn_bodies(lines: &[String]) -> Vec<(String, Span)> {
         };
         let mut braces = 0;
         let mut end = lines.len() - 1;
-        for candidate in open..lines.len() {
-            braces += lines[candidate].matches('{').count() as i32
-                - lines[candidate].matches('}').count() as i32;
+        for (candidate, line) in lines.iter().enumerate().skip(open) {
+            braces += line.matches('{').count() as i32 - line.matches('}').count() as i32;
             if braces == 0 {
                 end = candidate;
                 break;
@@ -480,7 +479,7 @@ fn audit_with(source: &str, helpers: &[Source]) -> Audit {
     let modules: Vec<String> = sources.iter().map(|(module, _)| module.clone()).collect();
     let checkers = checking_fns(&sources);
 
-    let lines: Vec<String> = source.lines().map(|line| code(line)).collect();
+    let lines: Vec<String> = source.lines().map(code).collect();
     let depths = depth_before(&lines);
     let benches = call_spans(&lines, &depths, &is_bench_call);
     let registrations = call_spans(&lines, &depths, &is_registration);
@@ -663,14 +662,13 @@ fn declared_groups(lines: &[String]) -> Groups {
         bindings: Vec::new(),
     };
     for line in lines {
-        if let Some(binding) = string_binding(line) {
-            if !groups
+        if let Some(binding) = string_binding(line)
+            && !groups
                 .bindings
                 .iter()
                 .any(|(name, _, _)| name == &binding.0)
-            {
-                groups.bindings.push(binding);
-            }
+        {
+            groups.bindings.push(binding);
         }
         let Some(argument) = group_argument(line) else {
             continue;
@@ -710,7 +708,7 @@ fn group_names_in(lines: &[String]) -> Vec<String> {
 /// no `/` in it (`recompute ratio table`) is not a criterion id, so no group rename can make it lie,
 /// and it is exempt; anything that does claim a group prefix has to claim a real one.
 fn guard_id_problems(source: &str) -> (Vec<String>, usize, usize) {
-    let lines: Vec<String> = source.lines().map(|line| code(line)).collect();
+    let lines: Vec<String> = source.lines().map(code).collect();
     let groups = declared_groups(&lines);
     let bodies = fn_bodies(&lines);
     let mut problems = Vec::new();
@@ -824,7 +822,7 @@ fn every_post_loop_bench_assert_goes_through_the_guard_helper() {
 #[test]
 fn every_guard_is_bumped_from_inside_its_own_timed_loop() {
     let source = read(&bench_file());
-    let lines: Vec<String> = source.lines().map(|line| code(line)).collect();
+    let lines: Vec<String> = source.lines().map(code).collect();
     let depths = depth_before(&lines);
     let benches = call_spans(&lines, &depths, &is_bench_call);
 

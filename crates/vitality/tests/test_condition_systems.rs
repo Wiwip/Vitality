@@ -24,7 +24,7 @@ struct ConditionTag;
 fn prepare_actor(mut ctx: Vitality, registry: Registry) {
     let actor_template = ctx.add_actor(
         ActorBuilder::new()
-            .name("TestActor".into())
+            .name("TestActor")
             .with::<TestA>(0.0)
             .with::<TestB>(1.0)
             .grant_ability(&registry.ability(&TEST_ABILITY_TOKEN))
@@ -88,7 +88,7 @@ fn prepare_gated_effect(mut registry: RegistryMut) {
 fn prepare_gated_actor(mut ctx: Vitality, registry: Registry) {
     let actor_template = ctx.add_actor(
         ActorBuilder::new()
-            .name("GatedActor".into())
+            .name("GatedActor")
             .with::<TestA>(0.0)
             .with::<TestB>(1.0)
             .with_effect(&registry.effect(&GATED_BUFF))

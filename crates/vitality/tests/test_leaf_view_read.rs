@@ -28,8 +28,10 @@ use vitality_core::view::ActorRead;
 /// shape carries rather than only slot 0.
 const LEAF_READ_COUNT: usize = 8;
 
+type LeafReads<V> = [(&'static str, for<'a> fn(&'a V) -> Option<f64>); LEAF_READ_COUNT];
+
 /// generic in the view so every `get` here can only be `ActorRead::get`
-fn leaf_reads<V: ActorRead>() -> [(&'static str, fn(&V) -> Option<f64>); LEAF_READ_COUNT] {
+fn leaf_reads<V: ActorRead>() -> LeafReads<V> {
     [
         ("Attr0", read_attr::<V, common::Attr0>),
         ("Attr1", read_attr::<V, common::Attr1>),

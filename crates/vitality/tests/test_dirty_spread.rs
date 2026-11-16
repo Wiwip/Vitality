@@ -131,10 +131,10 @@ fn assert_no_leak(world: &World, pool: &[AttrSpec], bystander: Entity, when: &st
 
 #[test]
 fn marks_cross_a_cross_actor_edge_and_stop_there() {
-    assert!(
+    const _: () = assert!(
         HORIZON > ARRIVAL_TICK,
-        "the horizon ({HORIZON}) has to sit past the arrival tick ({ARRIVAL_TICK}), or the ticks \
-         between them are never run and the horizon reads a world nothing ticked",
+        "the horizon HORIZON has to sit past the arrival tick ARRIVAL_TICK, or the ticks between \
+         them are never run and the horizon reads a world nothing ticked",
     );
 
     let spec = cross_spec(ATTRIBUTES, READERS);

@@ -31,8 +31,10 @@ const ACTORS: [&str; 3] = ["alpha", "beta", "gamma"];
 /// those ticks, and the asserts after the comparison check that they really had settled.
 const TICKS: usize = 8;
 
+type Reads = [(&'static str, for<'a> fn(&'a App, Entity) -> f32); 10];
+
 /// Every value the comparison reads, current and base.
-const READS: [(&str, fn(&App, Entity) -> f32); 10] = [
+const READS: Reads = [
     ("Health", current::<Health>),
     ("Health.base", base::<Health>),
     ("MaxHealth", current::<MaxHealth>),

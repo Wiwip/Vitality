@@ -22,7 +22,7 @@ struct ConditionTag;
 fn prepare_actor(mut ctx: Vitality, registry: Registry) {
     let actor_template = ctx.add_actor(
         ActorBuilder::new()
-            .name("TestActor".into())
+            .name("TestActor")
             .with::<TestAttribute>(0.0)
             .grant_ability(&registry.ability(&TEST_ABILITY_TOKEN))
             .with_effect(&registry.effect(&CONDITION_EFFECT))

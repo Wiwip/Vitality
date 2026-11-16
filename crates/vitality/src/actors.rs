@@ -19,6 +19,9 @@ use vitality_effects::{ApplyEffectEvent, EffectTargeting};
 
 use crate::clamp::{Clamp, mark_clamp_stale};
 
+/// The clamp dependents of [`ActorDef`]; spelled out it sits over clippy's complexity limit.
+type ClampDependents = HashMap<TypeId, Vec<(TypeId, fn(&mut EntityCommands))>>;
+
 #[derive(Asset, TypePath)]
 pub struct ActorDef {
     pub name: String,
@@ -28,7 +31,7 @@ pub struct ActorDef {
     pub effects: Vec<Handle<EffectDef>>,
 
     /// Per dependency key read by a clamp: the clamped attribute and what marks its clamp stale.
-    pub clamp_dependents: HashMap<TypeId, Vec<(TypeId, fn(&mut EntityCommands))>>,
+    pub clamp_dependents: ClampDependents,
 }
 
 #[derive(Component, Clone, Debug, Deref)]
@@ -42,7 +45,7 @@ pub struct SpawnActorCommand {
 impl EntityCommand for SpawnActorCommand {
     type Out = ();
 
-    fn apply(self, mut entity: EntityWorldMut) -> () {
+    fn apply(self, mut entity: EntityWorldMut) {
         debug!("Spawning actor {} {:?}", entity.id(), self.handle);
         let actor_entity = entity.id();
 
@@ -133,6 +136,12 @@ pub struct ActorBuilder {
     actor: ActorDef,
 }
 
+impl Default for ActorBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ActorBuilder {
     pub fn new() -> ActorBuilder {
         Self {
@@ -154,7 +163,7 @@ impl ActorBuilder {
 
     pub fn with<T: Attribute>(
         mut self,
-        value: impl Num + AsPrimitive<T::Property> + Copy + Send + Sync + 'static,
+        value: impl Num + AsPrimitive<T::Property> + Send + Sync + 'static,
     ) -> ActorBuilder {
         self.actor.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
@@ -262,7 +271,7 @@ impl ActorRegistry {
 
     pub fn get(&self, token: &ActorToken) -> &Handle<ActorDef> {
         self.map
-            .get(&token)
-            .expect(format!("{:?} not registered", token).as_str())
+            .get(token)
+            .unwrap_or_else(|| panic!("{:?} not registered", token))
     }
 }

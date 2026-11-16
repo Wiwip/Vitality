@@ -45,22 +45,42 @@ pub fn clamp_dependency_changed<D: Attribute>(
     }
 }
 
+/// The three queries `apply_clamps` takes as one `ParamSet`; spelled out they sit over clippy's limit.
+type ClampBatch<'w, 's, T> = (
+    Query<
+        'w,
+        's,
+        Entity,
+        (
+            With<Clamp<T>>,
+            Or<(Changed<T>, Added<Clamp<T>>, With<ClampStale<T>>)>,
+        ),
+    >,
+    Query<'w, 's, EntityRef<'w>>,
+    Query<
+        'w,
+        's,
+        (
+            &'w mut T,
+            &'w AttributeCalculatorCached<T>,
+            &'w mut Clamp<T>,
+        ),
+    >,
+);
+
+/// The re-evaluated limits of one pass, one row per candidate actor.
+type ClampLimits<T> = Vec<(
+    Entity,
+    <T as Attribute>::Property,
+    <T as Attribute>::Property,
+)>;
+
 /// Re-evaluates stale limits, then clamps base and current value of `T`.
 pub fn apply_clamps<T: Attribute>(
-    mut set: ParamSet<(
-        Query<
-            Entity,
-            (
-                With<Clamp<T>>,
-                Or<(Changed<T>, Added<Clamp<T>>, With<ClampStale<T>>)>,
-            ),
-        >,
-        Query<EntityRef>,
-        Query<(&mut T, &AttributeCalculatorCached<T>, &mut Clamp<T>)>,
-    )>,
+    mut set: ParamSet<ClampBatch<'_, '_, T>>,
     mut commands: Commands,
     mut candidates: Local<Vec<Entity>>,
-    mut limits: Local<Vec<(Entity, T::Property, T::Property)>>,
+    mut limits: Local<ClampLimits<T>>,
 ) {
     candidates.clear();
     candidates.extend(set.p0().iter());

@@ -18,7 +18,7 @@ attribute!(TestInt, u32);
 fn prepare_actor(mut ctx: Vitality, registry: Registry) {
     let actor_template = ctx.add_actor(
         ActorBuilder::new()
-            .name("TestActor".into())
+            .name("TestActor")
             .with::<TestA>(100.0)
             .with::<TestB>(10.0)
             .with::<TestInt>(50)

@@ -13,7 +13,7 @@ attribute!(TestA, u32);
 fn prepare_actor(mut ctx: Vitality) {
     let actor_template = ctx.add_actor(
         ActorBuilder::new()
-            .name("TestActor".into())
+            .name("TestActor")
             .with::<TestA>(0)
             .build(),
     );
