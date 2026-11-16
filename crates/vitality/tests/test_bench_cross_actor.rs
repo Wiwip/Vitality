@@ -6,7 +6,7 @@
 //! that `Vitality::apply_effect_to_target` triggers (`crates/vitality/src/vitality.rs:41-52`). So the
 //! workload is the cascade, not a fold: the source's attribute changes, `update_attribute` walks its
 //! `AttributeDependents` (`vitality_effects/src/systems.rs:201-226`), each dependent modifier
-//! recalculates (`vitality_effects/src/modifier.rs:203-229`) and re-marks its effect node, and the
+//! recalculates (`vitality_effects/src/modifier.rs:248-283`) and re-marks its effect node, and the
 //! mark propagates up `EffectTarget` to the reader, which resolves on a later tick.
 //!
 //! The three things this pins, in the order the bench could silently break them:

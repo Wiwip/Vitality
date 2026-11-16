@@ -21,7 +21,7 @@
 //!   value, which since D-34 is the only kind of write-back there is;
 //! * `CurrentValueChanged<T>` plus one `RecalculateExpression` per entry of `AttributeDependents<T>`,
 //!   and `update_modifier_when_dependencies_changed`
-//!   (`crates/vitality_effects/src/modifier.rs:203-228`) answers *every* one of those with
+//!   (`crates/vitality_effects/src/modifier.rs:279-282`) answers *every* one of those with
 //!   `MarkNodeDirty` on the effect node — unconditionally, whatever its expression re-evaluates to —
 //!   which `mark_node_dirty_observer` (`vitality_effects/src/systems.rs:31-42`) then walks up
 //!   `EffectTarget` onto the reader actor.

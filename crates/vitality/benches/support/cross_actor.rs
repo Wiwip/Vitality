@@ -14,7 +14,7 @@
 //! Src base write -> Dirty<Src> on the source -> update_attribute<Src> walks AttributeDependents<Src>
 //!   (vitality_effects/src/systems.rs:215-242)
 //! -> RecalculateExpression per dependent modifier -> update_modifier_when_dependencies_changed
-//!   (vitality_effects/src/modifier.rs:203-229) re-evaluates Src::src() and marks the effect node
+//!   (vitality_effects/src/modifier.rs:248-283) re-evaluates Src::src() and marks the effect node
 //! -> MarkNodeDirty<Dep> propagates up EffectTarget -> the reader resolves Dep on a later tick
 //! ```
 //!
