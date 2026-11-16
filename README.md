@@ -134,12 +134,12 @@ that page is a three-line pointer to it and holds no contract. Short version:
 ## Performance
 
 The numbers come from the `scenario` group of `crates/vitality/benches/bench_systems.rs`, which
-measures them rather than storing them. The short version, from the 2026-11-10/11 runs on a shared
-24-core box where absolute values move ~10 % run to run: at 10 000 actors with 20 attributes and 3
-effects each, moving 10 % of the actors' attributes — the `steady` workload — cost roughly 1.2 ms a
-tick single-threaded, and moving every attribute of every actor — `storm` — roughly 6 ms with bevy's
-`multi_threaded` feature. That `storm` figure has not been retaken since the per-attribute
-`FixedUpdate` nodes were collapsed. Both are DAG-resolver ticks, so their criterion ids are
+measures them rather than storing them. The short version, from the 2026-11-15 retake on a shared
+8-core box where absolute values move ~10 % run to run: at 10 000 actors with 20 attributes and 3
+effects each, moving 10 % of the actors' attributes — the `steady` workload — costs roughly 1.1 ms a
+tick single-threaded, and moving every attribute of every actor — `storm` — roughly 7 ms with bevy's
+`multi_threaded` feature, against the owner's 2 ms and 8 ms ceilings; the `idle` control of that same
+session was 0.25 ms st and 0.33 ms mt. Both are DAG-resolver ticks, so their criterion ids are
 `scenario/steady/actors=10000/a=20/e=3/dag/st-static` and
 `scenario/storm/actors=10000/a=20/e=3/dag/mt-static`: `Workload::ALL` names the workloads and
 `scenario_id` builds that id, both in `crates/vitality/benches/support/scenario.rs`, and criterion
