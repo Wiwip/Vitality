@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use vitality::actors::ActorBuilder;
 use vitality::context::Vitality;
+use vitality::effect::AppliedEffects;
 use vitality::effect::Effect;
 use vitality::effect::conditions::IsAttributeWithinBounds;
 use vitality::effect::modifier::{EffectSubject, ModOp};
@@ -48,6 +49,99 @@ fn prepare_effects(mut registry: RegistryMut) {
 
 const TEST_EFFECT: EffectToken = EffectToken::new_static("test.test");
 const CONDITION_EFFECT: EffectToken = EffectToken::new_static("test.condition");
+
+// the spawn is a command, so an apply in the same system runs before the entity is an actor
+fn spawn_and_apply_in_one_system(mut ctx: Vitality) {
+    let actor = ctx
+        .add_spawn_actor(
+            ActorBuilder::new()
+                .name("SameSystemActor")
+                .with::<TestInt>(50)
+                .build(),
+        )
+        .id();
+    ctx.apply_dynamic_effect_to_self(
+        actor,
+        EffectBuilder::permanent()
+            .modify::<TestInt>(10, ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+}
+
+fn spawn_actor_only(mut ctx: Vitality) {
+    ctx.add_spawn_actor(
+        ActorBuilder::new()
+            .name("LaterSystemActor")
+            .with::<TestInt>(50)
+            .build(),
+    );
+}
+
+fn only_actor(app: &mut App) -> Entity {
+    let mut query = app.world_mut().query_filtered::<Entity, With<TestInt>>();
+    query.single(app.world()).unwrap()
+}
+
+fn applied(app: &App, actor: Entity) -> usize {
+    app.world()
+        .get::<AppliedEffects>(actor)
+        .map_or(0, |applied| applied.iter().count())
+}
+
+fn value(app: &App, actor: Entity) -> u32 {
+    app.world().get::<TestInt>(actor).unwrap().current_value()
+}
+
+#[test]
+fn test_apply_in_the_spawn_system_is_dropped() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+    app.add_plugins(init_attribute::<TestInt>);
+    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+
+    app.add_systems(Startup, spawn_and_apply_in_one_system);
+
+    app.update();
+    let actor = only_actor(&mut app);
+    app.update();
+
+    assert_eq!(
+        applied(&app, actor),
+        0,
+        "the apply ran before the actor existed"
+    );
+    assert_eq!(value(&app, actor), 50);
+}
+
+#[test]
+fn test_apply_after_the_spawn_system_is_applied() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+    app.add_plugins(init_attribute::<TestInt>);
+    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+
+    app.add_systems(Startup, spawn_actor_only);
+
+    app.update();
+    let actor = only_actor(&mut app);
+    app.update();
+
+    app.world_mut()
+        .run_system_once(move |mut ctx: Vitality| {
+            ctx.apply_dynamic_effect_to_self(
+                actor,
+                EffectBuilder::permanent()
+                    .modify::<TestInt>(10, ModOp::Add, EffectSubject::Target)
+                    .build(),
+            );
+        })
+        .unwrap();
+
+    app.update();
+
+    assert_eq!(applied(&app, actor), 1);
+    assert_eq!(value(&app, actor), 60);
+}
 
 #[test]
 fn test_instant_effect_application() {

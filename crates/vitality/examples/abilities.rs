@@ -36,6 +36,7 @@ fn main() {
         .add_plugins(ActorInspectorPlugin)
         .add_systems(Startup, setup_camera)
         .add_systems(Startup, (setup_ability, setup_actor).chain())
+        .add_systems(Update, apply_effects.run_if(run_once))
         .add_systems(PreUpdate, inputs)
         .run();
 }
@@ -93,17 +94,21 @@ fn setup_actor(mut vitality: Vitality) {
         .name("Actor".into())
         .with::<Health>(10.0)
         .with::<Damage>(2.0)
-        .clamp::<Health>(0.0, 1.0)
+        // wide enough for the buff to show up in the printed health
+        .clamp::<Health>(0.0, 100.0)
         .insert((DebugOverlayMarker, Player))
         .grant_ability(&fireball)
         .build();
 
-    let entity = vitality.add_spawn_actor(actor).id();
+    vitality.add_spawn_actor(actor);
+}
 
+// one tick after the spawn
+fn apply_effects(mut vitality: Vitality, player: Single<Entity, With<Player>>) {
     let effect = EffectBuilder::permanent()
         .modify::<Health>(10.0, ModOp::Add, EffectSubject::Target)
         .build();
-    vitality.apply_dynamic_effect_to_self(entity, effect);
+    vitality.apply_dynamic_effect_to_self(*player, effect);
 }
 
 #[allow(unused)]
