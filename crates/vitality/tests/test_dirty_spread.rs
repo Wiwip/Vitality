@@ -22,7 +22,7 @@
 //!
 //! The mark rides with a write that moves the source ([`cross_actor::move_source`]) rather than a bare
 //! `MarkNodeDirty`: `update_attribute` only notifies dependents when the recomputed value differs
-//! (`vitality_core/src/attributes.rs:322-331`), and since D-34 `are_different` for floats is `!=`
+//! (`vitality_core/src/attributes.rs:377-389`), and since D-34 `are_different` for floats is `!=`
 //! (`crates/vitality_core/src/math.rs`), so a bare mark on a value that does not move stops the fan-out
 //! at the source — that is `test_dirty_noop_resolve.rs`, and it is why this file keeps the write in
 //! front of the mark. Write-then-mark is `cross_actor::SourceMove::WriteThenMark`, the harness's own

@@ -27,7 +27,7 @@
 //! the group times, and a mark alone is not. That is now the plain reading: `are_different` for floats is
 //! `self != rhs` (`crates/vitality_core/src/math.rs`, D-34), so a resolve that yields the value the
 //! attribute already holds writes nothing, `should_notify_observers`
-//! (`vitality_core/src/attributes.rs:322-331`) is false, and nothing reaches
+//! (`vitality_core/src/attributes.rs:377-389`) is false, and nothing reaches
 //! `AttributeDependents<Src>` (`systems.rs:209-225`) — a bare mark on an unmoving source is one local
 //! resolve and then an idle world (`tests/test_dirty_noop_resolve.rs` pins it). Before the fix the float
 //! arm was `self.abs_diff(rhs) > Self::Output::MIN` with `MIN` = `f32::MIN`/`f64::MIN`, which is true for

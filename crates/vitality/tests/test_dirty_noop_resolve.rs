@@ -12,7 +12,7 @@
 //! built on.
 //!
 //! Two things ride on that one bool out of `update_attribute`
-//! (`crates/vitality_core/src/attributes.rs:322-331`, read at
+//! (`crates/vitality_core/src/attributes.rs:377-389`, read at
 //! `crates/vitality_effects/src/systems.rs:196-226`):
 //!
 //! * the write-back to `current_value`, which `on_change_notify_attribute_parents::<T>`

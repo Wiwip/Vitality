@@ -21,7 +21,7 @@
 //! ### What the node half is guaranteed to do, which is not "never dirty"
 //!
 //! A node marker is raised by `update_modifier_when_dependencies_changed`
-//! (`crates/vitality_effects/src/modifier.rs:222-228`), which triggers `MarkNodeDirty` on the effect
+//! (`crates/vitality_effects/src/modifier.rs:248-283`), which triggers `MarkNodeDirty` on the effect
 //! entity from the `UpdateAttributeSignal` → `RecalculateExpression` observer chain that the resolve
 //! itself queues — so it lands *after* `update_current_value_system` has cleaned the nodes of that tick.
 //! (Since L-4 that chain runs inside the resolve rather than off `EffectsSet::Notify`, which changes the
@@ -45,7 +45,7 @@
 //! `AbsDiff::are_different` for floats is `self != rhs` (`crates/vitality_core/src/math.rs`, D-34), with
 //! no epsilon, so it is false for equal values and **true** for any pair with a NaN operand — including
 //! `NaN` against itself. A resolve that evaluates to NaN therefore always reads as "changed"
-//! (`vitality_core/src/attributes.rs:322-331`), which means three things, all probed on this shape (one
+//! (`vitality_core/src/attributes.rs:377-389`), which means three things, all probed on this shape (one
 //! source actor, one reader actor, one permanent `EffectSubject::Source` modifier so the reader's
 //! `NanDep` value comes from the source's `NanAttr`):
 //!
@@ -293,7 +293,7 @@ fn assert_node_markers_are_being_cleaned(world: &World, previous: &mut DirtySpli
     panic!(
         "B-4c effect nodes: {} non-actor entities carried a `Dirty<T>` at the previous read and still \
          do {when} — {labels:?}, kinds {kinds:?}. One marker per round is the notify path marking the \
-         effect entity after the walk cleaned it (`vitality_effects/src/modifier.rs:222-228`); the same \
+         effect entity after the walk cleaned it (`vitality_effects/src/modifier.rs:248-283`); the same \
          node dirty on two consecutive boundaries means the walk stopped cleaning, which no approved \
          fix (D-34, D-38) is on the path to cause. Regression, not a flip",
         carried.len(),
