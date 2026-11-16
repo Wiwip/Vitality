@@ -13,6 +13,24 @@ use vitality_effects::{AppliedEffects, Effect, Stacks};
 #[derive(Component, Default, Copy, Clone)]
 pub struct DebugOverlayMarker;
 
+type ActorQuery<'w, 's> = Query<
+    'w,
+    's,
+    (EntityRef<'static>, Option<&'static AppliedEffects>),
+    (With<ManageAttributes>, With<DebugOverlayMarker>),
+>;
+
+type OverlayQuery<'w, 's> = Query<
+    'w,
+    's,
+    &'static mut Text,
+    (
+        With<DebugOverlayMarker>,
+        Without<ManageAttributes>,
+        Without<ModifierMarker>,
+    ),
+>;
+
 pub fn setup_debug_overlay(mut commands: Commands) {
     commands.spawn_scene(create_overlay());
 }
@@ -39,10 +57,7 @@ fn create_overlay() -> impl Scene {
 }
 
 pub fn explore_actors_system(
-    actors: Query<
-        (EntityRef, Option<&AppliedEffects>),
-        (With<ManageAttributes>, With<DebugOverlayMarker>),
-    >,
+    actors: ActorQuery<'_, '_>,
     effects: Query<(&Effect, &Stacks, Option<&Name>, Option<&OwnedModifiers>)>,
     granted_abilities: Query<&GrantedAbilities>,
     ability_query: Query<(&Ability, Option<&AbilityRecovery>, Option<&Name>)>,
@@ -51,14 +66,7 @@ pub fn explore_actors_system(
     modifiers: Query<EntityRef, With<ModifierMarker>>,
     type_registry: Res<AppTypeRegistry>,
     world_components: &Components,
-    mut debug_overlay: Query<
-        &mut Text,
-        (
-            With<DebugOverlayMarker>,
-            Without<ManageAttributes>,
-            Without<ModifierMarker>,
-        ),
-    >,
+    mut debug_overlay: OverlayQuery<'_, '_>,
 ) {
     let mut builder = TreeBuilder::new("Actor Tree".into());
 
@@ -81,7 +89,7 @@ pub fn explore_actors_system(
                 effects,
                 modifiers,
                 &type_registry,
-                &world_components,
+                world_components,
             );
         }
 
@@ -112,7 +120,7 @@ fn list_attributes(
     builder: &mut TreeBuilder,
     type_registry: &AppTypeRegistry,
     actor_ref: EntityRef,
-    actor_components: &mut Vec<(String, ComponentId, Option<TypeId>, usize)>,
+    actor_components: &mut [(String, ComponentId, Option<TypeId>, usize)],
 ) {
     builder.begin_child("Attributes".to_string());
     // List attributes for printing
@@ -156,7 +164,7 @@ fn list_attributes(
 }
 
 fn list_effects(
-    mut builder: &mut TreeBuilder,
+    builder: &mut TreeBuilder,
     actor_effects: &AppliedEffects,
     effect_query: Query<(&Effect, &Stacks, Option<&Name>, Option<&OwnedModifiers>)>,
     modifier_query: Query<EntityRef, With<ModifierMarker>>,
@@ -189,7 +197,7 @@ fn list_effects(
             let mut modifier_components = get_components_sorted(world_components, modifier_ref);
 
             list_modifiers_for_effect(
-                &mut builder,
+                builder,
                 type_registry,
                 modifier_ref,
                 &mut modifier_components,
@@ -259,7 +267,7 @@ fn get_components_sorted(
     let archetype = modifier_ref.archetype();
     let mut modifier_components: Vec<_> = archetype
         .components()
-        .into_iter()
+        .iter()
         .map(|component_id| {
             let info = world_components.get_info(*component_id).unwrap();
             let name = info.name().to_string();
@@ -275,7 +283,7 @@ fn list_modifiers_for_effect(
     builder: &mut TreeBuilder,
     type_registry: &AppTypeRegistry,
     modifier_ref: EntityRef,
-    modifier_components: &mut Vec<(String, ComponentId, Option<TypeId>, usize)>,
+    modifier_components: &mut [(String, ComponentId, Option<TypeId>, usize)],
 ) {
     // List attributes for printing
     for (name, _, type_id, _) in modifier_components.iter() {
