@@ -124,7 +124,6 @@ fn test_apply_after_the_spawn_system_is_applied() {
 
     app.update();
     let actor = only_actor(&mut app);
-    app.update();
 
     app.world_mut()
         .run_system_once(move |mut ctx: Vitality| {
