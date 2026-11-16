@@ -31,6 +31,9 @@ attribute!(MaxHealth, f32);
 attribute!(Power, f32);
 tag!(Burning);
 
+#[derive(Component, Copy, Clone)]
+struct Hero;
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -40,23 +43,27 @@ fn main() {
                 .attribute::<MaxHealth>()
                 .attribute::<Power>(),
         )
-        .add_systems(Startup, setup)
+        .add_systems(Startup, spawn_hero)
+        // one tick before the burn: applied in the spawning system, the apply event beats the spawn
+        .add_systems(Update, apply_burn.run_if(run_once))
         .run();
 }
 
-fn setup(mut vitality: Vitality) {
-    let hero = vitality
+fn spawn_hero(mut vitality: Vitality) {
+    vitality
         .add_spawn_actor(
             ActorBuilder::new()
                 .name("Hero")
+                .insert(Hero)
                 .with::<Health>(100.0)
                 .with::<MaxHealth>(100.0)
                 .with::<Power>(10.0)
                 .clamp::<Health>(0.0, MaxHealth::src())
                 .build(),
-        )
-        .id();
+        );
+}
 
+fn apply_burn(mut vitality: Vitality, hero: Single<Entity, With<Hero>>) {
     // a 5 s burn that scales with the caster's Power and tags the target while it lasts
     let burn = vitality.add_effect(
         EffectBuilder::every_second_for_duration(1.0, 5.0)
@@ -64,7 +71,7 @@ fn setup(mut vitality: Vitality) {
             .modify::<Health>(Power::src(), ModOp::Sub, EffectSubject::Target)
             .build(),
     );
-    vitality.apply_effect_to_self(hero, &burn);
+    vitality.apply_effect_to_self(*hero, &burn);
 }
 ```
 

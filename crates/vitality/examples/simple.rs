@@ -73,7 +73,10 @@ fn main() {
             )
                 .chain(),
         )
-        .add_systems(Update, do_gameplay_stuff)
+        .add_systems(
+            Update,
+            (apply_effects.run_if(run_once), do_gameplay_stuff).chain(),
+        )
         .add_systems(PreUpdate, inputs)
         .edit_schedule(Update, |schedule| {
             schedule.set_build_settings(ScheduleBuildSettings {
@@ -220,7 +223,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
     });
 }
 
-fn setup_actor(mut ctx: Vitality, efx: Res<EffectsDatabase>, abilities: Res<AbilityDatabase>) {
+fn setup_actor(mut ctx: Vitality, abilities: Res<AbilityDatabase>) {
     let actor_template = ActorBuilder::new()
         .name("=== Player ===".into())
         .with::<Strength>(12)
@@ -245,7 +248,18 @@ fn setup_actor(mut ctx: Vitality, efx: Res<EffectsDatabase>, abilities: Res<Abil
         .grant_ability(&abilities.frostball)
         .build();
 
-    let player_entity = ctx.add_spawn_actor(actor_template).id();
+    ctx.add_spawn_actor(actor_template);
+}
+
+// one tick after the spawn: applied in the spawning system, the apply event beats the spawn
+fn apply_effects(
+    mut ctx: Vitality,
+    efx: Res<EffectsDatabase>,
+    players: Query<Entity, With<Player>>,
+) {
+    let Ok(player_entity) = players.single() else {
+        return;
+    };
 
     ctx.apply_effect_to_self(player_entity, &efx.ap_buff);
     ctx.apply_effect_to_self(player_entity, &efx.hp_buff);
