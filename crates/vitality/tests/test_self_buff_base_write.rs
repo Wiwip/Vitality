@@ -1,12 +1,8 @@
-//! D-1: D-56 reduced to its minimal repro — a live self-targeted modifier (`source == target == owner`)
-//! does not follow a base write to the attribute it reads.
-//!
-//! The dense shape D-56 quotes (`scenario`'s `a=20/e=3/actors=40`, `Attr1 -> Attr8`, and its
-//! `left: 80.966, right: 180.966`) bisects down to one actor, two attributes and no built effect: the
-//! discriminator is not density, it is the *cadence* — the write lands on the tick right after the
-//! apply — and the *registration order*, since a dependent attribute registered before its source
-//! follows fine (`Attr1 -> Attr0` follows, `Attr0 -> Attr1` does not). Only v1 loses it: under
-//! `VITALITY_RESOLVER=dag` every cell of that bisect follows, including the dense one.
+//! D-56: a live self-targeted modifier (`source == target == owner`) does not follow a base write to
+//! the attribute it reads. The discriminator is not density, it is the *cadence* — the write lands on
+//! the tick right after the apply — and the *registration order*, since a dependent registered before
+//! its source follows fine (`Attr1 -> Attr0` follows, `Attr0 -> Attr1` does not). Only v1 loses it;
+//! under `VITALITY_RESOLVER=dag` it follows.
 
 #[path = "../benches/support/common.rs"]
 mod common;

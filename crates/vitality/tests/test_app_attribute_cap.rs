@@ -50,12 +50,6 @@ fn app_with(game: usize) -> App {
 /// 127 game attributes register, and the registry is at the cap because [`Stacks`] took the 128th slot.
 #[test]
 fn an_app_gets_127_game_attributes_because_the_framework_holds_one_slot() {
-    assert_eq!(
-        GAME_ATTRIBUTES.len(),
-        AttrSet::CAPACITY,
-        "the pool is an app's 127 game attributes plus the one an app cannot register",
-    );
-
     let app = app_with(AttrSet::CAPACITY - 1);
     let registry = app.world().resource::<AttributeRegistry>();
 

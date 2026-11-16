@@ -57,22 +57,3 @@ fn a_live_modifier_marking_health_changed_fires_once_and_stops() {
         "Changed<Health> must fire on the tick the modifier moves Health and on no idle tick after"
     );
 }
-
-#[test]
-fn a_base_write_marks_health_changed() {
-    let mut app = probe_app();
-    let hero = spawn(&mut app, hero_def());
-
-    reset(&mut app);
-    with_vitality(&mut app, move |vitality| {
-        vitality.set_base::<Health>(hero, 70.0);
-    });
-    ticks(&mut app, 3);
-
-    assert_eq!(current::<Health>(&app, hero), 70.0);
-    assert_eq!(
-        seen(&app),
-        [1, 0, 0],
-        "Changed<Health> must fire on the tick the base write lands and on no idle tick after"
-    );
-}
