@@ -68,7 +68,7 @@ impl EffectStackingPolicy {
     }
 }
 
-/// Sets an effect's stack count directly; zero removes the effect.
+/// Sets an effect's stack count directly.
 pub(crate) fn set_stacks(
     effect_entity: Entity,
     count: u32,

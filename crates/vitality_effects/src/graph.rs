@@ -13,8 +13,8 @@ use std::collections::HashSet;
 /// Effects are spawned as child of entities
 /// - Effects can modify the modifiers till now, such as an intensity metric or stacks
 ///
-/// Modifiers are added to Effects as Vec<Mod>
-/// - Modifiers must apply to an attribute
+/// A modifier is an [`AttributeModifier<T>`](crate::modifier::AttributeModifier) component on the
+/// effect entity, and it must apply to one of the attributes the target has.
 
 #[derive(Component, Default, Copy, Clone, Reflect, Debug)]
 pub enum NodeType {

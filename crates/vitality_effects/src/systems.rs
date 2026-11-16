@@ -269,7 +269,7 @@ pub struct AttributeDependencyChanged<T> {
 }
 
 /// "Something about this actor's effects changed and no attribute of it did", so an actor can be dirtied
-/// from code that is not typed on an attribute. [`init_effect_attribute`] registers one observer per
+/// from code that is not typed on an attribute. [`crate::init_effect_attribute`] registers one observer per
 /// attribute, and each answers with its own [`MarkNodeDirty`].
 #[derive(EntityEvent)]
 pub(crate) struct MarkActorDirty {

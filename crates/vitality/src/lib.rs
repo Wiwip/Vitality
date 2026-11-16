@@ -3,7 +3,7 @@
 //! # Getting started
 //!
 //! The README's scenario, run: register the attributes and the tag, build the actor with
-//! [`ActorBuilder`], apply a burn that scales with `Power`. With
+//! [`ActorBuilder`](crate::actors::ActorBuilder), apply a burn that scales with `Power`. With
 //! [`TimeUpdateStrategy`](bevy::time::TimeUpdateStrategy)::`ManualDuration` one `update` is one
 //! fixed tick, so the update count is the number of seconds.
 //!

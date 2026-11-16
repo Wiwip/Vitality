@@ -244,7 +244,7 @@ pub struct RecalculateExpression {
     pub modifier_entity: Entity,
 }
 
-/// When the attribute changes, update the values of dependent AttributeModifier<T>.
+/// When the attribute changes, update the values of dependent `AttributeModifier<T>`.
 pub fn update_modifier_when_dependencies_changed<T: Attribute>(
     trigger: On<RecalculateExpression>,
     proxies: Query<&DependencyProxyOf>,

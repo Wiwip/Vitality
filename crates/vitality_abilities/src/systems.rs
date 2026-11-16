@@ -20,7 +20,9 @@ pub struct ActivateAbility {
     pub source: Entity,
 }
 
-/// Bypass [TryActivateAbility]'s checks. Usually triggered after a successful [TryActivateAbility].
+/// Commit the activation [`ActivateAbility`] carries, bypassing the
+/// [`AbilityEvent::TryActivate`](crate::ability_state::AbilityEvent::TryActivate) checks the ready
+/// state would otherwise run first.
 pub(crate) fn activate_ability(
     trigger: On<ActivateAbility>,
     mut actors: Query<AbilityMut, Without<IsResource>>,

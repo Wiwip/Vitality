@@ -236,12 +236,12 @@ impl ActorBuilder {
 pub struct ActorToken(SmolStr);
 
 impl ActorToken {
-    /// Construct a new [`AbilityToken`] from a [`SmolStr`].
+    /// Construct a new [`ActorToken`] from a [`SmolStr`].
     pub const fn new(text: SmolStr) -> Self {
         Self(text)
     }
 
-    /// Construct a new [`AbilityToken`] from a static string.
+    /// Construct a new [`ActorToken`] from a static string.
     pub const fn new_static(text: &'static str) -> Self {
         Self(SmolStr::new_static(text))
     }

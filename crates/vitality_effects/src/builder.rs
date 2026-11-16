@@ -62,8 +62,8 @@ impl EffectBuilder {
 
     /// Modifies an attribute.
     ///
-    /// A [Value](vitality_core::attributes::GameValue) represents the value of the change to the attribute.
-    /// It can be a literal [Lit](vitality_core::attributes::Lit), an [AttributeValue](vitality_core::attributes::AttributeValue), or anything implementing [ValueSource](vitality_core::attributes::ValueSource)
+    /// The value is anything implementing [`AsExpression`] for the attribute's property: a literal
+    /// (`100u32`) or an attribute node (`Damage::src()`), as below.
     ///
     /// # Example
     /// ```
