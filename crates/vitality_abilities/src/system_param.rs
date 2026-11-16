@@ -40,7 +40,7 @@ impl<'w, 's> Abilities<'w, 's> {
         entity: Entity,
         token: &AbilityToken,
     ) -> Result<Entity, AbilityError> {
-        let handle = self.get_ability_from_token(&token);
+        let handle = self.get_ability_from_token(token);
         self.grant_ability(&handle, entity)
     }
 
@@ -50,7 +50,7 @@ impl<'w, 's> Abilities<'w, 's> {
         ability_parent: Entity,
     ) -> Result<Entity, AbilityError> {
         if !self.actors.contains(ability_parent) {
-            return Err(AbilityError::GrantingAbilityToNonActor(ability_parent).into());
+            return Err(AbilityError::GrantingAbilityToNonActor(ability_parent));
         }
 
         let ability_id = self
@@ -108,10 +108,10 @@ impl<'w, 's> Abilities<'w, 's> {
     ) -> Option<Entity> {
         let (_, _, granted) = self.actors.get(actor).ok()?;
         for &ability_entity in granted.iter() {
-            if let Ok((ability, _)) = self.abilities.get(ability_entity) {
-                if ability.handle == *handle {
-                    return Some(ability_entity);
-                }
+            if let Ok((ability, _)) = self.abilities.get(ability_entity)
+                && ability.handle == *handle
+            {
+                return Some(ability_entity);
             }
         }
         None

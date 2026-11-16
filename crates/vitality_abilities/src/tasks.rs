@@ -148,11 +148,11 @@ pub fn task<T: AbilityTask>(data: T::Data) -> impl Scene {
         on({
             let cell = cell.clone();
             move |trigger: On<Add<Task>>, mut commands: Commands| {
-                if let Ok(mut guard) = cell.lock() {
-                    if let Some(payload_data) = guard.take() {
-                        commands.entity(trigger.entity).insert(payload_data);
-                        commands.entity(trigger.observer()).despawn();
-                    }
+                if let Ok(mut guard) = cell.lock()
+                    && let Some(payload_data) = guard.take()
+                {
+                    commands.entity(trigger.entity).insert(payload_data);
+                    commands.entity(trigger.observer()).despawn();
                 }
             }
         })

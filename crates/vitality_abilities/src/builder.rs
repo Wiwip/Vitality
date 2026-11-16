@@ -63,7 +63,7 @@ impl AbilityBuilder {
 
     pub fn with<T: Attribute>(
         mut self,
-        value: impl Num + AsPrimitive<T::Property> + Copy + Send + Sync + 'static,
+        value: impl Num + AsPrimitive<T::Property> + Send + Sync + 'static,
     ) -> AbilityBuilder {
         self.mutators.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {

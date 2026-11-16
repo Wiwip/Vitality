@@ -151,24 +151,24 @@ impl MachineState<AbilityMachine> for ReadyState {
         }
 
         // cancel before granting our own blocks, so a cancel-and-replace pair works
-        if !def.cancels_abilities_with.is_empty() {
-            if let Ok((_, granted)) = ctx.external.actors.get(source) {
-                for other in granted.iter().copied().filter(|other| *other != ability_id) {
-                    let Ok((_, other_ref)) = ctx.external.abilities.get(other) else {
-                        continue;
-                    };
-                    if def
-                        .cancels_abilities_with
-                        .iter()
-                        .any(|tag| other_ref.has_type(tag.type_id))
-                    {
-                        ctx.external
-                            .commands
-                            .trigger(MachineEvent::<AbilityMachine>::new(
-                                other,
-                                AbilityEvent::CancelAbility,
-                            ));
-                    }
+        if !def.cancels_abilities_with.is_empty()
+            && let Ok((_, granted)) = ctx.external.actors.get(source)
+        {
+            for other in granted.iter().copied().filter(|other| *other != ability_id) {
+                let Ok((_, other_ref)) = ctx.external.abilities.get(other) else {
+                    continue;
+                };
+                if def
+                    .cancels_abilities_with
+                    .iter()
+                    .any(|tag| other_ref.has_type(tag.type_id))
+                {
+                    ctx.external
+                        .commands
+                        .trigger(MachineEvent::<AbilityMachine>::new(
+                            other,
+                            AbilityEvent::CancelAbility,
+                        ));
                 }
             }
         }
@@ -339,14 +339,12 @@ impl MachineState<AbilityMachine> for RecoveryState {
                 .is_in_state(task_id, TaskState::Running)
                 .inspect_err(|err| error!("[{}] TaskMachine is_in_state failed: {err}", task_id))
                 .unwrap_or_default()
-            {
-                if let Err(err) = ctx
+                && let Err(err) = ctx
                     .external
                     .task_machines
                     .dispatch_event(task_id, TaskEvent::Stop)
-                {
-                    error!("[{}] TaskMachine dispatch failed: {err}", task_id);
-                }
+            {
+                error!("[{}] TaskMachine dispatch failed: {err}", task_id);
             }
         }
     }

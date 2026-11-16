@@ -45,7 +45,7 @@ impl AbilityRegistry {
     pub fn get(&self, token: &AbilityToken) -> &Handle<AbilityDef> {
         self.map
             .get(token)
-            .expect(format!("{:?} not registered", token).as_str())
+            .unwrap_or_else(|| panic!("{:?} not registered", token))
     }
 }
 
