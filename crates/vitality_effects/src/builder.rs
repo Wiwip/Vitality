@@ -124,6 +124,10 @@ impl EffectBuilder {
 
     /// Attach the effect to the target entity only if the condition is met.
     ///
+    /// Read once, when the effect is applied: a miss spawns no entity and fires no event, and nothing
+    /// re-checks it on a later tick ([`Self::active_while`] is what gates an attached effect). Instant
+    /// effects never read it, so they apply either way.
+    ///
     /// # Examples
     ///
     /// ```
@@ -132,7 +136,7 @@ impl EffectBuilder {
     /// attribute!(Health, f32);
     /// attribute!(Damage, f32);
     ///
-    /// // A damage over time effect that has a 10% chance of applying every tick.
+    /// // A damage over time effect with a 10% chance of attaching at all, rolled once at application.
     /// EffectBuilder::every_second_for_duration(1.0, 12.0)
     ///     .modify::<Health>(Damage::src(), ModOp::Add, EffectSubject::Target)
     ///     .attach_if(ChanceCondition(0.10))
