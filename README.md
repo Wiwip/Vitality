@@ -81,7 +81,9 @@ fn setup(mut vitality: Vitality) {
 - Modifiers that read another attribute are live by default and settle in the same tick, across
   actors too. `modify_snapshot` evaluates once at application instead.
 
-Everything runs on `FixedUpdate`. A headless app needs a `TimeUpdateStrategy` that advances time.
+The attribute pipeline (the `EffectsSet` chain) runs on `FixedUpdate`, so a headless app needs a
+`TimeUpdateStrategy` that advances time. Ability timers stay on the frame clock:
+`tick_ability_cooldown` runs in `Update`, `handles_wait_task_timers` in `PreUpdate`.
 
 ## Wiring your own plugin
 
