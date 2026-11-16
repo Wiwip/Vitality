@@ -13,8 +13,11 @@ use std::collections::HashSet;
 /// Effects are spawned as child of entities
 /// - Effects can modify the modifiers till now, such as an intensity metric or stacks
 ///
-/// A modifier is an [`AttributeModifier<T>`](crate::modifier::AttributeModifier) component on the
-/// effect entity, and it must apply to one of the attributes the target has.
+/// A modifier is an [`AttributeModifier<T>`](crate::modifier::AttributeModifier) component on a
+/// modifier entity linked to the effect entity by [`ModifierOf`](crate::modifier::ModifierOf), and
+/// it must apply to an attribute of the actor named by its
+/// [`EffectSubject`](crate::modifier::EffectSubject) — the target, or the source for a `Source`
+/// modifier.
 
 #[derive(Component, Default, Copy, Clone, Reflect, Debug)]
 pub enum NodeType {
