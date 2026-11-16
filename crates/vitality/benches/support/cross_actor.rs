@@ -12,7 +12,7 @@
 //!
 //! ```text
 //! Src base write -> Dirty<Src> on the source -> update_attribute<Src> walks AttributeDependents<Src>
-//!   (vitality_effects/src/systems.rs:201-226)
+//!   (vitality_effects/src/systems.rs:215-242)
 //! -> RecalculateExpression per dependent modifier -> update_modifier_when_dependencies_changed
 //!   (vitality_effects/src/modifier.rs:203-229) re-evaluates Src::src() and marks the effect node
 //! -> MarkNodeDirty<Dep> propagates up EffectTarget -> the reader resolves Dep on a later tick
@@ -28,7 +28,7 @@
 //! `self != rhs` (`crates/vitality_core/src/math.rs`, D-34), so a resolve that yields the value the
 //! attribute already holds writes nothing, `should_notify_observers`
 //! (`vitality_core/src/attributes.rs:377-389`) is false, and nothing reaches
-//! `AttributeDependents<Src>` (`systems.rs:209-225`) — a bare mark on an unmoving source is one local
+//! `AttributeDependents<Src>` (`systems.rs:215-242`) — a bare mark on an unmoving source is one local
 //! resolve and then an idle world (`tests/test_dirty_noop_resolve.rs` pins it). Before the fix the float
 //! arm was `self.abs_diff(rhs) > Self::Output::MIN` with `MIN` = `f32::MIN`/`f64::MIN`, which is true for
 //! equal values, so a dirty-but-unchanged source fanned the whole K-wide cascade out on every tick it was
@@ -56,7 +56,7 @@
 //!
 //! Both are > 1, which is §2B's staleness finding: a reader's dependent attribute lags the source it
 //! reads by whole resolver ticks, and the reason is the schedule, not the cascade. Before L-4 the write
-//! was marked in `EffectsSet::Notify` (`systems.rs:292-301`), which ran *after* `UpdateCurrentValues`, so
+//! was marked in `EffectsSet::Notify` (`systems.rs:306-316`), which ran *after* `UpdateCurrentValues`, so
 //! a base write was only resolved on the next tick; that resolve fanned out and marked the reader, and a
 //! system's dirty-actor query is fixed when it starts, so the reader resolved on the tick after that —
 //! three ticks for one cascade. L-4 moved the mark phase ahead of the resolve
@@ -113,7 +113,7 @@
 //! converges at all. `drain_marks` is the step between the two counts, and its bound is the premise
 //! guard: one idle tick is the measured drain, so a shape that needs more has the re-dirty storm back. The cascade does run — the modifier value moves and `MarkNodeDirty<Dep>` fires on
 //! the effect and on the reader — but the reader's resolve queued `try_remove::<Dirty<Dep>>`
-//! (`vitality_effects/src/systems.rs:80`) in the same command batch the cascade's `try_insert`
+//! (`vitality_effects/src/systems.rs:94`) in the same command batch the cascade's `try_insert`
 //! (`systems.rs:37-40`) landed in, and the removal is applied second, so the mark is dropped and nothing
 //! ever tells that reader again. The old `are_different` hid this by re-marking every actor every tick.
 //! `cross_actor_cascade_converges` pins both halves.
@@ -138,7 +138,7 @@
 //!   library's own `MarkNodeDirty<Dep>` event; a game that applies a buff to an idle actor has the same
 //!   hole. (Spawning via `ActorBuilder::with_effect` hides it, because `on_add_attribute` marks every
 //!   inserted attribute of the fresh actor.)
-//! * `on_change_notify_attribute_dependencies::<T>` (`systems.rs:275-290`) fires
+//! * `on_change_notify_attribute_dependencies::<T>` (`systems.rs:289-304`) fires
 //!   `AttributeDependencyChanged` for every dependent on every `Changed<T>` — K triggers per source
 //!   write — and no observer in the workspace is registered for that event, so a share of the fan-out
 //!   the row prices is work nothing reads.

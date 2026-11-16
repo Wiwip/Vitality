@@ -13,10 +13,10 @@
 //!
 //! Two things ride on that one bool out of `update_attribute`
 //! (`crates/vitality_core/src/attributes.rs:377-389`, read at
-//! `crates/vitality_effects/src/systems.rs:196-226`):
+//! `crates/vitality_effects/src/systems.rs:215-242`):
 //!
 //! * the write-back to `current_value`, which `on_change_notify_attribute_parents::<T>`
-//!   (`crates/vitality_effects/src/systems.rs:274-283`) reads as `Changed<T>` and answers with a fresh
+//!   (`crates/vitality_effects/src/systems.rs:306-316`) reads as `Changed<T>` and answers with a fresh
 //!   `MarkNodeDirty<T>` — the actor's own mark, raised again by any resolve that really did move the
 //!   value, which since D-34 is the only kind of write-back there is;
 //! * `CurrentValueChanged<T>` plus one `RecalculateExpression` per entry of `AttributeDependents<T>`,

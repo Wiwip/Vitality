@@ -17,7 +17,7 @@
 //!   ticked would be timing all-A resolve work while its id says `dirty=one`.
 //! * an attribute that resolves used to re-dirty itself: `update_attribute` writes through `&mut T`
 //!   (`vitality_core/src/attributes.rs:377-389`) and `on_change_notify_attribute_parents::<T>`
-//!   (`vitality_effects/src/systems.rs:292`, in `EffectsSet::Notify` until L-4) read that as a change
+//!   (`vitality_effects/src/systems.rs:306-316`, in `EffectsSet::Notify` until L-4) read that as a change
 //!   and triggered a fresh `MarkNodeDirty`, because the old float `are_different` was true for equal
 //!   values. That made
 //!   `one_attr` "one attribute *permanently* dirty" and `all_attrs` the realistic steady state. Since

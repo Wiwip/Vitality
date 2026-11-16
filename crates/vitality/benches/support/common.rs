@@ -478,7 +478,7 @@ pub fn current_values(world: &World, attrs: &[AttrSpec], actor: Entity) -> Vec<f
 /// and clean after — `mark_dirty_fraction_marks_are_visible` pins that, and it is why a `dirty=N` id
 /// names the marks a shape is handed rather than a workload it keeps. A write that *does* move a value
 /// still re-marks through `on_change_notify_attribute_parents`
-/// (`vitality_effects/src/systems.rs:292-301`) for one further tick, and the fan-out is unchanged: on
+/// (`vitality_effects/src/systems.rs:306-316`) for one further tick, and the fan-out is unchanged: on
 /// the tiny shape nothing *spreads* — 2 of 4 actors marked stays 2 of 4 — while a shape carrying
 /// cross-actor modifiers does spread, one attribute at a time: a marked source attribute re-appears as
 /// `Dirty<Dep>` on each actor reading it and on no other attribute of any of them
