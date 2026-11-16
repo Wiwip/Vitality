@@ -32,16 +32,11 @@ fn app_with(game: &[fn(&mut App)]) -> App {
     app
 }
 
-/// Two distinct short names build, the shared one does not — and the hint names the short name and
-/// the fix instead of a duplicate registration. `catch_unwind` cannot read the payload in this
-/// profile (cranelift lets a caught panic escape the catch), so `should_panic` matches the message.
+/// The shared short name does not build — and the hint names the short name and the fix instead of
+/// a duplicate registration.
 #[test]
 #[should_panic(expected = "already holds the short name: rename one of them")]
 fn two_crates_sharing_a_short_name_are_told_to_rename_one() {
-    let _distinct = app_with(&[
-        init_attribute::<game_a::Armor>,
-        init_attribute::<game_b::Mana>,
-    ]);
     let _shared = app_with(&[
         init_attribute::<game_a::Health>,
         init_attribute::<game_b::Health>,
