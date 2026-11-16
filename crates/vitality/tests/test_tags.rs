@@ -71,14 +71,18 @@ fn a_required_tag_gates_the_effect() {
             .modify::<Health>(-10.0, ModOp::Add, EffectSubject::Target)
             .build(),
     );
+    record::<EffectBlocked>(&mut app);
+
     apply(&mut app, hero, hero, &combo);
     ticks(&mut app, 1);
     assert_eq!(base::<Health>(&app, hero), 100.0);
+    assert_eq!(recorded::<EffectBlocked>(&app).len(), 1);
 
     with_vitality(&mut app, move |v| v.grant_tag::<Burning>(hero));
     apply(&mut app, hero, hero, &combo);
     ticks(&mut app, 1);
     assert_eq!(base::<Health>(&app, hero), 90.0);
+    assert_eq!(recorded::<EffectBlocked>(&app).len(), 1);
 }
 
 #[test]
