@@ -23,7 +23,6 @@ use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 use bevy::prelude::*;
 use hfsm_bevy::StateMachineAppExt;
 use hfsm_bevy::{MachineInstance, StateTimer};
-use vitality_core::schedule::EffectsSet;
 
 pub mod prelude {
     pub use crate::context::AbilityExprSchema;
@@ -57,7 +56,7 @@ impl Plugin for AbilityPlugin {
         app.add_state_machine::<AbilityMachine>(ability_state::build_machine())
             .add_state_machine::<TaskMachine>(task_states::build_machine());
 
-        app.add_systems(Update, tick_ability_cooldown.in_set(EffectsSet::Prepare))
+        app.add_systems(Update, tick_ability_cooldown)
             .add_systems(PreUpdate, handles_wait_task_timers);
 
         app.add_observer(activate_ability)
