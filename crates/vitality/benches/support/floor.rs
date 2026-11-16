@@ -7,7 +7,7 @@
 //! A registered attribute is not only a component: on v1 `init_attribute` puts `apply_periodic_effect`,
 //! `apply_modifier_events`, `update_current_value_system`, the two notify systems and
 //! `apply_clamps` into `FixedUpdate` for its type
-//! (`vitality_effects/src/lib.rs:157-174`, `vitality/src/lib.rs:385-390`). With no dirty actor every
+//! (`vitality_effects/src/lib.rs:157-174`, `vitality/src/lib.rs:380-385`). With no dirty actor every
 //! one of them still runs and iterates nothing, and that is the scheduling floor T1 asks about —
 //! BENCH-PLAN §3 collapses the topology when its slope reaches 2 µs/attr/tick. That slope is a v1
 //! quantity: under `VITALITY_RESOLVER=dag` a registered attribute adds no system at all, only an entry

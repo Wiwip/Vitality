@@ -9,8 +9,8 @@
 //! * `AbsDiff::are_different` for floats was `self.abs_diff(rhs) > Self::Output::MIN` and `MIN` for
 //!   `f32` is `f32::MIN` — negative — so the comparison was true for every pair of values, equal ones
 //!   included (only a NaN operand made it false);
-//! * so `update_attribute` (`crates/vitality_core/src/attributes.rs:326`) called `set_current_value`
-//!   even when the recomputed value equalled the current one;
+//! * so `update_attribute` (`crates/vitality_core/src/attributes.rs:377-389`) called
+//!   `set_current_value` even when the recomputed value equalled the current one;
 //! * that write made `on_change_notify_attribute_parents::<T>` see `Changed<T>`
 //!   (`crates/vitality_effects/src/systems.rs:306-316`) and trigger a fresh `MarkNodeDirty<T>`, whose
 //!   observer (`vitality_effects/src/systems.rs:31-42`) put `Dirty<T>` back on the actor — every tick,

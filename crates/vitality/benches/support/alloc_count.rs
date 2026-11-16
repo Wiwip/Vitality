@@ -12,7 +12,7 @@
 //!
 //! * `vitality_effects/src/graph.rs:93` — `effects.iter().collect::<Vec<_>>()` inside
 //!   `IntoNeighbors::neighbors`, i.e. one `Vec` per graph node a resolve visits;
-//! * `vitality_effects/src/systems.rs:259-268` — a `HashSet<Entity>` and a `Vec<Entity>` built per
+//! * `vitality_effects/src/systems.rs:294-295` — a `HashSet<Entity>` and a `Vec<Entity>` built per
 //!   entity the `Changed<T>` notification walks.
 //!
 //! ## The gate is runtime, not a cargo feature, and that is what it costs

@@ -3,9 +3,9 @@
 //! One source actor, K reader actors, and one permanent effect per reader whose single modifier is
 //! `EffectSubject::Source` and reads the *source's* attribute — applied with the same
 //! `ApplyEffectEvent { entity: target, targeting: EffectTargeting::new(source, target), handle }`
-//! that `Vitality::apply_effect_to_target` triggers (`crates/vitality/src/vitality.rs:41-52`). So the
+//! that `Vitality::apply_effect_to_target` triggers (`crates/vitality/src/vitality.rs:33-40`). So the
 //! workload is the cascade, not a fold: the source's attribute changes, `update_attribute` walks its
-//! `AttributeDependents` (`vitality_effects/src/systems.rs:201-226`), each dependent modifier
+//! `AttributeDependents` (`vitality_effects/src/systems.rs:215-242`), each dependent modifier
 //! recalculates (`vitality_effects/src/modifier.rs:248-283`) and re-marks its effect node, and the
 //! mark propagates up `EffectTarget` to the reader, which resolves on a later tick.
 //!
@@ -332,8 +332,8 @@ fn cross_actor_cascade_converges() {
     // The finding, and it is a library bug rather than a D-34 flip: a `MarkNodeDirty` that arrives on an
     // actor in the same command batch as the `try_remove::<Dirty<T>>` queued by that actor's own resolve
     // is applied first and removed second, so the mark is dropped. `update_current_value_system` queues
-    // the removal (`crates/vitality_effects/src/systems.rs:80`), the cascade's insert is
-    // `mark_node_dirty_observer` (`systems.rs:37-40`), and both sit in one batch because every
+    // the removal (`crates/vitality_effects/src/systems.rs:94`), the cascade's insert is
+    // `mark_node_dirty_observer` (`systems.rs:31-42`), and both sit in one batch because every
     // `update_current_value_system<T>` shares a deferred boundary. The observers prove the mark was
     // raised — `MarkNodeDirty<Attr4>` fires on the effect and on the reader, and the modifier value does
     // move — and the read below proves the reader does not keep it. Before D-34 the resolve re-marked
@@ -347,7 +347,7 @@ fn cross_actor_cascade_converges() {
          write={write} / write_then_mark={marked} and update the `Passes to converge` block of \
          benches/support/cross_actor.rs. Today the reader never learns about {third}: the cascade runs \
          (the modifier value moves) and its mark is removed in the same batch it was inserted \
-         (`systems.rs:80` after `systems.rs:37-40`)",
+         (`systems.rs:94` after `systems.rs:40-42`)",
     );
     assert!(
         !dependent.is_dirty(world, reader),
