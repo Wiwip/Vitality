@@ -184,13 +184,8 @@
 //! );
 //! ```
 //!
-//! The duplicate short name of the third rule, pinned. `should_panic` cannot name the message, so
-//! the example builds the same two modules twice: two names is fine, one name twice is not. Read the
-//! panic's hint — `Was the attribute registered twice?` — with care: nothing in the example was
-//! registered twice, `game_a::Health` and `game_b::Health` are two attributes that collide on the
-//! short name, and a literal second `init_attribute::<T>` never reaches that panic (it is a
-//! first-install no-op), so it should not send you looking for a duplicate registration inside your
-//! own crate.
+//! The duplicate short name of the third rule, pinned. This form cannot name the message, so the
+//! example builds the same two modules twice: two names is fine, one name twice is not.
 //!
 //! ```should_panic
 //! use bevy::prelude::*;

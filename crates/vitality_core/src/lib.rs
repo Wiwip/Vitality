@@ -157,9 +157,13 @@ impl AttributeBindings {
             }
             Entry::Occupied(_) => {
                 panic!(
-                    "Attribute type ID collision for {} (id: {:?}). Was the attribute registered twice?",
+                    "Attribute type ID collision for {} (id: {:?}). Another attribute already holds \
+                     the short name: rename one of them. Two crates each shipping a {} is the usual \
+                     cause, since the registry keys on the short name and drops the module path; a \
+                     deliberate second registration of the same type is the only other way here.",
                     pretty_type_name::<T>(),
                     type_id,
+                    pretty_type_name::<T>(),
                 );
             }
         };
