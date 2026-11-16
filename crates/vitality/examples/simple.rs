@@ -251,7 +251,7 @@ fn setup_actor(mut ctx: Vitality, abilities: Res<AbilityDatabase>) {
     ctx.add_spawn_actor(actor_template);
 }
 
-// one tick after the spawn: applied in the spawning system, the apply event beats the spawn
+// one tick after the spawn
 fn apply_effects(
     mut ctx: Vitality,
     efx: Res<EffectsDatabase>,

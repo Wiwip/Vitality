@@ -1,10 +1,8 @@
-//! T-20: the missing-attribute fallback behind every `T::src()` read.
+//! The missing-attribute fallback behind every `T::src()` read.
 //!
 //! `crates/vitality_core/src/attributes.rs` documents "a read of an attribute the actor doesn't have
-//! counts as zero" and `missing()` implements it, but every harness actor so far carried the whole
-//! attribute set its expressions read, so the fallback — the common case of heterogeneous actors
-//! sharing one effect definition — had never been executed. If it ever became a panic or a NaN, this
-//! is the file that would notice.
+//! counts as zero" and `missing()` implements it; if it ever became a panic or a NaN, this is the
+//! file that would notice.
 //!
 //! The warn half counts what the log layer saw across the whole run. `warn_once!` is a per-call-site
 //! `OnceFlag` inside `missing::<Power, Source>`, so one emission covers both actors and every tick,

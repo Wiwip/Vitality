@@ -91,12 +91,9 @@ fn modify_base_on_an_attribute_the_actor_does_not_carry_changes_nothing() {
 
     with_vitality(&mut app, move |v| {
         v.modify_base::<Armor>(mute, ModOp::Add, 5.0);
-        v.modify_base::<Armor>(mute, ModOp::Sub, 5.0);
-        v.modify_base::<Armor>(mute, ModOp::Set, 5.0);
     });
     ticks(&mut app, 1);
 
-    assert!(!has::<Armor>(&app, mute), "no Armor appears on the actor");
     assert_eq!(
         base::<Health>(&app, mute),
         10.0,

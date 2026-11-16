@@ -57,7 +57,7 @@
 //!     })
 //!     .unwrap();
 //!
-//! // one tick before the burn: applied in the spawning system, the apply event beats the spawn
+//! // the apply must be a later system: the spawn is a command; no actor exists before the flush
 //! app.update();
 //! let burn = app
 //!     .world_mut()
