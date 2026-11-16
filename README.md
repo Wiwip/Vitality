@@ -72,7 +72,9 @@ fn setup(mut vitality: Vitality) {
   `On<CurrentValueChanged<Health>>`.
 - `Effects` applies, finds and removes effects (by entity, definition, tag or source) and edits
   stacks. Lifecycle events: `EffectApplied`, `EffectRemoved` (with a reason), `EffectStacksChanged`,
-  `EffectBlocked`.
+  `EffectBlocked` — fired only by the tag rules (a missing required tag, or a blocked-by tag on the
+  target); a failed `attach_if` or `active_while` fires no event at all, the effect simply does not
+  apply, or goes `EffectInactive` on a later tick.
 - `Abilities` grants, activates (`try_activate`, `can_activate`), cancels and revokes abilities.
   Events: `AbilityActivated`, `AbilityActivationFailed` (with an `ActivationError`), `AbilityEnded`.
 - Tags are components granted with a count (`Vitality::grant_tag`, effect `with_tag`), so two
