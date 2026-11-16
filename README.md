@@ -138,7 +138,7 @@ measures them rather than storing them. The short version, from the 2026-11-15 r
 8-core box where absolute values move ~10 % run to run: at 10 000 actors with 20 attributes and 3
 effects each, moving 10 % of the actors' attributes — the `steady` workload — costs roughly 1.1 ms a
 tick single-threaded, and moving every attribute of every actor — `storm` — roughly 7 ms with bevy's
-`multi_threaded` feature, against the owner's 2 ms and 8 ms ceilings; the `idle` control of that same
+`multi_threaded` feature, against the 2 ms / 8 ms performance targets; the `idle` control of that same
 session was 0.25 ms st and 0.33 ms mt. Both are DAG-resolver ticks, so their criterion ids are
 `scenario/steady/actors=10000/a=20/e=3/dag/st-static` and
 `scenario/storm/actors=10000/a=20/e=3/dag/mt-static`: `Workload::ALL` names the workloads and

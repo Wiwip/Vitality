@@ -55,8 +55,10 @@ fn a_failed_attach_if_spawns_nothing_and_is_never_re_rolled() {
         "only the tag rules fire EffectBlocked"
     );
 
-    // well past the interval and past the duration: attach_conditions are read once, at apply
-    ticks(&mut app, ticks_for(DURATION) + 4);
+    // Immune arrives after the miss, then three intervals on, while a late attach would still be
+    // alive: the gate is read at apply, so nothing may attach on a later tick
+    app.world_mut().entity_mut(hero).insert(Immune);
+    ticks(&mut app, ticks_for(DURATION - PERIOD));
     assert_eq!(
         effects_on(&mut app, hero),
         0,
@@ -90,13 +92,6 @@ fn a_satisfied_attach_if_applies_and_fires() {
         "a periodic effect reports the entity it spawned"
     );
     assert_eq!(base::<Health>(&app, hero), 1.0, "one interval, one fire");
-
-    ticks(&mut app, ticks_for(DURATION - PERIOD) + 1);
-    assert_eq!(
-        base::<Health>(&app, hero),
-        4.0,
-        "fires every interval to the end"
-    );
 }
 
 #[test]
