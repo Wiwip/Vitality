@@ -150,9 +150,9 @@
 //! still the owner's call (D-52). Neither case is reachable in this repo: [`AttributesPlugin`] adds
 //! [`effect::EffectsPlugin`] in its `build`, so the first needs an app that registers attributes
 //! straight through `vitality_core`/`vitality_effects` instead, and nothing here inserts a mode after
-//! a build — [`VitalityPlugin::resolver`] inserts it before the plugins, and both in-repo
-//! `insert_resource(ResolverMode)` sites (`tests/test_registration_cost.rs:228`,
-//! `benches/support/common.rs:327`) sit before their `add_plugins`.
+//! a build — [`VitalityPlugin::resolver`] inserts it before the plugins, and the two
+//! `insert_resource(ResolverMode)` sites named here (`tests/test_registration_cost.rs:62`,
+//! `benches/support/common.rs:357`) sit before their `add_plugins`.
 //!
 //! ```
 //! use bevy::prelude::*;

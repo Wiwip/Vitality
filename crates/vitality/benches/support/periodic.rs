@@ -31,7 +31,7 @@
 //! reach `tick_effect_tickers` (`vitality_effects/src/lib.rs:81-90`,
 //! `vitality_effects/src/timing.rs:49-56`); what it never does is advance the clock, so `Time::delta()`
 //! keeps the 15 625 µs the last `app.update()` charged it under `FixedTimesteps(1)`
-//! (`common.rs:335`) and every `EffectTicker` steps by that stale delta. Measured here by swapping
+//! (`common.rs:365`) and every `EffectTicker` steps by that stale delta. Measured here by swapping
 //! the driver of [`quiet_window`] / [`firing_stats`] for it: the shape fires just the same — the guard
 //! prints one identical rate under both drivers, because a stale 15 625 µs is exactly one fixed
 //! timestep — and `tests/test_bench_periodic.rs` stays green. So the reason to keep `tick` is not that

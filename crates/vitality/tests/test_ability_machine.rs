@@ -409,7 +409,7 @@ fn scene_plugin_is_installed_when_the_host_only_inited_the_asset() {
 
     assert!(
         app2.is_plugin_added::<ScenePlugin>(),
-        "AttributesPlugin must respect the duplicate-add guard at crates/vitality/src/lib.rs:200-202, not add ScenePlugin twice"
+        "AttributesPlugin must respect the duplicate-add guard at crates/vitality_core/src/lib.rs:74-76, not add ScenePlugin twice"
     );
 }
 
