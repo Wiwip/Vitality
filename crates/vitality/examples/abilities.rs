@@ -42,7 +42,7 @@ fn main() {
 }
 
 fn setup_camera(mut commands: Commands) {
-    commands.spawn(Camera2d::default());
+    commands.spawn(Camera2d);
 }
 
 fn setup_ability(mut registry: RegistryMut) {
@@ -91,7 +91,7 @@ struct Player;
 fn setup_actor(mut vitality: Vitality) {
     let fireball = vitality.registry.ability(&FIREBALL);
     let actor = ActorBuilder::new()
-        .name("Actor".into())
+        .name("Actor")
         .with::<Health>(10.0)
         .with::<Damage>(2.0)
         // wide enough for the buff to show up in the printed health

@@ -225,7 +225,7 @@ fn setup_abilities(mut effects: ResMut<Assets<AbilityDef>>, mut commands: Comman
 
 fn setup_actor(mut ctx: Vitality, abilities: Res<AbilityDatabase>) {
     let actor_template = ActorBuilder::new()
-        .name("=== Player ===".into())
+        .name("=== Player ===")
         .with::<Strength>(12)
         .with::<Agility>(7)
         .with::<Intelligence>(1)
@@ -274,7 +274,7 @@ fn apply_effects(
 pub struct Player;
 
 fn setup_camera(mut commands: Commands) {
-    commands.spawn(Camera2d::default());
+    commands.spawn(Camera2d);
 }
 
 fn inputs(
