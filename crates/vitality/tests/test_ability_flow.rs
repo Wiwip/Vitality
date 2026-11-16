@@ -2,8 +2,12 @@ mod gameplay;
 
 use bevy::prelude::*;
 use gameplay::*;
+use hfsm_bevy::StateTimer;
+use vitality::ability::ability_state::AbilityMachine;
+use vitality::ability::cooldown_remaining;
 use vitality::ability::tasks::{Tasks, wait_task};
 use vitality::ability::{AbilityBuilder, AbilityDef, TargetData};
+use vitality::effect::conditions::HasComponent;
 use vitality::prelude::*;
 
 fn ability(app: &mut App, def: AbilityDef) -> Handle<AbilityDef> {
@@ -47,6 +51,14 @@ fn record_all(app: &mut App) {
     record::<AbilityActivated>(app);
     record::<AbilityActivationFailed>(app);
     record::<AbilityEnded>(app);
+}
+
+fn cooldown_running(app: &App, ability: Entity) -> bool {
+    let timer = app
+        .world()
+        .get::<StateTimer<AbilityMachine>>(ability)
+        .expect("a granted ability carries its machine timer");
+    cooldown_remaining(timer).is_some()
 }
 
 #[test]
@@ -155,6 +167,55 @@ fn a_stunned_caster_cannot_activate() {
         a.can_activate(jab_entity, TargetData::SelfCast)
     });
     assert_eq!(check, Err(ActivationError::Blocked));
+}
+
+// gated on a component: HasComponent is the only condition this schema has, an attribute value cannot gate an ability
+#[test]
+fn an_unmet_activation_condition_fails_with_a_reason() {
+    let mut app = app();
+    let shout = ability(
+        &mut app,
+        AbilityBuilder::new()
+            .with_cost::<Mana>(10.0)
+            .with_cooldown(0.5)
+            .with_activation_condition(Box::new(HasComponent::<Burning>::source()))
+            .build(),
+    );
+    let caster = caster_with(&mut app, &[&shout]);
+    record_all(&mut app);
+
+    activate(&mut app, caster, &shout);
+    ticks(&mut app, 1);
+    assert_eq!(failures(&app), vec![ActivationError::ConditionFailed]);
+    assert!(
+        recorded::<AbilityActivated>(&app).is_empty(),
+        "the condition is what stopped it"
+    );
+    assert_eq!(
+        base::<Mana>(&app, caster),
+        50.0,
+        "a refused activation pays nothing"
+    );
+    let shout_entity = ability_entity(&mut app, caster, &shout);
+    assert!(
+        !cooldown_running(&app, shout_entity),
+        "a refused activation leaves no cooldown behind"
+    );
+
+    with_vitality(&mut app, move |v| v.grant_tag::<Burning>(caster));
+    activate(&mut app, caster, &shout);
+    ticks(&mut app, 2);
+    assert_eq!(
+        recorded::<AbilityActivated>(&app).len(),
+        1,
+        "the same ability activates once the caster carries the component"
+    );
+    assert_eq!(
+        failures(&app),
+        vec![ActivationError::ConditionFailed],
+        "the satisfied arm adds no failure"
+    );
+    assert_eq!(base::<Mana>(&app, caster), 40.0);
 }
 
 fn channel(app: &mut App) -> Handle<AbilityDef> {
