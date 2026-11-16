@@ -218,6 +218,42 @@ fn an_unmet_activation_condition_fails_with_a_reason() {
     assert_eq!(base::<Mana>(&app, caster), 40.0);
 }
 
+// activation_requires runs before the activation expressions, so a miss on both is the tag that reports
+#[test]
+fn a_missing_required_tag_reports_blocked_before_the_condition_fails() {
+    let mut app = app();
+    let seal = ability(
+        &mut app,
+        AbilityBuilder::new()
+            .with_cost::<Mana>(10.0)
+            .activation_requires::<Magic>()
+            .with_activation_condition(Box::new(HasComponent::<Burning>::source()))
+            .build(),
+    );
+    let caster = caster_with(&mut app, &[&seal]);
+    record_all(&mut app);
+
+    activate(&mut app, caster, &seal);
+    ticks(&mut app, 1);
+    assert_eq!(failures(&app), vec![ActivationError::Blocked]);
+    assert!(
+        recorded::<AbilityActivated>(&app).is_empty(),
+        "the missing tag is what stopped it"
+    );
+    assert_eq!(base::<Mana>(&app, caster), 50.0, "a blocked pays nothing");
+
+    with_vitality(&mut app, move |v| v.grant_tag::<Magic>(caster));
+    activate(&mut app, caster, &seal);
+    ticks(&mut app, 1);
+    assert_eq!(
+        failures(&app),
+        vec![ActivationError::Blocked, ActivationError::ConditionFailed],
+        "with the tag granted the still-unsatisfied expression decides"
+    );
+    assert!(recorded::<AbilityActivated>(&app).is_empty());
+    assert_eq!(base::<Mana>(&app, caster), 50.0);
+}
+
 fn channel(app: &mut App) -> Handle<AbilityDef> {
     ability(
         app,
