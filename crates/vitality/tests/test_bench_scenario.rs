@@ -123,9 +123,8 @@ fn churn_workloads_keep_their_population_bounded() {
     assert_eq!(before - after, (ACTORS / 5) as f64);
 }
 
-/// Every apply the timed window is read for has to happen inside it: `World::trigger` runs its
-/// observers inline, so a `drive` that triggered instead of queueing has already paid for the tag
-/// test, the condition eval and the stacking decision before the sample starts.
+/// `World::trigger` runs its observers inline, so a `drive` that triggered instead of queueing has
+/// already paid for the tag test, the condition eval and the stacking decision before the sample starts
 #[test]
 fn drive_queues_the_applies_and_tick_dispatches_them() {
     for (workload, applies) in [
@@ -164,8 +163,6 @@ fn drive_queues_the_applies_and_tick_dispatches_them() {
 #[derive(Resource, Default)]
 struct Dispatched(Vec<Entity>);
 
-/// `stack_add` claims a stack per hit on one instance; `stack_refresh` claims one instance kept
-/// alive by the refresh, which is a different claim and a different policy arm.
 #[test]
 fn stacking_workloads_stay_on_one_instance_and_move_what_they_claim() {
     let hits = ACTORS / 10;
@@ -242,8 +239,6 @@ fn stacking_workloads_stay_on_one_instance_and_move_what_they_claim() {
     );
 }
 
-/// `tag_required` lands on the tagged half of the actors it visits, `immunity` on the untagged
-/// half: one visit rule, the gate flipped.
 #[test]
 fn the_tag_rule_decides_which_visited_actors_take_the_effect() {
     let visited = ACTORS / 5;
@@ -296,8 +291,6 @@ fn the_tag_rule_decides_which_visited_actors_take_the_effect() {
     );
 }
 
-/// `snapshot` claims the value its modifier reads is taken at apply time: the buff is worth what
-/// the expression read on the tick it landed, and the capture is the library's own.
 #[test]
 fn the_snapshot_buff_keeps_the_value_it_captured() {
     let hits = ACTORS / 10;
@@ -341,7 +334,6 @@ fn the_snapshot_buff_keeps_the_value_it_captured() {
     );
 }
 
-/// Capture mode of every `Attr8` modifier in the world, which is only the snapshot workload's.
 fn modifier_captures(world: &mut scenario::ScenarioWorld) -> Vec<Capture> {
     let world = world.app.world_mut();
     let mut query = world.query::<&AttributeModifier<Attr8>>();

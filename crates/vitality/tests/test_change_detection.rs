@@ -33,7 +33,6 @@ fn seen(app: &App) -> Vec<usize> {
     app.world().resource::<Fires>().0.clone()
 }
 
-/// One `modify_base`, then the single fixed tick the current value is given to follow it.
 fn write_base(app: &mut App, actor: Entity, value: f32) {
     with_vitality(app, move |v| {
         v.modify_base::<Health>(actor, ModOp::Set, value);
@@ -64,9 +63,8 @@ fn a_live_modifier_marking_health_changed_fires_once_and_stops() {
     );
 }
 
-/// D-34's rule, read through the dag resolver: `modify_base` writes the base itself, so the write is
-/// what marks `Health`, and a write that leaves the value where it was resolves to nothing — no
-/// second mark, no idle tick carrying one.
+/// `modify_base` writes the base itself, so the write is what marks `Health`, and a write that leaves
+/// the value where it was resolves to nothing — no second mark, no idle tick carrying one
 #[test]
 fn a_base_write_that_changes_nothing_marks_nothing_after_the_tick_it_lands() {
     let mut app = probe_app();

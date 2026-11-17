@@ -11,12 +11,10 @@ use vitality::prelude::*;
 
 attribute!(Regen, f32);
 
-/// Triggers counted from the moment the effect is applied. `CurrentValueChanged` is not `Clone`, so
-/// the harness' `record` cannot hold it.
+/// the event is not `Clone`, so the harness' `record` cannot hold it
 #[derive(Resource, Default, Debug)]
 struct Fired(pub usize);
 
-/// Registers its attribute in the one place the contract says not to.
 struct LatePlugin;
 
 impl Plugin for LatePlugin {

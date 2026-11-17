@@ -1,7 +1,5 @@
-//! The facade's cap sentence, asserted at the facade. The unit test in `vitality_core` runs against a
-//! bare `AttributeRegistry`, where the framework's own [`Stacks`] holds no slot, so the app-level half
-//! of "an app gets 127" — one framework slot out of the 128, hence 127 game attributes — was pinned
-//! nowhere, and a second framework-owned attribute would make the sentence wrong in silence.
+//! The facade's cap sentence, asserted at the facade: `Stacks` takes one of the 128 slots, so the
+//! app-level half of "127 game attributes" is invisible to a bare `AttributeRegistry` unit test.
 
 use bevy::prelude::*;
 use std::any::TypeId;
@@ -10,7 +8,6 @@ use vitality::effect::Stacks;
 use vitality::{AttributesPlugin, attribute, init_attribute};
 use vitality_core::registry::{AttrSet, AttributeRegistry};
 
-/// The game side of one whole app, in the shape of `cap_pool!` in `vitality_core`'s registry tests.
 macro_rules! cap_pool {
     ($( $name:ident ),+ $(,)?) => {
         $( attribute!($name); )+
@@ -34,9 +31,7 @@ cap_pool!(
     Attr118, Attr119, Attr120, Attr121, Attr122, Attr123, Attr124, Attr125, Attr126, Attr127
 );
 
-/// The app the crate-doc sentence describes: [`AttributesPlugin`] installed first, then `game` game
-/// attributes. Never ticked — the cap is a build-time counter, and registration is
-/// what `AttributesPlugin::build` and `init_attribute` do.
+/// never ticked: the cap is a build-time counter
 fn app_with(game: usize) -> App {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
@@ -46,7 +41,6 @@ fn app_with(game: usize) -> App {
     app
 }
 
-/// 127 game attributes register, and the registry is at the cap because [`Stacks`] took the 128th slot.
 #[test]
 fn an_app_gets_127_game_attributes_because_the_framework_holds_one_slot() {
     let app = app_with(AttrSet::CAPACITY - 1);
@@ -66,9 +60,7 @@ fn an_app_gets_127_game_attributes_because_the_framework_holds_one_slot() {
     );
 }
 
-/// The other half of the sentence: the 128th game attribute is the one refused, and the refusal names
-/// both it and the cap. `catch_unwind` cannot read the payload in this profile (cranelift lets a caught
-/// panic escape the catch), so `should_panic` matches the message.
+/// `catch_unwind` cannot read the payload in this profile, so `should_panic` matches the message
 #[test]
 #[should_panic(expected = "register Attr127: the attribute registry holds at most 128 attributes")]
 fn the_128th_game_attribute_is_the_one_the_app_refuses() {

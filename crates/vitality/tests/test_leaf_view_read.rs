@@ -1,5 +1,5 @@
-//! L-2 guard, library half: `ActorRead::get` — the call `Attribute::at()` resolves to — hands back
-//! the attribute it is asked for, for every attribute of the pool, on every actor of the world.
+//! `ActorRead::get` — the call `Attribute::at()` resolves to — hands back the attribute it is asked
+//! for, for every attribute of the pool, on every actor of the world.
 
 #[path = "../benches/support/common.rs"]
 mod common;
@@ -14,16 +14,14 @@ use vitality::attributes::Attribute;
 use vitality::effect::EffectsRef;
 use vitality_core::view::ActorRead;
 
-/// One attribute, read through the trait call so it cannot become `EntityRefExcept`'s inherent
-/// `get`, which is not what the library does.
+/// through the trait, so the inherent `get` cannot shadow what the library calls
 fn read<T: Attribute<Property = f32>>(view: &EffectsRef<'_, '_>) -> f64 {
     ActorRead::get::<T>(view)
         .unwrap_or_else(|| panic!("{} unreadable through the view", type_name::<T>()))
         .current_value() as f64
 }
 
-/// One read per attribute of the pool, in pool order, so the guard covers every attribute an actor
-/// carries instead of only slot 0.
+/// one read per attribute, so the guard covers everything an actor carries, not just slot 0
 macro_rules! read_pool {
     ($view:expr, $( $name:ident ),+ $(,)?) => {
         vec![$( read::<common::$name>($view) ),+]

@@ -154,7 +154,6 @@ fn test_instant_effect_application() {
 
     app.update();
 
-    // Find the attribute's initial value
     let mut query = app.world_mut().query::<(Entity, &TestInt)>();
     let (actor_entity, test_value) = query.single(app.world()).unwrap();
     let init_value = test_value.current_value();
@@ -181,6 +180,5 @@ fn test_instant_effect_application() {
 
     let mut query = app.world_mut().query::<&TestInt>();
     let test_c = query.single(app.world()).unwrap();
-    // The new attribute value must be present
     assert_eq!(test_c.current_value(), init_value + modifier_value);
 }

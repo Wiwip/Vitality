@@ -1,7 +1,5 @@
-//! `Vitality::modify_base` is the base-write entry point. This pins what it does today: every op
-//! lands on the base, the current value follows in one fixed tick, the write rides a
-//! `CurrentValueChanged`, and an attribute the actor does not carry is dropped without a trace.
-//! Effects stay out of it on purpose — a live dependent reading what you write is D-56's ground.
+//! `Vitality::modify_base`, the base-write entry point: every op lands on the base, the current
+//! value follows in one fixed tick, and a write to an attribute the actor lacks is dropped silently.
 
 mod gameplay;
 
@@ -12,8 +10,7 @@ use vitality::actors::ActorBuilder;
 use vitality::attributes::Attribute;
 use vitality::effect::modifier::ModOp;
 
-/// One entry per `CurrentValueChanged<T>` trigger seen, as `(old, new)`. The event is not `Clone`,
-/// so the harness' `record` cannot hold it.
+/// the event is not `Clone`, so the harness' `record` cannot hold it
 #[derive(Resource, Default)]
 struct Fires(Vec<(f32, f32)>);
 
@@ -30,7 +27,6 @@ fn fires(app: &App) -> Vec<(f32, f32)> {
     app.world().resource::<Fires>().0.clone()
 }
 
-/// One `modify_base`, then the single fixed tick the current value is given to follow.
 fn write(app: &mut App, actor: Entity, op: ModOp, value: f32) {
     with_vitality(app, move |v| v.modify_base::<Health>(actor, op, value));
     ticks(app, 1);

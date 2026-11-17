@@ -1,11 +1,9 @@
-//! The facade's short-name rule, asserted at the facade. The crate-page doctest that shows the
-//! collision is a bare `should_panic`, so it can pin the crash but not the hint, and the hint is the
-//! part a two-crate author has to be able to act on.
+//! The facade's short-name rule, asserted at the facade: the crash is easy to pin, but the hint a
+//! two-crate author has to act on is the part worth an assert.
 
 use bevy::prelude::*;
 use vitality::{AttributesPlugin, init_attribute};
 
-/// The two crates of the crate-page example: one name each that is fine, and one they share.
 mod game_a {
     use vitality::prelude::*;
     vitality::attribute!(Health, f32);
@@ -18,9 +16,8 @@ mod game_b {
     vitality::attribute!(Mana, f32);
 }
 
-/// The cap pin's shape: [`AttributesPlugin`] first, then each attribute through the facade's
-/// registration path. Called, not passed to `add_plugins`: two values of type `fn(&mut App)` carry
-/// one plugin type id, so bevy rejects the second before either attribute is registered.
+/// called, not passed to `add_plugins`: two values of type `fn(&mut App)` carry one plugin type id,
+/// so bevy rejects the second before either attribute is registered
 fn app_with(game: &[fn(&mut App)]) -> App {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
@@ -30,8 +27,6 @@ fn app_with(game: &[fn(&mut App)]) -> App {
     app
 }
 
-/// The shared short name does not build — and the hint names the short name and the fix instead of
-/// a duplicate registration.
 #[test]
 #[should_panic(expected = "already holds the short name: rename one of them")]
 fn two_crates_sharing_a_short_name_are_told_to_rename_one() {

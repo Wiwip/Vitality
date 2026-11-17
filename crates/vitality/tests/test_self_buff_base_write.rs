@@ -1,9 +1,5 @@
-//! D-56: a live self-targeted modifier (`source == target == owner`) does not follow a base write to
-//! the attribute it reads. The discriminator is not density, it is the *cadence* — the write lands on
-//! the tick right after the apply — and the *registration order*, since a dependent registered before
-//! its source follows fine (`Attr1 -> Attr0` follows, `Attr0 -> Attr1` does not). Only the deleted
-//! per-attribute resolver lost it, so what this pins is that the surviving resolver follows: the
-//! repro no longer reproduces.
+//! A live self-targeted modifier (`source == target == owner`) does not follow a base write to the
+//! attribute it reads: what decides it is the write's cadence and the registration order, not density.
 
 #[path = "../benches/support/common.rs"]
 mod common;
@@ -17,10 +13,8 @@ use vitality::effect::definition::EffectDef;
 use vitality::effect::modifier::{AttributeModifier, EffectSubject, ModOp, OwnedModifiers};
 use vitality::effect::{AppliedEffects, ApplyEffectEvent, EffectBuilder, EffectTargeting};
 
-/// How far the base write moves the attribute the buff reads.
 const WRITE: f64 = 100.0;
 
-/// Ticks the dependent gets, the same horizon D-56 measured.
 const SETTLE: usize = 3;
 
 #[test]

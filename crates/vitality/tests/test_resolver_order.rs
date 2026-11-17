@@ -1,10 +1,5 @@
-//! R-5: the resolver is parallel *across* actors only, so rebuilding the same world with the actors
-//! spawned in the opposite order has to land on the same numbers, tick by tick and not only once
-//! everything has settled.
-//!
-//! `benches/support/common.rs::actor_entities` sorts by `Entity`, which is exactly what hides an
-//! ordering effect, so nothing here keys on spawn order: every read goes through the [`Who`]
-//! identity component this test puts on each actor.
+//! The resolver is parallel *across* actors only, so rebuilding the same world with the actors
+//! spawned in the opposite order has to land on the same numbers, tick by tick and not just settled.
 
 mod gameplay;
 
@@ -15,22 +10,17 @@ use vitality::actors::ActorBuilder;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 
-/// Spawn-order-independent identity, so the two worlds can be compared actor by actor.
 #[derive(Component, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 struct Who(&'static str);
 
-/// Compared in this order, never in spawn order.
 const ACTORS: [&str; 3] = ["alpha", "beta", "gamma"];
 
-/// The deepest chain in [`world`] is three cross-actor hops (alpha.Power -> beta.Armor ->
-/// gamma.Armor -> beta.Health) plus the clamp hop into alpha.Health, which is more than one pass
-/// settles, so eight ticks leaves room. The two worlds are compared on every one of
-/// those ticks, and the asserts after the comparison check that they really had settled.
+/// three cross-actor hops plus the clamp hop into alpha.Health, which is more than one pass settles,
+/// so eight ticks leaves room
 const TICKS: usize = 8;
 
 type Reads = [(&'static str, for<'a> fn(&'a App, Entity) -> f32); 10];
 
-/// Every value the comparison reads, current and base.
 const READS: Reads = [
     ("Health", current::<Health>),
     ("Health.base", base::<Health>),
@@ -70,8 +60,6 @@ fn def(who: &'static str) -> ActorBuilder {
     }
 }
 
-/// Builds the world with `order` as the spawn order. The seven links are always applied in the same
-/// identity order, so spawn order is the only difference between two calls.
 fn world(order: [&'static str; 3]) -> (App, BTreeMap<&'static str, Entity>) {
     let mut app = app();
     let mut by_id = BTreeMap::new();
@@ -147,7 +135,6 @@ fn world(order: [&'static str; 3]) -> (App, BTreeMap<&'static str, Entity>) {
     (app, by_id)
 }
 
-/// Actor by actor in [`ACTORS`] order, so the two vectors line up without trusting entity order.
 fn values(
     app: &App,
     by_id: &BTreeMap<&'static str, Entity>,
@@ -162,7 +149,6 @@ fn values(
     out
 }
 
-/// Actors in entity-index order, which is the order a query walks them in.
 fn visit_order(by_id: &BTreeMap<&'static str, Entity>) -> Vec<&'static str> {
     let mut by_index: Vec<(u32, &'static str)> = by_id
         .iter()
@@ -192,8 +178,8 @@ fn compare_spawn_orders() {
         visit_order(&backward_ids),
     );
 
-    // both worlds have run the same number of updates by here, so they are comparable every tick.
-    // Comparing only the settled vectors would let one world resolve an actor a tick later and pass.
+    // both worlds have run the same number of updates by here, so comparing only the settled vectors
+    // would let one world resolve an actor a tick later and pass
     let mut left = values(&forward, &forward_ids);
     let mut right = values(&backward, &backward_ids);
     for tick in 1..=TICKS {

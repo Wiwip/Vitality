@@ -47,7 +47,6 @@ fn prepare_effects(mut registry: RegistryMut) {
         CONDITION_EFFECT,
         Effect::permanent()
             .name("Condition Effect".into())
-            // Active when TestA is more than 50.0
             .active_while(IsAttributeWithinBounds::<TestA>::source(50.0..))
             .insert(ConditionTag)
             .build(),
@@ -72,8 +71,7 @@ pub fn fireball_ability() -> AbilityDef {
         .build()
 }
 
-/// The deactivation guard's own fixture: one effect, one condition on the target's own TestA, so a
-/// write can flip it without touching TestB.
+/// one condition on the target's own TestA, so a write can flip it without touching TestB
 fn prepare_gated_effect(mut registry: RegistryMut) {
     registry.add_effect(
         GATED_BUFF,
@@ -153,8 +151,8 @@ fn test_attribute_condition() {
     assert!(opt_inactive.is_none());
 }
 
-/// L-4's deactivation half: flipping an effect off changes the fold without writing any attribute of
-/// the target, and no leftover mark reaches the next tick, so only the flip's own mark repaints it.
+/// flipping an effect off changes the fold without writing any attribute of the target, so only the
+/// flip's own mark repaints it
 #[test]
 fn test_condition_deactivation_repaints_target() {
     let mut app = App::new();

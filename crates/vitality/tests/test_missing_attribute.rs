@@ -1,13 +1,5 @@
-//! The missing-attribute fallback behind every `T::src()` read.
-//!
-//! `crates/vitality_core/src/attributes.rs` documents "a read of an attribute the actor doesn't have
-//! counts as zero" and `missing()` implements it; if it ever became a panic or a NaN, this is the
-//! file that would notice.
-//!
-//! The warn half counts what the log layer saw across the whole run. `warn_once!` is a per-call-site
-//! `OnceFlag` inside `missing::<Power, Source>`, so one emission covers both actors and every tick,
-//! and the layer is thread-local (`with_default`) rather than the global one `LogPlugin::build`
-//! installs, which would be a race with any other test in the process.
+//! The missing-attribute fallback: a `T::src()` read of an attribute the actor lacks reads zero.
+//! `warn_once!` is per call site, so one warning covers both actors and every tick of the run.
 
 mod gameplay;
 
@@ -23,7 +15,6 @@ use vitality::prelude::*;
 /// The resolver settles a dependent hop in the same tick, so 4 leaves room.
 const SETTLE: usize = 4;
 
-/// `README.md`'s burn without the duration: one definition, two differently-kitted actors.
 fn drain() -> EffectBuilder {
     EffectBuilder::permanent().modify::<Health>(Power::src(), ModOp::Sub, EffectSubject::Target)
 }
@@ -56,6 +47,7 @@ fn reading_an_attribute_the_actor_lacks_is_zero() {
             .with_writer(move || Sink(writer.clone())),
     );
 
+    // thread-local layer: the global one LogPlugin::build installs would race the other tests here
     with_default(subscriber, || {
         let mut app = app();
         let full = spawn(

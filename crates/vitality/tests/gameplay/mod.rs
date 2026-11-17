@@ -129,7 +129,6 @@ pub fn has<C: Component>(app: &App, entity: Entity) -> bool {
 #[derive(Resource)]
 pub struct Recorded<E>(pub Vec<E>);
 
-/// Starts collecting every `E` triggered from now on.
 pub fn record<E: Event + Clone>(app: &mut App) {
     app.insert_resource(Recorded::<E>(Vec::new()));
     app.add_observer(|trigger: On<E>, mut recorded: ResMut<Recorded<E>>| {

@@ -1,35 +1,5 @@
-//! B-1: what one registered attribute costs the app, in structural counts rather than durations, so
-//! the gate can pin it without a stopwatch. Measured at this tip (bevy 0.20.1) on the app `measure`
-//! builds: `FixedUpdate` `systems_len()` is **10 at 2 attributes and 10 at 22 → 0 scheduled nodes per
-//! attribute**, and `world.components().len()` is **136 at 2 and 256 at 22 → 10 components per
-//! attribute**. Both baselines are exactly those measured slopes — no headroom, so the
-//! next change to `init_core_attribute` moves a number here rather than a guess.
-//!
-//! How to read the intercept: `measure` runs a single `app.update()`, and there bevy primes its clock
-//! and returns a zero delta, so no fixed step runs, `FixedUpdate`'s executor is never built and
-//! `systems_len()` still reports the graph rather than the compiled schedule. The 10 below is that
-//! graph's fixed half, `10 + 0a`; a `measure` that really ticks has to re-measure it.
-//!
-//! Slope and intercept are pinned separately because neither sees the other: one node added at plugin
-//! build time leaves `(11 - 11) / 20` at 0, and a change that only widens the per-attribute cost
-//! leaves the `a=2` count alone. Together they hold both halves of `cost = intercept + slope·A`.
-//!
-//! Every bound here is one-sided, so getting cheaper never goes red: a leaner `init_core_attribute`
-//! passes silently, and whoever cuts registration cost owns lowering these baselines in the same
-//! commit. The systems slope is the one that cannot be: it sits at 0, and a `usize` has nothing below
-//! 0, so its assert is an equality — same meaning, and clippy's `absurd_extreme_comparisons` stays quiet. The fixed half is pinned for `systems_len()` only — the fixed part of `components().len()`
-//! (116 of that app's 136 at two attributes) is `MinimalPlugins`/`AssetPlugin` infrastructure, which moves
-//! with the harness plugin set for reasons this file has nothing to do with. The four DAG counters are
-//! the exception: exact numbers, so a leaner DAG has to re-measure them in the same commit too.
-//!
-//! The shape is 1 actor, 0 effects and 0 modifiers on purpose: this prices *registration*, and every
-//! per-actor or per-effect component would be charged into the per-attribute slope. Both widths come
-//! from the default 24-deep [`common::ATTRIBUTE_POOL`], so no new attribute types are declared here.
-//!
-//! The third §2G counter — `AppTypeRegistry` registrations, 58 at 2 and 138 at 22 (4 per
-//! attribute) — is printed, never asserted: reflection entries come from every registered type in the
-//! app, `MinimalPlugins`/`AssetPlugin` included, so they move with unrelated dev-dependencies and a
-//! bound on them would go red for reasons this file has nothing to do with.
+//! What one registered attribute costs the app, in structural counts (scheduled nodes, observers,
+//! resources, components) rather than durations. The bounds are one-sided: getting cheaper never goes red.
 
 #[path = "../benches/support/common.rs"]
 mod common;
@@ -38,26 +8,19 @@ use crate::common::{ATTRIBUTE_POOL, WorldSpec, build_app_with};
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 
-/// The two widths the slope is taken between. 22 is the widest the default pool can serve beside 2.
+// 22 is the widest the default pool can serve beside 2
 const NARROW: usize = 2;
 const WIDE: usize = 22;
 
-/// Attributes between the two builds, i.e. the divisor of every slope here.
 const STEP: usize = WIDE - NARROW;
 
-/// The measured slopes of the app [`build_app_with`] builds, so a regression is red rather than
-/// merely slower. Measured values are printed in the assert messages too.
 const SYSTEMS_PER_ATTR_BASELINE: usize = 0;
-// 11 -> 10: one fewer component per attribute once the per-attribute path went
+/// one fewer component per attribute now that registration adds a single path
 const COMPONENTS_PER_ATTR_BASELINE: usize = 10;
 
-/// Fixed `FixedUpdate` nodes at zero attributes, i.e. the measured `10 - 2 * 0` of the graph that
-/// never runs. The companion of the slope above: a node added at plugin build time is a +1 here.
-/// 8 → 12 when the effect tickers, durations, stack events and conditions moved off `Update`.
+/// a node added at plugin build time is a +1 here, where the slope above still reads 0
 const SYSTEMS_INTERCEPT_BASELINE: usize = 10;
 
-/// The DAG app all four §2G DAG counters read: the harness plugin set and `attributes` attributes
-/// registered through the same pool entries the bench shapes use.
 fn dag_app(attributes: usize) -> App {
     let mut app = App::new();
     app.add_plugins((
@@ -71,25 +34,18 @@ fn dag_app(attributes: usize) -> App {
     app
 }
 
-/// Every scheduled node [`dag_app`] owns at [`NARROW`] attributes, summed over all its schedules.
-/// Exact, both directions: the fourth once-per-app node `EffectsPlugin` would add is a +1 here.
+/// exact, both directions: a fourth once-per-app node `EffectsPlugin` would add is a +1 here
 const DAG_SYSTEMS_BASELINE: usize = 46;
 
-/// Observers [`dag_app`] carries at [`NARROW`] attributes: the once-per-app ones and none per
-/// attribute. An observer is not a schedule node, so only this counter can see one.
+/// an observer is not a schedule node, so only this counter can see one
 const DAG_OBSERVERS_BASELINE: usize = 12;
 
-/// Resources a ticked [`dag_app`] holds: **70 at [`NARROW`] and 150 at [`WIDE`], 4 per attribute** —
-/// the message resource each registered attribute brings at rest, plus `BaseScanState<T>`,
-/// `ApplyState<T>` and `PeriodicState<T>`, which the collapsed nodes only install on first use.
-/// Those last three are what a counter reading the app at rest cannot see.
+/// the per-attribute query states the collapsed nodes only install on first use, so an at-rest
+/// counter cannot see them
 const DAG_TICK_RESOURCES_BASELINE: usize = 70;
 const DAG_TICK_RESOURCES_PER_ATTRIBUTE: usize = 4;
 
-/// Components a ticked [`dag_app`] has registered, same two halves: **151 at [`NARROW`] and 351 at
-/// [`WIDE`], 10 per attribute**. Exact, so a component the DAG branch starts registering per attribute
-/// is red here. The app `measure` builds reads 136 at [`NARROW`] on the same slope of 10, which reaches
-/// 256 at [`WIDE`]: two different apps, so a figure from one never checks a claim about the other.
+/// exact, so a component the DAG branch starts registering per attribute is red here
 const DAG_TICK_COMPONENTS_BASELINE: usize = 151;
 const DAG_TICK_COMPONENTS_PER_ATTRIBUTE: usize = 10;
 
@@ -104,7 +60,6 @@ fn spec(attributes: usize) -> WorldSpec {
     }
 }
 
-/// The three §2G counters, read off a built harness app.
 #[derive(Clone, Copy, Debug)]
 struct Counters {
     systems: usize,
@@ -134,8 +89,7 @@ fn measure(attributes: usize) -> Counters {
     counters
 }
 
-/// Per-attribute cost between the two builds. Registering an attribute cannot remove a node or a
-/// component, so a negative delta is a broken counter rather than a cheap attribute.
+/// a negative delta means a broken counter, not a cheap attribute
 fn slope(from: usize, to: usize, counter: &str) -> usize {
     assert!(
         to >= from,
@@ -160,8 +114,7 @@ fn registration_cost_per_attribute_is_pinned() {
         narrow.systems,
         wide.systems,
     );
-    // The companion pin: an extra node added at plugin build time is +1 at both widths, so the slope
-    // above still reads 0 (11 at 2, 11 at 22) and only this intercept moves.
+    // a node added at plugin build time is +1 at both widths, so the slope above still reads 0
     let intercept = narrow
         .systems
         .saturating_sub(SYSTEMS_PER_ATTR_BASELINE * NARROW);
@@ -180,8 +133,7 @@ fn registration_cost_per_attribute_is_pinned() {
         wide.components,
     );
 
-    // Printed only: reflection counts track every registered type in the app, dev-deps included, so
-    // they move without anything here changing. See the doc comment.
+    // not asserted: reflection counts move with every registered type in the app, dev-deps included
     println!(
         "B-1 AppTypeRegistry: {} reflected types at {NARROW} attributes, {} at {WIDE} \
          ({} per attribute, not asserted)",
@@ -191,14 +143,8 @@ fn registration_cost_per_attribute_is_pinned() {
     );
 }
 
-/// The DAG resolver registers nothing per attribute: the periodic fires, the instant base writes, the
-/// base-write scan and the walk are each one node for the whole app, and `init_effect_attribute`
-/// adds no system and no observer for an attribute.
-///
-/// Counted over the whole app rather than over `FixedUpdate`, and exact rather than one-sided: the
-/// slope-only read stayed green for a node parked in `PreUpdate` and for a fourth once-per-app node.
-/// The at-rest counters cannot see the per-attribute state the collapsed nodes install on first use,
-/// so the same app is read again after it has actually ticked.
+/// counted over the whole app, exact, and again after a tick: a slope-only read missed a node parked
+/// in `PreUpdate`, and at-rest counters cannot see state the nodes install on first use
 #[test]
 fn dag_registration_cost_per_attribute_is_pinned() {
     let narrow = measure_dag(NARROW);
@@ -236,9 +182,7 @@ fn dag_registration_cost_per_attribute_is_pinned() {
     );
 }
 
-/// Pins a counter a tick leaves behind: the exact count at [`NARROW`] attributes plus an exact
-/// per-attribute delta. The DAG counters at rest pin a delta of zero; these do not, because the
-/// collapsed nodes install state per attribute the first time they run.
+/// the delta here is not zero: the collapsed nodes install state per attribute on first use
 fn pin_dag_per_attribute(
     counter: &str,
     narrow: usize,
@@ -269,8 +213,7 @@ fn pin_dag_per_attribute(
     );
 }
 
-/// Pins one DAG counter on two numbers: the exact count at [`NARROW`] attributes and a delta of
-/// exactly zero to [`WIDE`]. Two messages, because a red pin has to say which half moved.
+/// two messages, because a red pin has to say which half moved
 fn pin_dag(counter: &str, narrow: usize, wide: usize, baseline: usize) {
     let delta = wide as isize - narrow as isize;
     assert_eq!(
@@ -286,29 +229,21 @@ fn pin_dag(counter: &str, narrow: usize, wide: usize, baseline: usize) {
     );
 }
 
-/// The two at-rest structural counters a DAG app is pinned on.
 #[derive(Clone, Copy, Debug)]
 struct DagCounters {
-    /// Every scheduled node the app owns, summed over every schedule in it.
     systems: usize,
-    /// Observer entities, which no schedule count can see.
     observers: usize,
 }
 
-/// What one attribute costs a DAG app that has actually run: the resources and components left over
-/// after one fixed tick.
 #[derive(Clone, Copy, Debug)]
 struct DagTickCounters {
-    /// Resources at rest, before the tick.
     resting: usize,
-    /// Resources after the tick, where the collapsed nodes' per-attribute state shows up.
     resources: usize,
     components: usize,
 }
 
-/// [`measure_dag`]'s app, ticked once. `TimeUpdateStrategy::FixedTimesteps(1)` makes the second
-/// `update` exactly one fixed tick; the first primes bevy's clock, whose delta is zero, so it runs
-/// none.
+/// `FixedTimesteps(1)` makes the second `update` exactly one fixed tick: the first primes bevy's
+/// clock, whose delta is zero, so it runs none
 fn measure_dag_tick(attributes: usize) -> DagTickCounters {
     let mut app = dag_app(attributes);
     // counted after the insert, so only the tick's own state can widen the gap the guard reads
@@ -334,8 +269,7 @@ fn measure_dag_tick(attributes: usize) -> DagTickCounters {
     counters
 }
 
-/// The same plugin set [`build_app_with`] uses, so the fixed half holds the once-per-app nodes
-/// `EffectsPlugin` adds. Never ticked, so `systems_len()` reads the graph.
+/// never ticked, so `systems_len()` reads the graph rather than the compiled schedule
 fn measure_dag(attributes: usize) -> DagCounters {
     let mut app = dag_app(attributes);
     let systems = app

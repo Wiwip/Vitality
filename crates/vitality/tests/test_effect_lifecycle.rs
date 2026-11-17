@@ -267,10 +267,8 @@ fn a_fire_due_on_the_expiry_tick_beats_the_expiry() {
         0
     );
 
-    // what makes the number above hold is the schedule edge, not the applier: the collapsed periodic
-    // node has to write its fire before tick_effect_durations despawns the effect.
-    // read off an app whose FixedUpdate never ran: running a schedule moves its systems out of the
-    // graph, so this panics on a ticked one; gameplay::app()'s one update only primes bevy's clock.
+    // the fire lands because apply_all_periodic_effects is ordered ahead of tick_effect_durations,
+    // and that edge is only visible in the graph: running a schedule moves its systems out of it
     let built = gameplay::app();
     let schedule = built
         .world()
@@ -289,8 +287,7 @@ fn a_fire_due_on_the_expiry_tick_beats_the_expiry() {
     );
 }
 
-/// True if any `FixedUpdate` node whose name contains `from` has to run before one containing `to`,
-/// read off the schedule's declared dependencies rather than off an execution order.
+/// read off the schedule's declared dependencies, not off an execution order
 fn ordered_before(schedule: &bevy::ecs::schedule::Schedule, from: &str, to: &str) -> bool {
     let graph = schedule.graph();
     let dag = graph.dependency().graph();

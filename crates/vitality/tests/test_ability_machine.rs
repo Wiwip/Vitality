@@ -1,6 +1,5 @@
-//! Drives the ability and task machines headless: MinimalPlugins only, so no display, no bevy_ui
-//! and no asset files are needed. `AttributesPlugin` brings `AbilityPlugin`, which installs both
-//! machines through `App::add_state_machine`.
+//! Drives the ability and task machines headless: MinimalPlugins only, so no display, bevy_ui or
+//! asset files are needed. `AttributesPlugin` brings `AbilityPlugin`, which installs both machines.
 
 use std::time::Duration;
 
@@ -29,10 +28,9 @@ use vitality::registry::RegistryMut;
 use vitality::registry::ability_registry::AbilityToken;
 
 const TEST_ABILITY: AbilityToken = AbilityToken::new_static("headless_test_ability");
-/// The cooldown of the ability under test. Every clock figure below is derived from it.
+/// every clock figure below is derived from this cooldown
 const COOLDOWN: f32 = 0.25;
 
-/// Finishes the moment the ability activates it.
 struct InstantTask;
 
 impl AbilityTask for InstantTask {
@@ -53,7 +51,6 @@ impl AbilityTask for InstantTask {
     }
 }
 
-/// Keeps its ability Active until something ends it.
 struct LongTask;
 
 impl AbilityTask for LongTask {
@@ -74,15 +71,12 @@ impl AbilityTask for LongTask {
     }
 }
 
-/// Marks the actor this test spawns, next to the global effect actor.
 #[derive(Component, Clone)]
 struct TestActor;
 
-/// Every `StateEntered<AbilityMachine>` announced so far.
 #[derive(Resource, Default)]
 struct Entered(Vec<StateId>);
 
-/// How many times something asked the ability machine to end.
 #[derive(Resource, Default)]
 struct EndRequests(usize);
 
@@ -185,7 +179,6 @@ fn sub_tasks(app: &App, ability: Entity) -> Vec<Entity> {
         .collect()
 }
 
-/// The ability's subtasks, split by whether their own machine already sits in `Completed`.
 fn split_completed(app: &mut App, ability: Entity) -> (Option<Entity>, Option<Entity>) {
     let mut done = None;
     let mut waiting = None;
@@ -199,8 +192,7 @@ fn split_completed(app: &mut App, ability: Entity) -> (Option<Entity>, Option<En
     (done, waiting)
 }
 
-/// The two subtasks of every `Complete::All` fixture: one that finishes on activation and one that
-/// runs until the ability ends.
+/// one task that finishes on activation, one that runs until the ability ends
 fn mixed_tasks() -> impl Scene + 'static {
     bsn! {
         Tasks [
@@ -247,9 +239,8 @@ fn ability_walks_ready_active_recovery_ready() {
         "entering Recovery arms the cooldown timer"
     );
 
-    // Both bounds read the one timer this loop spends, so neither can loosen the other. A headless
-    // update lasts microseconds, so each is handed a fixed timestep as a manual delta or `StateTimer`
-    // would never tick, and their count comes from the ability's own cooldown.
+    // a headless update lasts microseconds, so each iteration is handed a fixed timestep as a manual
+    // delta or `StateTimer` would never tick; their count comes from the ability's own cooldown
     let timestep = app.world().resource::<Time<Fixed>>().timestep();
     let updates = Duration::from_secs_f32(COOLDOWN)
         .div_duration_f64(timestep)
@@ -318,10 +309,6 @@ fn complete_all_ends_the_ability_on_the_last_task_completion() {
     assert!(cooldown_armed(&app, ability));
 }
 
-/// C-2's bug, pinned: the split install inserted `MachineDefinition<T>` from a `PreStartup` system,
-/// so the `MachineInstance<AbilityMachine>` that `Ability` requires arrived while the resource was
-/// still missing and hfsm's on-insert observer died with `Resource does not exist`. No schedule runs
-/// here until the grant is already in flight, which is why the app is built bare.
 #[test]
 fn machine_definition_is_installed_before_the_first_update() {
     let mut app = App::new();
@@ -350,9 +337,8 @@ fn machine_definition_is_installed_before_the_first_update() {
         .run_system_once(register_ability)
         .expect("the registry is a resource, so registering needs no update");
 
-    // `Actor` brings the `ManageAttributes` and `GrantedAbilities` that `grant_ability` reads, so the
-    // owner needs no `Startup` system. A stand-in `GlobalActor` covers the `Add<Actor>` observer,
-    // which unwraps a global actor that only `PreStartup` creates, and goes away before the update.
+    // a stand-in `GlobalActor` covers the `Add<Actor>` observer, which unwraps a global actor that
+    // only `PreStartup` creates, and goes away before the update
     let global_actor = app.world_mut().spawn(GlobalActor).id();
     let handle = app
         .world_mut()
@@ -380,8 +366,7 @@ fn machine_definition_is_installed_before_the_first_update() {
     );
 }
 
-/// The guard keeps `ScenePlugin` installed even when the host inited `Assets<ScenePatch>` itself:
-/// both scene sites, `apply_scene` and `spawn_scene`, read that asset.
+/// both scene sites, `apply_scene` and `spawn_scene`, read `Assets<ScenePatch>`
 #[test]
 fn scene_plugin_is_installed_when_the_host_only_inited_the_asset() {
     let mut app = App::new();
@@ -422,7 +407,6 @@ fn recovery_entries(app: &App) -> usize {
         .count()
 }
 
-/// Two subtasks that only the ability ending stops.
 fn two_long_tasks() -> impl Scene + 'static {
     bsn! {
         Tasks [
@@ -433,14 +417,9 @@ fn two_long_tasks() -> impl Scene + 'static {
     }
 }
 
-/// Two `NotifyTaskCompletion` notifications delivered in one update end the ability once, not twice:
-/// `on_task_completion_notification` ends it with `commands.trigger`, so the end lands at the command
-/// flush and both notifications find the machine still Active.
-///
-/// The library serialises its own notifications - each cascade is applied before the next completion
-/// is delivered - so a second notification can only be batched in by hand. The `Complete` rule is
-/// lifted while the subtasks are parked in `Completed`, which is what keeps the first completion from
-/// ending the ability, and put back before the notifications are queued.
+/// both notifications land in one update, so the end fires at the command flush and both find the
+/// machine still Active; the library serialises its own cascades, so the second one is queued by hand
+/// with `Complete` lifted, else the first completion would end the ability
 #[test]
 fn two_completion_notifications_enter_recovery_once() {
     let mut app = test_app(two_long_tasks);

@@ -1,10 +1,6 @@
-//! Guard for the bench wiring the gate cannot see: `scripts/gate.sh` runs
-//! `cargo test --workspace --lib --tests`, which never builds a bench target, so a second top-level
-//! `benches/*.rs`, a `support/` module nothing includes, and criterion in a support module all stay
-//! green until a cold `cargo bench --no-run` says so eight minutes later.
-//!
-//! Paths come from `CARGO_MANIFEST_DIR`, never cwd, because `file!()` already differs between the
-//! test and the bench build (D-19).
+//! Guard for the bench wiring the gate cannot see: `cargo test --lib --tests` never builds a bench
+//! target. Paths come from `CARGO_MANIFEST_DIR`, never cwd, because `file!()` differs between the
+//! test and the bench build.
 
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
@@ -23,7 +19,6 @@ fn read(file: &Path) -> String {
     })
 }
 
-/// `.rs` files directly in `dir`, sorted, so a report names them in a stable order.
 fn list_rs(dir: &Path) -> Vec<PathBuf> {
     let entries = fs::read_dir(dir).unwrap_or_else(|err| {
         panic!(
@@ -45,8 +40,7 @@ fn list_rs(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
-/// Collapses `..` and `.` so the bench target's `support/common.rs` and a test's
-/// `../benches/support/common.rs` land on one path.
+/// collapses `..` and `.` so a test's `../benches/support/x.rs` and the bench's `support/x.rs` match
 fn normalize(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for part in path.components() {
@@ -61,7 +55,6 @@ fn normalize(path: &Path) -> PathBuf {
     out
 }
 
-/// Every `#[path = "..."]` in a file, resolved against that file's own directory.
 fn path_attrs(file: &Path) -> Vec<PathBuf> {
     let dir = file
         .parent()
@@ -76,7 +69,7 @@ fn path_attrs(file: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The `name` of every `[[bench]]` table, read line by line because no toml parser is in reach.
+/// line by line because no toml parser is in reach
 fn bench_names(cargo: &str) -> Vec<String> {
     let mut names = Vec::new();
     let mut in_bench = false;
@@ -124,14 +117,12 @@ fn test_files() -> Vec<PathBuf> {
     files
 }
 
-/// The first `tests/test_*.rs` that includes `module` with a path attribute.
 fn includer(module: &Path) -> Option<PathBuf> {
     test_files()
         .into_iter()
         .find(|test| path_attrs(test).iter().any(|included| included == module))
 }
 
-/// Rule 1: exactly one bench target, exactly one top-level bench file, and they are the same one.
 #[test]
 fn one_bench_target_for_one_bench_file() {
     let manifest = manifest_dir();
@@ -166,8 +157,6 @@ fn one_bench_target_for_one_bench_file() {
     );
 }
 
-/// Rule 2: every support module on disk is declared by the bench target and included by a test, so
-/// the gate really compiles it.
 #[test]
 fn every_support_module_is_declared_and_included() {
     let declared: BTreeSet<PathBuf> = path_attrs(&bench_file()).into_iter().collect();
@@ -203,7 +192,6 @@ fn every_support_module_is_declared_and_included() {
     );
 }
 
-/// Rule 3: criterion stays out of `benches/support/`, which is the only reason rule 2 can hold.
 #[test]
 fn support_modules_stay_criterion_free() {
     let mut offenders: Vec<String> = Vec::new();

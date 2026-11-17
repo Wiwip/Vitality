@@ -1,5 +1,5 @@
-//! P-12's harness: every variant of `leaf/expr_shape` computes the same sum, so the group compares
-//! cost and nothing else.
+//! Every variant of `leaf/expr_shape` computes the same sum, so the group compares cost and nothing
+//! else.
 
 #[path = "../benches/support/common.rs"]
 mod common;
