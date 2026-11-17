@@ -27,6 +27,7 @@ pub trait Modifier: Send + Sync {
         targeting: &EffectTargeting,
         ctx: &EffectExprContext,
         type_bindings: &AttributeBindings,
+        fires_on_a_timer: bool,
         commands: &mut EntityCommands,
     );
 
@@ -99,6 +100,7 @@ where
         targeting: &EffectTargeting,
         ctx: &EffectExprContext,
         type_bindings: &AttributeBindings,
+        fires_on_a_timer: bool,
         commands: &mut EntityCommands,
     ) {
         let (value, mut deps) = record_dependencies(|| self.expr.eval(ctx));
@@ -110,7 +112,7 @@ where
             operation: self.operation,
             capture: self.capture,
         };
-        let display = modifier.to_string();
+        let shown = modifier.to_string();
 
         if self.capture == Capture::Live {
             self.expr.get_dependencies(&mut deps);
@@ -152,7 +154,18 @@ where
             op: modifier.operation,
             value: modifier.value.as_(),
         };
-        commands.insert((modifier, slot, Name::new(display)));
+        // the label is the one place a persistent modifier's routing shows, so it says where the write lands
+        let label = if fires_on_a_timer || matches!(self.who, EffectSubject::Target) {
+            shown
+        } else {
+            warn_once!(
+                "Modifier {shown} names {} but a persistent effect folds every modifier into the \
+                 actor that carries it, so this one writes the effect's target",
+                self.who,
+            );
+            format!("{shown}, writes the target")
+        };
+        commands.insert((modifier, slot, Name::new(label)));
     }
     fn apply_immediate(&self, context: &mut EffectExprContextMut) -> bool {
         let immutable_context = EffectExprContext {
@@ -315,12 +328,31 @@ fn apply_modifier<T: Attribute>(
     let query = [trigger.source_entity, trigger.target_entity];
     let [source, target] = attributes.get_many(query)?;
 
-    let base_value = target
+    // the write follows `who`; the expression below still reads both actors
+    let writer = match trigger.modifier.who {
+        EffectSubject::Target => trigger.target_entity,
+        EffectSubject::Source => trigger.source_entity,
+        EffectSubject::Effect => {
+            warn_once!(
+                "Modifier {} names EffectSubject::Effect, which is no actor of this effect, so the \
+                 write is dropped",
+                trigger.modifier
+            );
+            return Ok(false);
+        }
+    };
+    let actor = if writer == trigger.source_entity {
+        source
+    } else {
+        target
+    };
+
+    let base_value = actor
         .get::<T>()
         .ok_or(format!(
             "Could not find attribute {} on entity {}.",
             pretty_type_name::<T>(),
-            trigger.target_entity
+            writer
         ))?
         .base_value();
 
@@ -341,12 +373,12 @@ fn apply_modifier<T: Attribute>(
 
     let has_changed = new_base_value.are_different(base_value);
     if has_changed {
-        let mut attributes_mut = attributes.get_mut(trigger.target_entity)?;
+        let mut attributes_mut = attributes.get_mut(writer)?;
 
         let mut attribute = attributes_mut.get_mut::<T>().ok_or(format!(
             "Could not find attribute {} on entity {}.",
             pretty_type_name::<T>(),
-            trigger.target_entity
+            writer
         ))?;
 
         attribute.set_base_value(new_base_value);

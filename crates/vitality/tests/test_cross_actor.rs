@@ -279,6 +279,86 @@ fn only_the_actor_an_effect_lands_on_moves() {
     );
 }
 
+#[test]
+fn an_instant_source_modifier_writes_its_caster() {
+    let mut app = app();
+    let caster = spawn(&mut app, hero_def().with::<Power>(25.0));
+    let target = spawn(&mut app, hero_def());
+    let hex = effect(
+        &mut app,
+        EffectBuilder::instant()
+            .modify::<Armor>(Power::src(), ModOp::Add, EffectSubject::Source)
+            .build(),
+    );
+    apply(&mut app, caster, target, &hex);
+    ticks(&mut app, SETTLE);
+
+    assert_eq!(
+        current::<Armor>(&app, caster),
+        25.0,
+        "a Source modifier did not move its caster's Armor"
+    );
+    assert_eq!(
+        current::<Armor>(&app, target),
+        0.0,
+        "a Source modifier wrote {target}, the actor the effect landed on"
+    );
+}
+
+#[test]
+fn a_periodic_source_modifier_writes_its_caster() {
+    let mut app = app();
+    let caster = spawn(&mut app, hero_def().with::<Power>(25.0));
+    let target = spawn(&mut app, hero_def());
+    let drain = effect(
+        &mut app,
+        EffectBuilder::every_second_permanently(0.25)
+            .modify::<Armor>(Power::src(), ModOp::Add, EffectSubject::Source)
+            .build(),
+    );
+    apply(&mut app, caster, target, &drain);
+    ticks(&mut app, ticks_for(0.25) + SETTLE);
+
+    assert_eq!(
+        current::<Armor>(&app, caster),
+        25.0,
+        "a Source modifier did not move its caster's Armor"
+    );
+    assert_eq!(
+        current::<Armor>(&app, target),
+        0.0,
+        "a Source modifier wrote {target}, the actor the effect landed on"
+    );
+}
+
+/// A persistent modifier is folded into the actor that carries the effect, so a `Source` one still
+/// writes the target; what it owes is the apply-time warning, not a silent write.
+#[test]
+fn a_persistent_source_modifier_writes_the_target_and_says_so() {
+    let mut app = app();
+    let caster = spawn(&mut app, hero_def().with::<Power>(25.0));
+    let target = spawn(&mut app, hero_def());
+    let aura = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Armor>(Power::src(), ModOp::Add, EffectSubject::Source)
+            .build(),
+    );
+    apply(&mut app, caster, target, &aura);
+    ticks(&mut app, SETTLE);
+
+    assert_eq!(
+        current::<Armor>(&app, target),
+        25.0,
+        "a persistent modifier folds into the actor that carries the effect, and that is where a Source write lands"
+    );
+    assert_eq!(
+        current::<Armor>(&app, caster),
+        0.0,
+        "the caster carries the effect it applied, so writing it as well would double the modifier"
+    );
+}
+
 /// The resolver is parallel *across* actors only, so rebuilding the same world with the actors
 /// spawned in the opposite order has to land on the same numbers, tick by tick and not just settled.
 mod spawn_order {

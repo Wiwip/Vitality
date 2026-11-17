@@ -270,6 +270,7 @@ impl ApplyEffectEvent {
                 &self.targeting,
                 context,
                 &bindings,
+                effect.application_policy.is_periodic(),
                 &mut entity_commands,
             );
         }

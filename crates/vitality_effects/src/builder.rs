@@ -62,6 +62,8 @@ impl EffectBuilder {
 
     /// the value is anything implementing [`AsExpression`] for the attribute's property: a literal (`100u32`) or an attribute node (`Damage::src()`)
     ///
+    /// instant and periodic effects write the actor `who` names; a persistent effect folds every modifier into the actor that carries it, so `EffectSubject::Source` writes its target there
+    ///
     /// # Example
     /// ```
     /// # use vitality_effects::prelude::*;
