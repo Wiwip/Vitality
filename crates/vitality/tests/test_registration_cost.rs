@@ -181,7 +181,7 @@ fn dag_registration_cost_per_attribute_is_pinned() {
         Some(DAG_TICK_RESOURCES_BASELINE),
         DAG_TICK_RESOURCES_PER_ATTRIBUTE,
     );
-    // the count holds bevy's `TimeReceiver`, which needs std, and std rides in on the overlay dep: 149 without it
+    // the count holds bevy's `TimeReceiver`, which needs std, and std rides in on the overlay dep
     pin_dag_per_attribute(
         "component",
         narrow.components,

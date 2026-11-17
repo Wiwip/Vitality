@@ -36,6 +36,7 @@ type ConditionRow<'w, 's> = (
     Option<&'w EffectInactive>,
 );
 
+/// the row is read-only so this could parallelise; the split costs more single-threaded than it wins threaded
 fn evaluate_effect_conditions(
     mut query: Query<ConditionRow<'_, '_>, Without<EffectTicker>>,
     parents: Query<EffectsRef>,
