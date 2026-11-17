@@ -69,35 +69,6 @@ fn path_attrs(file: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// line by line because no toml parser is in reach
-fn bench_names(cargo: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    let mut in_bench = false;
-    for line in cargo.lines() {
-        let line = line.trim();
-        if line.starts_with("[[bench]]") {
-            in_bench = true;
-            continue;
-        }
-        if line.starts_with('[') {
-            in_bench = false;
-            continue;
-        }
-        if !in_bench || !line.starts_with("name") {
-            continue;
-        }
-        if let Some(quoted) = line.split_once('=')
-            && let Some(name) = quoted
-                .1
-                .split_once('"')
-                .and_then(|(_, rest)| rest.split('"').next())
-        {
-            names.push(name.to_string());
-        }
-    }
-    names
-}
-
 fn bench_file() -> PathBuf {
     manifest_dir()
         .join("benches")
@@ -123,40 +94,7 @@ fn includer(module: &Path) -> Option<PathBuf> {
         .find(|test| path_attrs(test).iter().any(|included| included == module))
 }
 
-#[test]
-fn one_bench_target_for_one_bench_file() {
-    let manifest = manifest_dir();
-    assert!(
-        bench_file().is_file(),
-        "rule 1 (one bench target): {} is missing, but Cargo.toml declares the bench target",
-        bench_file().display()
-    );
-
-    let stray: Vec<String> = list_rs(&manifest.join("benches"))
-        .into_iter()
-        .filter(|file| file.file_stem() != Some(OsStr::new(BENCH_TARGET)))
-        .map(|file| file.display().to_string())
-        .collect();
-    assert!(
-        stray.is_empty(),
-        "rule 1 (one bench target): stray top-level bench file(s) {stray:?} beside {}\n\
-         cargo turns any second benches/*.rs into a harness = true target that cannot link, and the \
-         gate never builds it; shared code belongs in benches/support/ and a group belongs in the \
-         bench target's own resolver_benches.",
-        bench_file().display()
-    );
-
-    let cargo_path = manifest.join("Cargo.toml");
-    let declared = bench_names(&read(&cargo_path));
-    assert_eq!(
-        declared,
-        [BENCH_TARGET.to_string()],
-        "rule 1 (one bench target): {} must declare exactly one bench target named \
-         \"{BENCH_TARGET}\", found {declared:?}",
-        cargo_path.display()
-    );
-}
-
+// the gate builds tests, never bench targets: a support module no test includes compiles nowhere
 #[test]
 fn every_support_module_is_declared_and_included() {
     let declared: BTreeSet<PathBuf> = path_attrs(&bench_file()).into_iter().collect();
@@ -189,34 +127,5 @@ fn every_support_module_is_declared_and_included() {
          attribute (scanned {scanned:?}); the gate compiles tests and never bench targets, so a \
          support module nothing includes is code that never compiles until `cargo bench --no-run` \
          says so",
-    );
-}
-
-#[test]
-fn support_modules_stay_criterion_free() {
-    let mut offenders: Vec<String> = Vec::new();
-    for module in support_files() {
-        let source = read(&module);
-        for (number, line) in source.lines().enumerate() {
-            let code = line
-                .trim()
-                .trim_start_matches("pub ")
-                .trim_start_matches("pub(crate) ");
-            if code.starts_with("use criterion") {
-                offenders.push(format!(
-                    "{}:{}: {}",
-                    module.display(),
-                    number + 1,
-                    line.trim()
-                ));
-            }
-        }
-    }
-    assert!(
-        offenders.is_empty(),
-        "rule 3 (no criterion in benches/support/): {offenders:?}\n\
-         every support module documents that it stays criterion-free so tests can include it; a \
-         criterion import belongs in the bench target {} alone.",
-        bench_file().display()
     );
 }

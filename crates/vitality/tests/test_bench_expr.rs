@@ -8,6 +8,7 @@ mod expr;
 
 use expr::{NODE_COUNTS, eval_erased, eval_mono, eval_typemap, expected, expr_fixture};
 
+// the typemap arm is bench-only, so nothing else catches the group timing three different sums
 #[test]
 fn expr_values_match() {
     let fixture = expr_fixture();
