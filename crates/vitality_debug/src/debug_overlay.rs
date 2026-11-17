@@ -1,4 +1,5 @@
 use bevy::ecs::component::{ComponentId, Components};
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use ptree::{TreeBuilder, write_tree};
 use std::any::TypeId;
@@ -56,15 +57,37 @@ fn create_overlay() -> impl Scene {
     }
 }
 
+#[derive(SystemParam)]
+pub struct ExploreParams<'w, 's> {
+    effects: Query<
+        'w,
+        's,
+        (
+            &'static Effect,
+            &'static Stacks,
+            Option<&'static Name>,
+            Option<&'static OwnedModifiers>,
+        ),
+    >,
+    granted_abilities: Query<'w, 's, &'static GrantedAbilities>,
+    ability_query: Query<
+        'w,
+        's,
+        (
+            &'static Ability,
+            Option<&'static AbilityRecovery>,
+            Option<&'static Name>,
+        ),
+    >,
+    tasks: Query<'w, 's, &'static Tasks>,
+    names: Query<'w, 's, &'static Name>,
+    modifiers: Query<'w, 's, EntityRef<'static>, With<ModifierMarker>>,
+    type_registry: Res<'w, AppTypeRegistry>,
+}
+
 pub fn explore_actors_system(
     actors: ActorQuery<'_, '_>,
-    effects: Query<(&Effect, &Stacks, Option<&Name>, Option<&OwnedModifiers>)>,
-    granted_abilities: Query<&GrantedAbilities>,
-    ability_query: Query<(&Ability, Option<&AbilityRecovery>, Option<&Name>)>,
-    tasks: Query<&Tasks>,
-    names: Query<&Name>,
-    modifiers: Query<EntityRef, With<ModifierMarker>>,
-    type_registry: Res<AppTypeRegistry>,
+    ctx: ExploreParams<'_, '_>,
     world_components: &Components,
     mut debug_overlay: OverlayQuery<'_, '_>,
 ) {
@@ -77,7 +100,7 @@ pub fn explore_actors_system(
 
         list_attributes(
             &mut builder,
-            &type_registry,
+            &ctx.type_registry,
             actor_ref,
             &mut actor_components,
         );
@@ -86,20 +109,20 @@ pub fn explore_actors_system(
             list_effects(
                 &mut builder,
                 actor_effects,
-                effects,
-                modifiers,
-                &type_registry,
+                &ctx.effects,
+                &ctx.modifiers,
+                &ctx.type_registry,
                 world_components,
             );
         }
 
-        if let Ok(granted_abilities) = granted_abilities.get(actor_ref.id()) {
+        if let Ok(granted_abilities) = ctx.granted_abilities.get(actor_ref.id()) {
             list_abilities(
                 &mut builder,
                 granted_abilities,
-                &ability_query,
-                &tasks,
-                &names,
+                &ctx.ability_query,
+                &ctx.tasks,
+                &ctx.names,
             )
         }
 
@@ -166,8 +189,8 @@ fn list_attributes(
 fn list_effects(
     builder: &mut TreeBuilder,
     actor_effects: &AppliedEffects,
-    effect_query: Query<(&Effect, &Stacks, Option<&Name>, Option<&OwnedModifiers>)>,
-    modifier_query: Query<EntityRef, With<ModifierMarker>>,
+    effect_query: &Query<(&Effect, &Stacks, Option<&Name>, Option<&OwnedModifiers>)>,
+    modifier_query: &Query<EntityRef, With<ModifierMarker>>,
     type_registry: &AppTypeRegistry,
     world_components: &Components,
 ) {

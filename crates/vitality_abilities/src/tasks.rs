@@ -166,29 +166,35 @@ pub fn wait_task(secs: f32) -> impl Scene {
     task::<WaitTask>(WaitTask::from_secs(secs))
 }
 
+#[derive(SystemParam)]
+struct TaskContext<'w, 's, T: AbilityTask> {
+    abilities: Query<'w, 's, Entity, With<Ability>>,
+    tasks: Query<'w, 's, &'static TaskOwner>,
+    casters: Query<'w, 's, &'static AbilityOf>,
+    ability_items: Query<'w, 's, <T as AbilityTask>::AbilityItem>,
+    task_items: Query<'w, 's, <T as AbilityTask>::TaskItem>,
+    caster_items: Query<'w, 's, <T as AbilityTask>::CasterItem>,
+    params: StaticSystemParam<'w, 's, <T as AbilityTask>::SystemParam>,
+}
+
 fn on_execute_task_observer<T: AbilityTask>(
     trigger: On<ExecuteTask>,
-    abilities: Query<Entity, With<Ability>>,
-    tasks: Query<&TaskOwner>,
-    casters: Query<&AbilityOf>,
-    mut ability_items: Query<T::AbilityItem>,
-    mut task_items: Query<T::TaskItem>,
-    mut caster_items: Query<T::CasterItem>,
-    params: StaticSystemParam<T::SystemParam>,
+    mut ctx: TaskContext<'_, '_, T>,
     mut commands: Commands,
 ) {
-    let Some(ability_id) = find_ability_ancestor(trigger.task_id, &tasks, &abilities) else {
+    let Some(ability_id) = find_ability_ancestor(trigger.task_id, &ctx.tasks, &ctx.abilities)
+    else {
         warn!("[{}] Task has no ability above it.", trigger.task_id);
         return;
     };
-    let Ok(caster_id) = casters.get(ability_id) else {
+    let Ok(caster_id) = ctx.casters.get(ability_id) else {
         warn!("[{ability_id}] Ability has no caster.");
         return;
     };
     let (Ok(task_item), Ok(ability_item), Ok(caster_item)) = (
-        task_items.get_mut(trigger.task_id),
-        ability_items.get_mut(ability_id),
-        caster_items.get_mut(caster_id.0),
+        ctx.task_items.get_mut(trigger.task_id),
+        ctx.ability_items.get_mut(ability_id),
+        ctx.caster_items.get_mut(caster_id.0),
     ) else {
         warn!(
             "[{}] Task query items don't match their entities.",
@@ -197,7 +203,7 @@ fn on_execute_task_observer<T: AbilityTask>(
         return;
     };
 
-    let mut param_items = params.into_inner();
+    let mut param_items = ctx.params.into_inner();
     let status = T::activate(
         trigger.task_id,
         caster_item,
@@ -216,26 +222,21 @@ fn on_execute_task_observer<T: AbilityTask>(
 
 fn on_task_completed_observer<T: AbilityTask>(
     trigger: On<TaskCompleted>,
-    abilities: Query<Entity, With<Ability>>,
-    tasks: Query<&TaskOwner>,
-    casters: Query<&AbilityOf>,
-    mut ability_items: Query<T::AbilityItem>,
-    mut task_items: Query<T::TaskItem>,
-    mut caster_items: Query<T::CasterItem>,
-    params: StaticSystemParam<T::SystemParam>,
+    mut ctx: TaskContext<'_, '_, T>,
 ) {
-    let Some(ability_id) = find_ability_ancestor(trigger.task_id, &tasks, &abilities) else {
+    let Some(ability_id) = find_ability_ancestor(trigger.task_id, &ctx.tasks, &ctx.abilities)
+    else {
         warn!("[{}] Task has no ability above it.", trigger.task_id);
         return;
     };
-    let Ok(caster_id) = casters.get(ability_id) else {
+    let Ok(caster_id) = ctx.casters.get(ability_id) else {
         warn!("[{ability_id}] Ability has no caster.");
         return;
     };
     let (Ok(task_item), Ok(ability_item), Ok(caster_item)) = (
-        task_items.get_mut(trigger.task_id),
-        ability_items.get_mut(ability_id),
-        caster_items.get_mut(caster_id.0),
+        ctx.task_items.get_mut(trigger.task_id),
+        ctx.ability_items.get_mut(ability_id),
+        ctx.caster_items.get_mut(caster_id.0),
     ) else {
         warn!(
             "[{}] Task query items don't match their entities.",
@@ -244,7 +245,7 @@ fn on_task_completed_observer<T: AbilityTask>(
         return;
     };
 
-    let mut param_items = params.into_inner();
+    let mut param_items = ctx.params.into_inner();
 
     T::on_completion(
         trigger.task_id,
@@ -257,26 +258,21 @@ fn on_task_completed_observer<T: AbilityTask>(
 
 fn on_task_stopped_observer<T: AbilityTask>(
     trigger: On<TaskStopped>,
-    abilities: Query<Entity, With<Ability>>,
-    tasks: Query<&TaskOwner>,
-    casters: Query<&AbilityOf>,
-    mut ability_items: Query<T::AbilityItem>,
-    mut task_items: Query<T::TaskItem>,
-    mut caster_items: Query<T::CasterItem>,
-    params: StaticSystemParam<T::SystemParam>,
+    mut ctx: TaskContext<'_, '_, T>,
 ) {
-    let Some(ability_id) = find_ability_ancestor(trigger.task_id, &tasks, &abilities) else {
+    let Some(ability_id) = find_ability_ancestor(trigger.task_id, &ctx.tasks, &ctx.abilities)
+    else {
         warn!("[{}] Task has no ability above it.", trigger.task_id);
         return;
     };
-    let Ok(caster_id) = casters.get(ability_id) else {
+    let Ok(caster_id) = ctx.casters.get(ability_id) else {
         warn!("[{ability_id}] Ability has no caster.");
         return;
     };
     let (Ok(task_item), Ok(ability_item), Ok(caster_item)) = (
-        task_items.get_mut(trigger.task_id),
-        ability_items.get_mut(ability_id),
-        caster_items.get_mut(caster_id.0),
+        ctx.task_items.get_mut(trigger.task_id),
+        ctx.ability_items.get_mut(ability_id),
+        ctx.caster_items.get_mut(caster_id.0),
     ) else {
         warn!(
             "[{}] Task query items don't match their entities.",
@@ -285,7 +281,7 @@ fn on_task_stopped_observer<T: AbilityTask>(
         return;
     };
 
-    let mut param_items = params.into_inner();
+    let mut param_items = ctx.params.into_inner();
 
     T::on_stop(
         trigger.task_id,
