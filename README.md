@@ -90,11 +90,12 @@ The contract, with what each break looks like from inside an app and the test th
 
 ## Performance
 
-From the `scenario` group of `crates/vitality/benches/bench_systems.rs`, measured 2026-11-17 on a shared 8-core box (start-of-run loadavg 3.1-3.9 on every quoted run; absolute values move ~10 % run to run, so the pair below each number is the previous build run alternately in the same session). Shape: 10 000 actors, 20 attributes and 3 effects each.
+From the `scenario` group of `crates/vitality/benches/bench_systems.rs`, measured 2026-11-17 on a shared 8-core box (start-of-run loadavg 3.1-3.9 on every quoted run; absolute values move ~10 % run to run, so the pair under each ceiling number is the previous build run alternately in the same session). Shape: 10 000 actors, 20 attributes and 3 effects each.
 
 - `steady`, 10 % of the actors' attributes moved, single-threaded: 1.0463 / 1.0479 / 1.0501 / 1.0527 ms over four runs, median 1.05 ms, 0.6 % spread — **inside the 2 ms ceiling** with 47 % to spare. The paired runs, same session: 1.1445 / 1.1517 / 1.1729 / 1.2396 ms, median 1.16 ms; 4/4 pairs and 9.8 % on the medians. Id `scenario/steady/actors=10000/a=20/e=3/st-static`.
 - `storm`, every attribute of every actor, with bevy's `multi_threaded`: median 6.52 ms over six alternating pairs (6.1753-6.9185 ms, 12 % spread) against 7.07 ms on the paired build (6.7606-7.3073 ms); 6/6 pairs and 7.9 % on the medians. **Inside the 8 ms ceiling** with room now: the slowest run of the six (6.9185 ms, upper bound 6.9805 ms) leaves 12.7 %, where `5866cd9` left 5 %. Id `scenario/storm/actors=10000/a=20/e=3/mt-static`.
-- Multi-threading is worth 1.28x on `storm`, nothing on `steady`, and it loses on the `idle` control. That pairing was taken at `7340cfb`; only the two ids above were re-taken at this tip.
+- `idle`, nothing moved at all: 253.97 / 254.32 / 254.77 µs single-threaded and 337.17 / 349.56 / 387.82 µs with `multi_threaded`, so an empty tick costs 0.25 ms and multi-threading makes it 1.37x **worse**. A scratch probe build put ~1.6 µs of that inside vitality's `FixedUpdate` content, so the floor is bevy's own frame path, and it still scales with actor count: 44 µs at 1 000, 141 µs at 5 000, 254 µs at 10 000. Ids `scenario/idle/actors=10000/a=20/e=3/{st,mt}-static`.
+- Multi-threading is worth 1.28x on `storm` and nothing on `steady`. That pairing was taken at `7340cfb` and has not been re-taken since; the `idle` half of it has, at this tip.
 
 ## Running the benches
 
