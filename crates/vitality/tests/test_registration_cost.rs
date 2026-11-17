@@ -16,7 +16,8 @@
 //!
 //! Every bound here is one-sided, so getting cheaper never goes red: a leaner `init_core_attribute`
 //! passes silently, and whoever cuts registration cost owns lowering these baselines in the same
-//! commit. The fixed half is pinned for `systems_len()` only — the fixed part of `components().len()`
+//! commit. The systems slope is the one that cannot be: it sits at 0, and a `usize` has nothing below
+//! 0, so its assert is an equality — same meaning, and clippy's `absurd_extreme_comparisons` stays quiet. The fixed half is pinned for `systems_len()` only — the fixed part of `components().len()`
 //! (116 of that app's 136 at two attributes) is `MinimalPlugins`/`AssetPlugin` infrastructure, which moves
 //! with the harness plugin set for reasons this file has nothing to do with. The four DAG counters are
 //! the exception: exact numbers, so a leaner DAG has to re-measure them in the same commit too.
@@ -152,7 +153,7 @@ fn registration_cost_per_attribute_is_pinned() {
     let components = slope(narrow.components, wide.components, "components().len()");
 
     assert!(
-        systems <= SYSTEMS_PER_ATTR_BASELINE,
+        systems == SYSTEMS_PER_ATTR_BASELINE,
         "measured {systems} scheduled nodes per attribute: FixedUpdate systems_len() is {} at \
          {NARROW} attributes and {} at {WIDE}; baseline is {SYSTEMS_PER_ATTR_BASELINE} \
          (the collapsed nodes are once per app, so nothing here is per attribute)",
