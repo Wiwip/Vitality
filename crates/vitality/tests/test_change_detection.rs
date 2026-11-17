@@ -35,6 +35,14 @@ fn seen(app: &App) -> Vec<usize> {
     app.world().resource::<Fires>().0.clone()
 }
 
+/// One `modify_base`, then the single fixed tick the current value is given to follow it.
+fn write_base(app: &mut App, actor: Entity, value: f32) {
+    with_vitality(app, move |v| {
+        v.modify_base::<Health>(actor, ModOp::Set, value);
+    });
+    ticks(app, 1);
+}
+
 #[test]
 fn a_live_modifier_marking_health_changed_fires_once_and_stops() {
     let mut app = probe_app();
@@ -55,5 +63,38 @@ fn a_live_modifier_marking_health_changed_fires_once_and_stops() {
         seen(&app),
         [1, 0, 0, 0],
         "Changed<Health> must fire on the tick the modifier moves Health and on no idle tick after"
+    );
+}
+
+/// D-34's rule, read through the dag resolver: `modify_base` writes the base itself, so the write is
+/// what marks `Health`, and a write that leaves the value where it was resolves to nothing — no
+/// second mark, no idle tick carrying one.
+#[test]
+fn a_base_write_that_changes_nothing_marks_nothing_after_the_tick_it_lands() {
+    let mut app = probe_app();
+    let hero = spawn(&mut app, hero_def());
+
+    reset(&mut app);
+    write_base(&mut app, hero, 125.0);
+    assert_eq!(
+        current::<Health>(&app, hero),
+        125.0,
+        "a write that moves the base lands on the next fixed tick"
+    );
+    assert_eq!(seen(&app), [1], "the tick that moved it");
+
+    reset(&mut app);
+    write_base(&mut app, hero, 125.0);
+    ticks(&mut app, 2);
+    assert_eq!(
+        current::<Health>(&app, hero),
+        125.0,
+        "writing the value the base already holds leaves the current value where it was"
+    );
+    assert_eq!(
+        seen(&app),
+        [1, 0, 0],
+        "only the write marks Health: the resolve that gets the same value back adds no mark on any \
+         later tick"
     );
 }
