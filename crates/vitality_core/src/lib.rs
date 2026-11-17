@@ -30,7 +30,7 @@ pub use num_traits;
 
 pub mod prelude {
     pub use crate::attribute;
-    pub use crate::attributes::{AccessAttribute, Attribute, ReflectAccessAttribute};
+    pub use crate::attributes::{AccessAttribute, Attribute, ReflectAccessAttribute, Setter};
     pub use crate::context::ActorExprSchema;
     pub use crate::modifier::ModOp;
 

@@ -47,6 +47,20 @@ where
 /// The `Node` an attribute read compiles to; spelled out it sits over clippy's complexity limit.
 type AttributeNode<A, P, C, Role> = Node<P, C, AttributeVar<A, P, C, Role>>;
 
+/// The setter half of an assignment step, named so `add`/`sub`/`set` do not spell a bare `impl Fn`
+/// in return position. Blanket-implemented, so it constrains nothing the bare form did not.
+pub trait Setter<P, C: ContextMut>:
+    Fn(&mut C::ContextItemMut<'_, '_>, P) + 'static + Send + Sync
+{
+}
+
+impl<F, P, C> Setter<P, C> for F
+where
+    F: Fn(&mut C::ContextItemMut<'_, '_>, P) + 'static + Send + Sync,
+    C: ContextMut,
+{
+}
+
 pub trait Attribute
 where
     Self: Component<Mutability = Mutable> + Copy + Debug + Display,
@@ -122,7 +136,7 @@ where
     ) -> AssignmentStep<
         Self::Property,
         impl Expr<Self::Property, C> + Copy + Send + Sync + 'static,
-        impl Fn(&mut C::ContextItemMut<'_, '_>, Self::Property) + 'static + Send + Sync,
+        impl Setter<Self::Property, C>,
     >
     where
         Role: 'static,
@@ -155,7 +169,7 @@ where
     ) -> AssignmentStep<
         Self::Property,
         impl Expr<Self::Property, C> + Copy + Send + Sync + 'static,
-        impl Fn(&mut C::ContextItemMut<'_, '_>, Self::Property) + 'static + Send + Sync,
+        impl Setter<Self::Property, C>,
     >
     where
         Role: 'static,
@@ -188,7 +202,7 @@ where
     ) -> AssignmentStep<
         Self::Property,
         impl Expr<Self::Property, C> + Copy + Send + Sync + 'static,
-        impl Fn(&mut C::ContextItemMut<'_, '_>, Self::Property) + 'static + Send + Sync,
+        impl Setter<Self::Property, C>,
     >
     where
         Role: 'static,
