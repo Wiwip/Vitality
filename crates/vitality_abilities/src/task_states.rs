@@ -100,7 +100,6 @@ impl MachineState<TaskMachine> for RunningState {
     fn on_enter(&self, ctx: &mut Access<TaskMachine>) {
         debug!("[{}] on_enter: Running Task", ctx.task_id);
 
-        // Tells this task to begin
         ctx.external.commands.trigger(ExecuteTask {
             task_id: ctx.task_id,
         });
@@ -116,12 +115,10 @@ impl MachineState<TaskMachine> for CompleteState {
     fn on_enter(&self, ctx: &mut Access<TaskMachine>) {
         debug!("[{}] on_enter: Complete Task", ctx.task_id);
 
-        // Complete this task
         ctx.external.commands.trigger(TaskCompleted {
             task_id: ctx.task_id,
         });
 
-        // Tells subtasks to activate
         if let Ok(sub_tasks) = ctx.external.tasks.get(ctx.task_id) {
             for task_id in sub_tasks.iter() {
                 ctx.external
@@ -133,7 +130,6 @@ impl MachineState<TaskMachine> for CompleteState {
             }
         };
 
-        // Notify parents of completion
         ctx.external.commands.trigger(NotifyTaskCompletion {
             entity: ctx.task_id,
         });

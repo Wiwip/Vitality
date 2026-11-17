@@ -165,8 +165,7 @@ impl<'w, 's> Abilities<'w, 's> {
         }
     }
 
-    /// Asks the actor's granted copy of `handle` to activate; false when it isn't granted.
-    /// The outcome arrives as `AbilityActivated` or `AbilityActivationFailed`.
+    /// asks the actor's granted copy of `handle` to activate; false when it isn't granted, and the outcome arrives as `AbilityActivated` or `AbilityActivationFailed`
     pub fn try_activate(
         &mut self,
         actor: Entity,

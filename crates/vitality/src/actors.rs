@@ -30,7 +30,6 @@ pub struct ActorDef {
     pub abilities: Vec<Handle<AbilityDef>>,
     pub effects: Vec<Handle<EffectDef>>,
 
-    /// Per dependency key read by a clamp: the clamped attributes.
     pub clamp_dependents: ClampDependents,
 }
 
@@ -69,13 +68,11 @@ impl EntityCommand for SpawnActorCommand {
                         Name::new(actor_def.name.clone()),
                     ));
 
-                    // Apply mutators
                     for actions in &actor_def.builder_actions {
                         let mut entity_commands = commands.entity(actor_entity);
                         (actions.func)(&mut entity_commands);
                     }
 
-                    // Spawn the granted ability entities
                     for ability in actor_def.abilities.iter() {
                         commands.spawn((
                             Ability {
@@ -90,7 +87,6 @@ impl EntityCommand for SpawnActorCommand {
 
                 register_clamp_edges(world, actor_def);
 
-                // Sends the event that will apply the effects to the entity
                 for effect in actor_def.effects.iter() {
                     world.trigger(ApplyEffectEvent {
                         entity: actor_entity,
@@ -236,12 +232,10 @@ impl ActorBuilder {
 pub struct ActorToken(SmolStr);
 
 impl ActorToken {
-    /// Construct a new [`ActorToken`] from a [`SmolStr`].
     pub const fn new(text: SmolStr) -> Self {
         Self(text)
     }
 
-    /// Construct a new [`ActorToken`] from a static string.
     pub const fn new_static(text: &'static str) -> Self {
         Self(SmolStr::new_static(text))
     }

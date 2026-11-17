@@ -47,12 +47,10 @@ pub struct NotifyTaskCompletion {
     pub entity: Entity,
 }
 
-/// The entity that this effect is targeting.
 #[derive(Component, Reflect, Debug)]
 #[relationship(relationship_target = Tasks)]
 pub struct TaskOwner(pub Entity);
 
-/// All abilities granted to this entity.
 #[derive(Component, Reflect, Debug, Default)]
 #[relationship_target(relationship = TaskOwner, linked_spawn)]
 #[require[Task, Complete::All]]
@@ -105,7 +103,6 @@ pub type TaskItem<'w, 's, T> = QueryItem<'w, 's, <T as AbilityTask>::TaskItem>;
 pub type TaskParam<'w, 's, T> = SystemParamItem<'w, 's, <T as AbilityTask>::SystemParam>;
 
 pub trait AbilityTask: Send + Sync + 'static {
-    /// The query descriptor. (e.g. `&'static mut Health` or a struct deriving `QueryData`)
     type CasterItem: QueryData + Send + Sync + 'static;
     type AbilityItem: QueryData + Send + Sync + 'static;
     type TaskItem: QueryData + Send + Sync + 'static;
@@ -342,16 +339,13 @@ fn find_ability_ancestor(
 ) -> Option<Entity> {
     let mut current = current_entity;
 
-    // Traverse upwards using the Parent chain
     while let Ok(task_parent) = parent_query.get(current) {
         let parent_entity = task_parent.get();
 
-        // Check if the current parent has the 'Ability' component
         if ability_query.contains(parent_entity) {
             return Some(parent_entity);
         }
 
-        // Move to the next parent
         current = parent_entity;
     }
 

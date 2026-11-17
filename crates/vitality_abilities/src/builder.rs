@@ -118,17 +118,13 @@ impl AbilityBuilder {
             },
         );
 
-        // This will now compile because E satisfies the comparison trait and hasn't been moved
         let cost_condition = node_expr.le(t_src);
 
         self.cost_condition.push(Box::new(cost_condition));
         self
     }
 
-    /// Evaluated against the caster entity and nothing else: the bool condition vitality ships for
-    /// this schema is `HasComponent` (component/tag presence on the caster, and only its `Source`
-    /// subject ever answers true), while `IsAttributeWithinBounds` implements the effect schema and
-    /// so cannot be passed here.
+    /// evaluated against the caster entity and nothing else: the bool condition this schema ships is `HasComponent` (component/tag presence on the caster, only its `Source` subject answers true), while `IsAttributeWithinBounds` implements the effect schema and can't be passed here
     pub fn with_activation_condition(mut self, expr: StoredExpr<bool, ActorExprSchema>) -> Self {
         self.execution_condition.push(expr);
         self
@@ -201,9 +197,7 @@ impl AbilityBuilder {
         self
     }
 
-    /// The caster must carry `T`: component presence and nothing else, no attribute value, and it
-    /// is checked before the activation expressions, so a miss reports `ActivationError::Blocked`
-    /// rather than `ConditionFailed`.
+    /// the caster must carry `T`, component presence and nothing else, checked before the activation expressions so a miss reports `ActivationError::Blocked` rather than `ConditionFailed`
     pub fn activation_requires<T: Component + Default>(mut self) -> Self {
         self.activation_requires.push(TagSpec::of::<T>());
         self

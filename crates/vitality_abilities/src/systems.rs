@@ -20,9 +20,7 @@ pub struct ActivateAbility {
     pub source: Entity,
 }
 
-/// Commit the activation [`ActivateAbility`] carries, bypassing the
-/// [`AbilityEvent::TryActivate`](crate::ability_state::AbilityEvent::TryActivate) checks the ready
-/// state would otherwise run first.
+/// commits the activation [`ActivateAbility`] carries, bypassing the [`AbilityEvent::TryActivate`](crate::ability_state::AbilityEvent::TryActivate) checks the ready state would otherwise run first
 pub(crate) fn activate_ability(
     trigger: On<ActivateAbility>,
     mut actors: Query<AbilityMut, Without<IsResource>>,
@@ -62,7 +60,6 @@ pub(crate) fn activate_ability(
         plan.run(&mut context);
     }
 
-    // Calculates the costs of the ability and applies them
     ability_spec.cost_modifiers.run(&mut context);
     Ok(())
 }

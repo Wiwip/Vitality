@@ -15,7 +15,6 @@ use vitality_core::attributes::ReflectAccessAttribute;
 use vitality_core::modifier::AttributeCalculatorCached;
 use vitality_effects::prelude::Attribute;
 
-/// The entity that this effect is targeting.
 #[derive(Component, Clone, Reflect, Debug)]
 #[relationship(relationship_target = GrantedAbilities)]
 pub struct AbilityOf(pub Entity);
@@ -26,7 +25,6 @@ impl Default for AbilityOf {
     }
 }
 
-/// All abilities granted to this entity.
 #[derive(Component, Reflect, Debug, Default)]
 #[relationship_target(relationship = AbilityOf, linked_spawn)]
 pub struct GrantedAbilities(Vec<Entity>);

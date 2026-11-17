@@ -9,12 +9,10 @@ use smol_str::SmolStr;
 pub struct AbilityToken(SmolStr);
 
 impl AbilityToken {
-    /// Construct a new [`AbilityToken`] from a [`SmolStr`].
     pub const fn new(text: SmolStr) -> Self {
         Self(text)
     }
 
-    /// Construct a new [`AbilityToken`] from a static string.
     pub const fn new_static(text: &'static str) -> Self {
         Self(SmolStr::new_static(text))
     }

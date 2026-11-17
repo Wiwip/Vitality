@@ -101,7 +101,7 @@ impl<'s, 'w> Vitality<'w, 's> {
         self.modify_base::<T>(actor, ModOp::Set, value);
     }
 
-    /// Applies one operation to an attribute's base value, like an instant effect would.
+    /// applies one operation to an attribute's base value, like an instant effect would
     pub fn modify_base<T: Attribute>(&mut self, actor: Entity, op: ModOp, value: T::Property) {
         self.commands
             .entity(actor)
@@ -131,8 +131,7 @@ impl<'s, 'w> Vitality<'w, 's> {
         self.global_effects.push(handle);
     }
 
-    /// The actor global effects come from. It is spawned in `PreStartup`, so it is None only
-    /// before the first update.
+    /// the actor global effects come from; spawned in `PreStartup`, so None only before the first update
     pub fn global_actor(&self) -> Option<Entity> {
         self.global_actor.single().ok()
     }

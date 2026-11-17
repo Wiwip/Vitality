@@ -229,13 +229,11 @@ impl MachineState<AbilityMachine> for ActiveState {
             return;
         };
 
-        // Abilities without tasks auto complete
         if tasks.is_empty() {
             ctx.internal_events.push_back(AbilityEvent::EndAbility);
             return;
         }
 
-        // Signal tasks to begin
         for task_entity in tasks.iter() {
             if let Err(err) = ctx
                 .external
@@ -294,7 +292,6 @@ impl MachineState<AbilityMachine> for RecoveryState {
     fn on_enter(&self, ctx: &mut Access<AbilityMachine>) {
         debug!("on_enter: CooldownState");
 
-        // Reset recovery elapsed timer
         ctx.local.recovery_timer.set_base_value(0.0);
 
         let ability_id = ctx.ability_id;
