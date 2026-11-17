@@ -314,7 +314,7 @@ fn apply_queued_modifiers_of<T: Attribute>(world: &mut World) {
                 let mut actors = state.actors.query_mut(world);
                 for ev in state.cursor.read(&messages) {
                     if let Err(err) = apply_modifier(ev, &mut actors) {
-                        debug!("Failed to apply modifier {}. {}", ev.modifier, err);
+                        warn!("Deferred modifier {} is dropped: {}", ev.modifier, err);
                     }
                 }
             });
@@ -339,13 +339,10 @@ fn apply_modifier<T: Attribute>(
     trigger: &ApplyAttributeModifierMessage<T>,
     attributes: &mut Query<EffectsMut, Without<IsResource>>,
 ) -> Result<bool, BevyError> {
-    let query = [trigger.source_entity, trigger.target_entity];
-    let [source, target] = attributes.get_many(query)?;
-
     // the write follows `who`; the expression below still reads both actors
-    let writer = match trigger.modifier.who {
-        EffectSubject::Target => trigger.target_entity,
-        EffectSubject::Source => trigger.source_entity,
+    let (writer, other) = match trigger.modifier.who {
+        EffectSubject::Target => (trigger.target_entity, trigger.source_entity),
+        EffectSubject::Source => (trigger.source_entity, trigger.target_entity),
         EffectSubject::Effect => {
             warn_once!(
                 "Modifier {} names EffectSubject::Effect, which is no actor of this effect, so the \
@@ -355,6 +352,26 @@ fn apply_modifier<T: Attribute>(
             return Ok(false);
         }
     };
+    // the actor the write lands on is the one worth naming first, but a gone bystander drops the
+    // write too, because the expression reads it
+    if let Some(gone) = [writer, other]
+        .into_iter()
+        .find(|e| attributes.get(*e).is_err())
+    {
+        let role = if gone == trigger.source_entity {
+            "source"
+        } else {
+            "target"
+        };
+        return Err(format!(
+            "{role} {gone} has no actor view by the time the write lands, and an instant write \
+             lands in the next EffectsSet::UpdateBaseValues, a tick after the apply; keep the \
+             {role} alive until then"
+        )
+        .into());
+    }
+    let [source, target] = attributes.get_many([trigger.source_entity, trigger.target_entity])?;
+
     let actor = if writer == trigger.source_entity {
         source
     } else {
