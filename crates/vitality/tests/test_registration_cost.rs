@@ -51,6 +51,8 @@ const DAG_TICK_RESOURCES_PER_ATTRIBUTE: usize = 4;
 
 /// exact, so a component the DAG branch starts registering per attribute is red here
 const DAG_TICK_COMPONENTS_BASELINE: usize = 150;
+/// the same world counted without `debug-overlay`, one component lighter
+const DAG_TICK_COMPONENTS_BASELINE_NO_OVERLAY: usize = 149;
 const DAG_TICK_COMPONENTS_PER_ATTRIBUTE: usize = 10;
 
 fn spec(attributes: usize) -> WorldSpec {
@@ -182,7 +184,11 @@ fn dag_registration_cost_per_attribute_is_pinned() {
         "component",
         narrow.components,
         wide.components,
-        cfg!(feature = "debug-overlay").then_some(DAG_TICK_COMPONENTS_BASELINE),
+        Some(if cfg!(feature = "debug-overlay") {
+            DAG_TICK_COMPONENTS_BASELINE
+        } else {
+            DAG_TICK_COMPONENTS_BASELINE_NO_OVERLAY
+        }),
         DAG_TICK_COMPONENTS_PER_ATTRIBUTE,
     );
 }
