@@ -21,7 +21,6 @@ use bevy::time::TimeUpdateStrategy;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use std::any::TypeId;
-use std::sync::Once;
 use vitality::actors::{Actor, ActorBuilder};
 use vitality::attributes::Attribute;
 use vitality::context::Vitality;
@@ -33,36 +32,6 @@ use vitality::{AttributesPlugin, init_attribute};
 
 /// Every bench draws from the same seed (BENCH-PLAN §1.6).
 pub const SEED: u64 = 7;
-
-/// `VITALITY_RESOLVER=dag` builds harness worlds on the DAG resolver; the default is still v1 until
-/// D-47 lands.
-pub fn resolver_mode() -> vitality::ResolverMode {
-    let mode = match std::env::var("VITALITY_RESOLVER").as_deref() {
-        Ok("dag") => vitality::ResolverMode::Dag,
-        _ => vitality::ResolverMode::PerAttribute,
-    };
-    // the gameplay suite defaults the other way round, so no run gets to wonder which one it was in
-    static ANNOUNCED: Once = Once::new();
-    ANNOUNCED.call_once(|| {
-        let label = match mode {
-            vitality::ResolverMode::Dag => "dag",
-            vitality::ResolverMode::PerAttribute => "v1",
-        };
-        eprintln!(
-            "::vitality bench harness:: RESOLVER={label} BUILD={} VITALITY_RESOLVER={:?}",
-            build_label(),
-            std::env::var("VITALITY_RESOLVER").unwrap_or_default(),
-        );
-    });
-    mode
-}
-
-pub fn resolver_label() -> &'static str {
-    match resolver_mode() {
-        vitality::ResolverMode::Dag => "dag",
-        vitality::ResolverMode::PerAttribute => "v1",
-    }
-}
 
 /// The build a number came from: `st`/`mt` from the `multi_threaded` feature, `static`/`dyn` from `dyn`.
 pub fn build_label() -> &'static str {
@@ -284,20 +253,14 @@ pub fn seed_rng() -> StdRng {
 /// Builds the world and runs `Startup`, so the returned app holds live actors carrying their
 /// attributes and their effect instances. `attrs` must be at least `spec.attributes_per_actor` long.
 ///
-/// What it does not hand back is a settled world: `on_add_attribute` observes `Insert<T>` and marks
-/// every attribute the bundle inserts, and `spawn` flushes its commands inline, so the returned world
-/// is dirty on every attribute of every actor and nothing has resolved yet.
+/// What it does not hand back is a settled world: the bundle insert marks every attribute of every
+/// actor it carries, and `spawn` flushes its commands inline, so nothing has resolved yet.
 pub fn build_app_with(spec: &WorldSpec, attrs: &'static [AttrSpec]) -> App {
-    build_app_at(spec, attrs, resolver_mode())
+    build_app_at(spec, attrs)
 }
 
-/// [`build_app_with`] on a resolver the caller picked, so a guard can name the mode it covers instead
-/// of inheriting it from `VITALITY_RESOLVER`.
-pub fn build_app_at(
-    spec: &WorldSpec,
-    attrs: &'static [AttrSpec],
-    mode: vitality::ResolverMode,
-) -> App {
+/// [`build_app_with`] under the name the guard tests use.
+pub fn build_app_at(spec: &WorldSpec, attrs: &'static [AttrSpec]) -> App {
     assert!(
         spec.attributes_per_actor <= attrs.len(),
         "shape {} needs a pool of {}, only {} attributes declared",
@@ -308,7 +271,6 @@ pub fn build_app_at(
     let attrs = &attrs[..spec.attributes_per_actor];
 
     let mut app = App::new();
-    app.insert_resource(mode);
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
     for attr in attrs {
         // Called, not `add_plugins`: every `fn(&mut App)` pointer shares one TypeId, so bevy would

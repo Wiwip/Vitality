@@ -8,8 +8,7 @@
 //! `app.update()`, which is exactly one fixed tick under the harness clock.
 
 use crate::common::{
-    ATTRIBUTE_POOL, WorldSpec, actor_entities, build_app_at, build_label, resolver_label,
-    resolver_mode, seed_rng, tick,
+    ATTRIBUTE_POOL, WorldSpec, actor_entities, build_app_at, build_label, seed_rng, tick,
 };
 use bevy::prelude::*;
 use rand::RngExt;
@@ -108,9 +107,8 @@ impl Workload {
 
 pub fn scenario_id(workload: Workload, actors: usize) -> String {
     format!(
-        "scenario/{}/actors={actors}/a={ATTRIBUTES}/e={EFFECTS_PER_ACTOR}/{}/{}",
+        "scenario/{}/actors={actors}/a={ATTRIBUTES}/e={EFFECTS_PER_ACTOR}/{}",
         workload.name(),
-        resolver_label(),
         build_label()
     )
 }
@@ -130,11 +128,11 @@ pub struct ScenarioWorld {
 }
 
 pub fn build(workload: Workload, actors: usize) -> ScenarioWorld {
-    build_in(workload, actors, resolver_mode())
+    build_in(workload, actors)
 }
 
-/// [`build`] on a resolver the caller picked, for the guards that pin both of them.
-pub fn build_in(workload: Workload, actors: usize, mode: vitality::ResolverMode) -> ScenarioWorld {
+/// [`build`] under the name the guard tests use.
+pub fn build_in(workload: Workload, actors: usize) -> ScenarioWorld {
     let spec = WorldSpec {
         attributes_per_actor: ATTRIBUTES,
         effects_per_actor: EFFECTS_PER_ACTOR,
@@ -143,7 +141,7 @@ pub fn build_in(workload: Workload, actors: usize, mode: vitality::ResolverMode)
         dirty_fraction: 0.0,
         ticking_fraction: 0.0,
     };
-    let mut app = build_app_at(&spec, ATTRIBUTE_POOL, mode);
+    let mut app = build_app_at(&spec, ATTRIBUTE_POOL);
     let actor_list = actor_entities(app.world_mut());
     let mut world = ScenarioWorld {
         app,

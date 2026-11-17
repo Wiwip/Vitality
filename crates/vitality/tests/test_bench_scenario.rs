@@ -8,7 +8,6 @@ mod scenario;
 use bevy::prelude::*;
 use common::{ATTRIBUTE_POOL, Attr1, Attr8};
 use scenario::{Workload, build, build_in};
-use vitality::ResolverMode;
 use vitality::effect::modifier::Capture;
 use vitality::effect::{AppliedEffects, ApplyEffectEvent};
 use vitality::prelude::*;
@@ -127,48 +126,38 @@ fn churn_workloads_keep_their_population_bounded() {
 /// Every apply the timed window is read for has to happen inside it: `World::trigger` runs its
 /// observers inline, so a `drive` that triggered instead of queueing has already paid for the tag
 /// test, the condition eval and the stacking decision before the sample starts.
-///
-/// Both resolvers, named here rather than left to `VITALITY_RESOLVER`: the scenario ids the published
-/// numbers carry are DAG ids, while the harness default is the per-attribute resolver.
 #[test]
 fn drive_queues_the_applies_and_tick_dispatches_them() {
-    for resolver in [ResolverMode::PerAttribute, ResolverMode::Dag] {
-        for (workload, applies) in [
-            (Workload::BuffChurn, ACTORS / 10),
-            (Workload::Combat, ACTORS / 5),
-            (Workload::StackAdd, ACTORS / 10),
-            (Workload::StackRefresh, ACTORS / 10),
-            (Workload::TagRequired, ACTORS / 5),
-            (Workload::Immunity, ACTORS / 5),
-            (Workload::Snapshot, ACTORS / 10),
-        ] {
-            let mut world = build_in(workload, ACTORS, resolver);
-            assert_eq!(
-                vitality::effect::resolver_mode(&world.app),
-                resolver,
-                "{workload:?}: the world was not built on the resolver this guard names"
-            );
-            // on the world: `App::add_observer` waits for the next `First`, which this tick never runs
-            world
-                .app
-                .world_mut()
-                .insert_resource(Dispatched(Vec::new()));
-            world.app.world_mut().add_observer(
-                |ev: On<ApplyEffectEvent>, mut dispatched: ResMut<Dispatched>| {
-                    dispatched.0.push(ev.entity);
-                },
-            );
-            world.drive();
-            let queued = world.app.world().resource::<Dispatched>().0.len();
-            assert_eq!(queued, 0, "{workload:?}: drive must not dispatch an apply");
-            world.tick();
-            let dispatched = &world.app.world().resource::<Dispatched>().0;
-            assert_eq!(
-                dispatched.len(),
-                applies,
-                "{workload:?} on {resolver:?}: the timed window must contain every apply drive queued"
-            );
-        }
+    for (workload, applies) in [
+        (Workload::BuffChurn, ACTORS / 10),
+        (Workload::Combat, ACTORS / 5),
+        (Workload::StackAdd, ACTORS / 10),
+        (Workload::StackRefresh, ACTORS / 10),
+        (Workload::TagRequired, ACTORS / 5),
+        (Workload::Immunity, ACTORS / 5),
+        (Workload::Snapshot, ACTORS / 10),
+    ] {
+        let mut world = build_in(workload, ACTORS);
+        // on the world: `App::add_observer` waits for the next `First`, which this tick never runs
+        world
+            .app
+            .world_mut()
+            .insert_resource(Dispatched(Vec::new()));
+        world.app.world_mut().add_observer(
+            |ev: On<ApplyEffectEvent>, mut dispatched: ResMut<Dispatched>| {
+                dispatched.0.push(ev.entity);
+            },
+        );
+        world.drive();
+        let queued = world.app.world().resource::<Dispatched>().0.len();
+        assert_eq!(queued, 0, "{workload:?}: drive must not dispatch an apply");
+        world.tick();
+        let dispatched = &world.app.world().resource::<Dispatched>().0;
+        assert_eq!(
+            dispatched.len(),
+            applies,
+            "{workload:?}: the timed window must contain every apply drive queued"
+        );
     }
 }
 

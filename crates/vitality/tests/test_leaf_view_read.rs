@@ -10,7 +10,6 @@ use common::{
 };
 use std::any::type_name;
 use std::collections::HashSet;
-use vitality::ResolverMode;
 use vitality::attributes::Attribute;
 use vitality::effect::EffectsRef;
 use vitality_core::view::ActorRead;
@@ -38,7 +37,7 @@ fn the_view_hands_back_the_attribute_it_is_asked_for() {
         actors: 8,
         ..WorldSpec::default()
     };
-    let mut app = build_app_at(&spec, ATTRIBUTE_POOL, ResolverMode::Dag);
+    let mut app = build_app_at(&spec, ATTRIBUTE_POOL);
     // build_app_at only runs Startup, so nothing has resolved and every current_value is still a base.
     tick(&mut app);
     let pool = app.world().resource::<HarnessWorld>().attrs();

@@ -119,40 +119,20 @@
 //! - Add [`AttributesPlugin`] before any plugin that calls [`init_attribute`]. That one is loud: the
 //!   registry does not exist yet, so the app dies with
 //!   `resource does not exist: vitality_core::registry::AttributeRegistry`.
-//! - The DAG schedule nodes are added once, by [`effect::EffectsPlugin`], and only if
-//!   [`ResolverMode::Dag`] is in the world when its `build` runs (`vitality_effects/src/lib.rs:95-125`):
-//!   `resolve_system`, `apply_all_modifier_events`, `scan_base_writes` and
-//!   `apply_all_periodic_effects` are the only apply-path nodes the DAG ever gets, because
-//!   [`effect::init_effect_attribute`] adds no node and no observer for an attribute in DAG mode.
-//!   Two ways out of that contract are silent. An app that installs attributes with
-//!   `init_attribute`/`init_effect_attribute` and never adds `EffectsPlugin` has no `EffectRegistry`
-//!   and no listener for the apply event, so `Effects::apply` quietly does nothing. So does one that
-//!   runs `EffectsPlugin::build` under [`ResolverMode::PerAttribute`] and registers its attributes
-//!   under [`ResolverMode::Dag`]: add `AttributesPlugin` while `PerAttribute` is in the world, insert
-//!   `Dag`, then register with [`init_attribute`]. Those attributes get neither apply path —
-//!   [`effect::EffectApplied`] fires and the modifier entity exists while the base never moves, no
-//!   [`CurrentValueChanged`] is triggered, and a periodic effect ticks without ever firing. The
-//!   reverse order is not that case: `Dag` at `EffectsPlugin::build` with the attributes registered
-//!   under `PerAttribute` gives a mixed-mode app — the framework's own attributes keep the collapsed
-//!   DAG nodes, the ones registered later take the per-attribute path — and it applies and fires like
-//!   a plain per-attribute app while paying both paths: the mode-blind `scan_base_writes` walks them
-//!   every tick, `resolve_system` walks them whenever anything is queued, `mark_actor_dirty_dag` is a
-//!   global observer, and nothing orders `resolve_system` against
-//!   `update_current_value_system::<T>`. It runs; nothing here pins it. Inserting a mode once the
-//!   plugins are all built changes nothing — the mode is read only at
-//!   `EffectsPlugin::build`, at `init_effect_attribute` (`vitality_effects/src/lib.rs:95`, `:144`)
-//!   and in the clamp branch of `init_attribute`, all of them build time. `ResolverMode::default()`
-//!   is already `Dag`, so the rule is one mode for the whole build — [`VitalityPlugin::resolver`]
-//!   inserts it before the plugins.
+//! - The DAG schedule nodes are added once, by [`effect::EffectsPlugin`]: `resolve_system`,
+//!   `apply_all_modifier_events`, `scan_base_writes` and `apply_all_periodic_effects` are the only
+//!   apply-path nodes the app ever gets, because [`effect::init_effect_attribute`] adds no node and
+//!   no observer for an attribute. One way out of that contract is silent: an app that installs
+//!   attributes with `init_attribute`/`init_effect_attribute` and never adds `EffectsPlugin` has no
+//!   `EffectRegistry` and no listener for the apply event, so `Effects::apply` quietly does nothing.
+//!   Inserting anything once the plugins are all built changes nothing — the nodes are added at
+//!   `EffectsPlugin::build` and the per-attribute state at `init_effect_attribute`, both build time.
 //!
-//! Whether the contract stays "add `EffectsPlugin`, and pick one mode before it" or
+//! Whether the contract stays "add `EffectsPlugin` before any attribute is registered" or
 //! `init_effect_attribute` grows a first-install guard that installs the collapsed nodes itself is
-//! still the owner's call (D-52). Neither case is reachable in this repo: [`AttributesPlugin`] adds
+//! still the owner's call (D-52). It is not reachable in this repo: [`AttributesPlugin`] adds
 //! [`effect::EffectsPlugin`] in its `build`, so the first needs an app that registers attributes
-//! straight through `vitality_core`/`vitality_effects` instead, and nothing here inserts a mode after
-//! a build — [`VitalityPlugin::resolver`] inserts it before the plugins, and the two
-//! `insert_resource(ResolverMode)` sites named here (`tests/test_registration_cost.rs:62`,
-//! `benches/support/common.rs:357`) sit before their `add_plugins`.
+//! straight through `vitality_core`/`vitality_effects` instead.
 //!
 //! ```
 //! use bevy::prelude::*;
@@ -224,14 +204,12 @@
 //! ```
 
 use crate::actors::{ActorDef, ActorRegistry};
-use crate::clamp::{Clamp, apply_clamps, clamp_dependency_changed};
+use crate::clamp::Clamp;
 use bevy::prelude::*;
 use vitality_abilities::AbilityPlugin;
 use vitality_core::CorePlugin;
 use vitality_core::attributes::Attribute;
 use vitality_core::init_core_attribute;
-use vitality_core::schedule::EffectsSet;
-pub use vitality_effects::ResolverMode;
 use vitality_effects::{
     ConditionPlugin, EffectsPlugin, GlobalEffectPlugin, Stacks, init_effect_attribute,
 };
@@ -302,12 +280,12 @@ impl Plugin for AttributesPlugin {
     }
 }
 
-/// [`AttributesPlugin`] plus the attributes this game uses, and the resolver mode it runs.
+/// [`AttributesPlugin`] plus the attributes this game uses.
 ///
 /// ```
 /// use bevy::prelude::*;
 /// use vitality::prelude::*;
-/// use vitality::{ResolverMode, VitalityPlugin};
+/// use vitality::VitalityPlugin;
 ///
 /// attribute!(Health, f32);
 /// attribute!(Mana, f32);
@@ -316,10 +294,7 @@ impl Plugin for AttributesPlugin {
 /// app.add_plugins((
 ///     MinimalPlugins,
 ///     AssetPlugin::default(),
-///     // `resolver` inserts the mode before `build` adds the plugins, so every build-time read of
-///     // it — `EffectsPlugin`, `init_effect_attribute`, `init_attribute` — sees the same one
 ///     VitalityPlugin::new()
-///         .resolver(ResolverMode::Dag)
 ///         .attribute::<Health>()
 ///         .attribute::<Mana>(),
 /// ));
@@ -327,17 +302,11 @@ impl Plugin for AttributesPlugin {
 #[derive(Default)]
 pub struct VitalityPlugin {
     attributes: Vec<fn(&mut App)>,
-    resolver: Option<ResolverMode>,
 }
 
 impl VitalityPlugin {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    pub fn resolver(mut self, mode: ResolverMode) -> Self {
-        self.resolver = Some(mode);
-        self
     }
 
     pub fn attribute<T: Attribute>(mut self) -> Self {
@@ -352,9 +321,6 @@ impl Plugin for VitalityPlugin {
     }
 
     fn build(&self, app: &mut App) {
-        if let Some(mode) = self.resolver {
-            app.insert_resource(mode);
-        }
         app.add_plugins(AttributesPlugin);
         for register in &self.attributes {
             register(app);
@@ -372,16 +338,6 @@ pub fn init_attribute<T: Attribute>(app: &mut App) {
     init_core_attribute::<T>(app);
     init_effect_attribute::<T>(app);
 
+    // the resolver evaluates clamps inside its walk, so a clamp costs no schedule node of its own
     app.register_type::<Clamp<T>>();
-    // the DAG resolver evaluates clamps inside its walk
-    if vitality_effects::resolver_mode(app) == ResolverMode::Dag {
-        return;
-    }
-    app.add_systems(
-        FixedUpdate,
-        apply_clamps::<T>
-            .after(vitality_effects::systems::update_current_value_system::<T>)
-            .in_set(EffectsSet::UpdateCurrentValues),
-    );
-    app.add_observer(clamp_dependency_changed::<T>);
 }

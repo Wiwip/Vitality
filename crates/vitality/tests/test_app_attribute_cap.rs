@@ -34,13 +34,12 @@ cap_pool!(
     Attr118, Attr119, Attr120, Attr121, Attr122, Attr123, Attr124, Attr125, Attr126, Attr127
 );
 
-/// The app the crate-doc sentence describes: [`AttributesPlugin`] installed under `ResolverMode::Dag`,
-/// then `game` game attributes. Never ticked — the cap is a build-time counter, and registration is
+/// The app the crate-doc sentence describes: [`AttributesPlugin`] installed first, then `game` game
+/// attributes. Never ticked — the cap is a build-time counter, and registration is
 /// what `AttributesPlugin::build` and `init_attribute` do.
 fn app_with(game: usize) -> App {
     let mut app = App::new();
-    app.insert_resource(vitality::ResolverMode::Dag)
-        .add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
     for register in &GAME_ATTRIBUTES[..game] {
         register(&mut app);
     }

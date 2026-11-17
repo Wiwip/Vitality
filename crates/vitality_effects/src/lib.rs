@@ -23,16 +23,11 @@ use crate::definition::EffectDef;
 use crate::graph::NodeType;
 use crate::modifier::{
     ApplyAttributeModifierMessage, AttributeModifier, ModifierApplies, ModifierOf,
-    apply_all_modifier_events, apply_modifier_events, update_modifier_when_dependencies_changed,
+    apply_all_modifier_events,
 };
-use crate::periodic::{PeriodicApplies, apply_all_periodic_effects, apply_periodic_effect};
+use crate::periodic::{PeriodicApplies, apply_all_periodic_effects};
 use crate::registry::EffectRegistry;
 use crate::stacks::read_add_stack_event;
-use crate::systems::{
-    mark_actor_dirty_observer, mark_node_dirty_observer, on_add_attribute,
-    on_change_notify_attribute_dependencies, on_change_notify_attribute_parents, update_attribute,
-    update_current_value_system,
-};
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 use bevy::prelude::*;
 use vitality_core::attributes::Attribute;
@@ -48,7 +43,6 @@ pub use global_effect::*;
 pub use lifecycle::{
     EffectApplied, EffectBlocked, EffectRemovalReason, EffectRemoved, EffectStacksChanged,
 };
-pub use resolver::ResolverMode;
 pub use stacks::*;
 pub use targeting::EffectTargeting;
 pub use timing::*;
@@ -92,92 +86,54 @@ impl Plugin for EffectsPlugin {
         .add_observer(lifecycle::on_effect_removed)
         .add_message::<NotifyAddStackEvent>();
 
-        if resolver_mode(app) == ResolverMode::Dag {
-            app.init_resource::<resolver::ModifierRecalcs>()
-                .add_systems(
-                    FixedUpdate,
-                    resolver::resolve_system.in_set(EffectsSet::UpdateCurrentValues),
-                )
-                .add_observer(resolver::mark_actor_dirty_dag);
-            // the base writes land here, so the collapsed scan and the walk see them the same tick
-            app.add_systems(
+        app.init_resource::<resolver::ModifierRecalcs>()
+            .add_systems(
                 FixedUpdate,
-                apply_all_modifier_events
-                    .in_set(EffectsSet::UpdateBaseValues)
-                    .before(scan_base_writes),
-            );
-            // one node for every attribute, and it has to see a base write before the walk does
-            app.add_systems(
-                FixedUpdate,
-                scan_base_writes
-                    .in_set(EffectsSet::UpdateCurrentValues)
-                    .before(resolver::resolve_system),
-            );
-            // one node for every attribute again; the fire on the tick a duration expires still has
-            // to be written, so the expiry that despawns the effect cannot win the tick
-            app.add_systems(
-                FixedUpdate,
-                apply_all_periodic_effects
-                    .in_set(EffectsSet::Prepare)
-                    .after(tick_effect_tickers)
-                    .before(tick_effect_durations),
-            );
-        }
+                resolver::resolve_system.in_set(EffectsSet::UpdateCurrentValues),
+            )
+            .add_observer(resolver::mark_actor_dirty_dag);
+        // the base writes land here, so the collapsed scan and the walk see them the same tick
+        app.add_systems(
+            FixedUpdate,
+            apply_all_modifier_events
+                .in_set(EffectsSet::UpdateBaseValues)
+                .before(scan_base_writes),
+        );
+        // one node for every attribute, and it has to see a base write before the walk does
+        app.add_systems(
+            FixedUpdate,
+            scan_base_writes
+                .in_set(EffectsSet::UpdateCurrentValues)
+                .before(resolver::resolve_system),
+        );
+        // one node for every attribute again; the fire on the tick a duration expires still has
+        // to be written, so the expiry that despawns the effect cannot win the tick
+        app.add_systems(
+            FixedUpdate,
+            apply_all_periodic_effects
+                .in_set(EffectsSet::Prepare)
+                .after(tick_effect_tickers)
+                .before(tick_effect_durations),
+        );
     }
 }
 
-/// The resolver this app runs; insert a [`ResolverMode`] before adding the plugins to choose.
-pub fn resolver_mode(app: &App) -> ResolverMode {
-    app.world()
-        .get_resource::<ResolverMode>()
-        .copied()
-        .unwrap_or_default()
-}
-
-/// Registers the effect-side systems for an attribute — in DAG mode that is none at all: the
-/// collapsed nodes `EffectsPlugin::build` installed cover every attribute, and it only installed
-/// them if that build saw this same mode. Pair with `vitality_core::init_core_attribute`.
+/// Registers the effect-side per-attribute state for one attribute: the collapsed nodes
+/// `EffectsPlugin::build` installed cover every attribute, so this adds no system and no observer.
+/// Pair with `vitality_core::init_core_attribute`.
 pub fn init_effect_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<AttributeModifier<T>>();
     app.add_message::<ApplyAttributeModifierMessage<T>>();
 
-    if resolver_mode(app) == ResolverMode::Dag {
-        app.world_mut()
-            .get_resource_or_init::<resolver::ModifierRecalcs>()
-            .register::<T>();
-        app.world_mut()
-            .get_resource_or_init::<ModifierApplies>()
-            .register::<T>();
-        app.world_mut()
-            .get_resource_or_init::<PeriodicApplies>()
-            .register::<T>();
-        return;
-    }
-
-    app.add_systems(
-        FixedUpdate,
-        (
-            apply_periodic_effect::<T>
-                .in_set(EffectsSet::Prepare)
-                .after(tick_effect_tickers),
-            // A base write is marked here, ahead of the resolve, so the tick that writes a base value
-            // is the tick that resolves it. `Notify` runs last in the chain and would cost one tick.
-            (
-                apply_modifier_events::<T>,
-                on_change_notify_attribute_parents::<T>,
-                on_change_notify_attribute_dependencies::<T>,
-            )
-                .in_set(EffectsSet::UpdateBaseValues)
-                .chain(),
-            update_current_value_system::<T>.in_set(EffectsSet::UpdateCurrentValues),
-        ),
-    );
-
-    app.add_observer(mark_node_dirty_observer::<T>);
-    app.add_observer(mark_actor_dirty_observer::<T>);
-    app.add_observer(on_add_attribute::<T>);
-    app.add_observer(update_attribute::<T>);
-    app.add_observer(update_modifier_when_dependencies_changed::<T>);
+    app.world_mut()
+        .get_resource_or_init::<resolver::ModifierRecalcs>()
+        .register::<T>();
+    app.world_mut()
+        .get_resource_or_init::<ModifierApplies>()
+        .register::<T>();
+    app.world_mut()
+        .get_resource_or_init::<PeriodicApplies>()
+        .register::<T>();
 }
 
 /// Attribute view for code that also touches effect components in the same system.

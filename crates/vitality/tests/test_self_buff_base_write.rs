@@ -1,8 +1,9 @@
 //! D-56: a live self-targeted modifier (`source == target == owner`) does not follow a base write to
 //! the attribute it reads. The discriminator is not density, it is the *cadence* — the write lands on
 //! the tick right after the apply — and the *registration order*, since a dependent registered before
-//! its source follows fine (`Attr1 -> Attr0` follows, `Attr0 -> Attr1` does not). Only v1 loses it;
-//! under `VITALITY_RESOLVER=dag` it follows.
+//! its source follows fine (`Attr1 -> Attr0` follows, `Attr0 -> Attr1` does not). Only the deleted
+//! per-attribute resolver lost it, so what this pins is that the surviving resolver follows: the
+//! repro no longer reproduces.
 
 #[path = "../benches/support/common.rs"]
 mod common;
@@ -23,8 +24,7 @@ const WRITE: f64 = 100.0;
 const SETTLE: usize = 3;
 
 #[test]
-#[ignore = "D-56"]
-fn a_self_buff_written_the_tick_after_it_lands_loses_the_source_move() {
+fn a_self_buff_written_the_tick_after_it_lands_follows_the_source_move() {
     let spec = WorldSpec {
         attributes_per_actor: 2,
         effects_per_actor: 0,

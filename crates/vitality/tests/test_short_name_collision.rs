@@ -22,10 +22,8 @@ mod game_b {
 /// registration path. Called, not passed to `add_plugins`: two values of type `fn(&mut App)` carry
 /// one plugin type id, so bevy rejects the second before either attribute is registered.
 fn app_with(game: &[fn(&mut App)]) -> App {
-    // the collision is a registration-time insert, so the resolver mode plays no part in it
     let mut app = App::new();
-    app.insert_resource(vitality::ResolverMode::Dag)
-        .add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
     for register in game {
         register(&mut app);
     }

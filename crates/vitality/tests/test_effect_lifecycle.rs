@@ -268,28 +268,25 @@ fn a_fire_due_on_the_expiry_tick_beats_the_expiry() {
     );
 
     // what makes the number above hold is the schedule edge, not the applier: the collapsed periodic
-    // node has to write its fire before tick_effect_durations despawns the effect. v1 declares no
-    // such edge and leaves the tie-break open (D-53), so only the behaviour above is shared.
-    if mode() == vitality::ResolverMode::Dag {
-        // read off an app whose FixedUpdate never ran: running a schedule moves its systems out of the
-        // graph, so this panics on a ticked one; gameplay::app()'s one update only primes bevy's clock.
-        let built = gameplay::app();
-        let schedule = built
-            .world()
-            .resource::<bevy::ecs::schedule::Schedules>()
-            .get(bevy::app::FixedUpdate)
-            .expect("the harness app has no FixedUpdate schedule");
-        assert!(
-            ordered_before(
-                schedule,
-                "apply_all_periodic_effects",
-                "tick_effect_durations"
-            ),
-            "apply_all_periodic_effects is no longer ordered ahead of tick_effect_durations in \
-             FixedUpdate, which is what delivers the fire above; the edge lives in \
-             vitality_effects::EffectsPlugin's DAG branch.",
-        );
-    }
+    // node has to write its fire before tick_effect_durations despawns the effect.
+    // read off an app whose FixedUpdate never ran: running a schedule moves its systems out of the
+    // graph, so this panics on a ticked one; gameplay::app()'s one update only primes bevy's clock.
+    let built = gameplay::app();
+    let schedule = built
+        .world()
+        .resource::<bevy::ecs::schedule::Schedules>()
+        .get(bevy::app::FixedUpdate)
+        .expect("the harness app has no FixedUpdate schedule");
+    assert!(
+        ordered_before(
+            schedule,
+            "apply_all_periodic_effects",
+            "tick_effect_durations"
+        ),
+        "apply_all_periodic_effects is no longer ordered ahead of tick_effect_durations in \
+         FixedUpdate, which is what delivers the fire above; the edge lives in \
+         vitality_effects::EffectsPlugin's build.",
+    );
 }
 
 /// True if any `FixedUpdate` node whose name contains `from` has to run before one containing `to`,

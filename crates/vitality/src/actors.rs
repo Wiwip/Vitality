@@ -17,10 +17,10 @@ use vitality_effects::definition::EffectDef;
 use vitality_effects::graph::NodeType;
 use vitality_effects::{ApplyEffectEvent, EffectTargeting};
 
-use crate::clamp::{Clamp, mark_clamp_stale};
+use crate::clamp::Clamp;
 
-/// The clamp dependents of [`ActorDef`]; spelled out it sits over clippy's complexity limit.
-type ClampDependents = HashMap<TypeId, Vec<(TypeId, fn(&mut EntityCommands))>>;
+/// Per dependency key read by a clamp: the clamped attributes, so the resolver orders them last.
+type ClampDependents = HashMap<TypeId, Vec<TypeId>>;
 
 #[derive(Asset, TypePath)]
 pub struct ActorDef {
@@ -30,7 +30,7 @@ pub struct ActorDef {
     pub abilities: Vec<Handle<AbilityDef>>,
     pub effects: Vec<Handle<EffectDef>>,
 
-    /// Per dependency key read by a clamp: the clamped attribute and what marks its clamp stale.
+    /// Per dependency key read by a clamp: the clamped attributes.
     pub clamp_dependents: ClampDependents,
 }
 
@@ -124,7 +124,7 @@ fn register_clamp_edges(world: &mut World, def: &ActorDef) {
         else {
             continue;
         };
-        for (clamped_type, _) in clamped {
+        for clamped_type in clamped {
             if let Some(reader) = registry.id_of(*clamped_type) {
                 registry.add_edge(read, reader);
             }
@@ -197,7 +197,7 @@ impl ActorBuilder {
                 .clamp_dependents
                 .entry(dep)
                 .or_default()
-                .push((TypeId::of::<T>(), mark_clamp_stale::<T>));
+                .push(TypeId::of::<T>());
         }
 
         let bounds = ClampBounds::<T> {

@@ -4,7 +4,7 @@ use gameplay::*;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 
-/// v1 converges over a few ticks; the static-DAG resolver is meant to do it in the same tick.
+/// The resolver settles a cross-actor chain in the same tick; a few ticks still leaves room.
 const SETTLE: usize = 3;
 
 fn set_power(app: &mut bevy::prelude::App, actor: bevy::prelude::Entity, value: f32) {
@@ -138,9 +138,6 @@ fn a_chain_of_actors_converges() {
 
 #[test]
 fn the_dag_resolver_settles_a_chain_in_one_tick() {
-    if mode() != vitality::ResolverMode::Dag {
-        return;
-    }
     let mut app = app();
     let a = spawn(&mut app, hero_def());
     let b = spawn(&mut app, hero_def().with::<Power>(0.0));

@@ -14,11 +14,9 @@ fn count_fires(changed: Query<&Health, Changed<Health>>, mut fires: ResMut<Fires
     fires.0.push(changed.iter().count());
 }
 
-/// The harness app on the default resolver, plus a consumer system ordered after the resolve.
+/// The harness app, plus a consumer system ordered after the resolve.
 fn probe_app() -> App {
-    // this pin is about the Dag path, so it ignores VITALITY_RESOLVER; mode() is only the banner
-    let _ = mode();
-    let mut app = app_in(vitality::ResolverMode::Dag);
+    let mut app = app();
     app.init_resource::<Fires>();
     app.add_systems(
         FixedUpdate,

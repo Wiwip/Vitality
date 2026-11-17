@@ -1,11 +1,8 @@
 use crate::EffectTargeting;
 use crate::EffectsMut;
-use crate::EffectsRef;
 use crate::context::{EffectExprContext, EffectExprContextMut, EffectExprSchema};
 use crate::prelude::*;
 use crate::resolver::ModifierSlot;
-use crate::systems::MarkNodeDirty;
-use crate::{EffectSource, EffectTarget};
 use bevy::ecs::message::MessageCursor;
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
@@ -238,50 +235,6 @@ where
     }
 }
 
-#[derive(EntityEvent)]
-pub struct RecalculateExpression {
-    #[event_target]
-    pub modifier_entity: Entity,
-}
-
-/// When the attribute changes, update the values of dependent `AttributeModifier<T>`.
-pub fn update_modifier_when_dependencies_changed<T: Attribute>(
-    trigger: On<RecalculateExpression>,
-    proxies: Query<&DependencyProxyOf>,
-    mut modifiers: Query<(&mut AttributeModifier<T>, &ModifierOf)>,
-    effects: Query<(&EffectSource, &EffectTarget)>,
-    actors: Query<EffectsRef, (Without<AttributeModifier<T>>, Without<DependencyProxyOf>)>,
-    mut commands: Commands,
-) {
-    let modifier_entity = proxies
-        .get(trigger.modifier_entity)
-        .map_or(trigger.modifier_entity, |proxy| proxy.0);
-    let Ok((mut modifier, effect_id)) = modifiers.get_mut(modifier_entity) else {
-        return;
-    };
-    let Ok((source, target)) = effects.get(effect_id.0) else {
-        return;
-    };
-    // source == target is the common self-buff, and get_many rejects duplicates
-    let (Ok(source_ref), Ok(target_ref)) = (actors.get(source.0), actors.get(target.0)) else {
-        return;
-    };
-
-    let context = EffectExprContext {
-        target_actor: Some(target_ref),
-        source_actor: source_ref,
-        effect_holder: source_ref,
-    };
-
-    let new_val = modifier.expr.eval(&context);
-    modifier.value = new_val;
-
-    commands.trigger(MarkNodeDirty::<T> {
-        entity: effect_id.0,
-        phantom_data: Default::default(),
-    });
-}
-
 #[derive(Message)]
 pub struct ApplyAttributeModifierMessage<T: Attribute> {
     pub source_entity: Entity,
@@ -356,23 +309,6 @@ pub fn apply_all_modifier_events(world: &mut World, mut applies: Local<Vec<Modif
 
     for apply in applies.iter() {
         apply(world);
-    }
-}
-
-pub fn apply_modifier_events<T: Attribute>(
-    mut event_reader: MessageReader<ApplyAttributeModifierMessage<T>>,
-    mut attributes: Query<EffectsMut, Without<IsResource>>,
-    mut commands: Commands,
-) {
-    for ev in event_reader.read() {
-        match apply_modifier(ev, &mut attributes) {
-            Ok(true) => commands.trigger(MarkNodeDirty::<T> {
-                entity: ev.target_entity,
-                phantom_data: Default::default(),
-            }),
-            Err(err) => debug!("Failed to apply modifier {}. {}", ev.modifier, err),
-            _ => {}
-        }
     }
 }
 

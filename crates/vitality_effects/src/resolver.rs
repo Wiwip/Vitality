@@ -23,16 +23,6 @@ use vitality_core::registry::{
 /// Passes per tick before leftover cross-actor work waits for the next tick.
 pub const MAX_PASSES: usize = 4;
 
-/// Which resolver an app runs. Chosen before any attribute is registered.
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ResolverMode {
-    /// The original per-attribute systems and observers, kept for comparison.
-    PerAttribute,
-    /// One erased, actor-parallel resolve over a static attribute DAG.
-    #[default]
-    Dag,
-}
-
 /// The erased mirror of an `AttributeModifier<T>`, which is all a regather reads.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct ModifierSlot {
