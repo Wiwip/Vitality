@@ -16,6 +16,8 @@ Dependencies point one way: core <- effects <- abilities <- debug <- facade.
 vitality = { path = "crates/vitality", default-features = false } # drops the bevy_ui overlay
 ```
 
+Tested feature matrix: `--features dyn`, `--features multi_threaded`, `--features dyn,multi_threaded` and `--no-default-features` all pass `cargo test --offline --locked --workspace --lib --tests` on their own (`-p vitality`) and as `--workspace`; `--doc` is green in every combination but `dyn`, whose `dynamic_linking` doctest binaries cannot load `libstd.so` (D-22).
+
 ## Getting started
 
 ```rust,ignore

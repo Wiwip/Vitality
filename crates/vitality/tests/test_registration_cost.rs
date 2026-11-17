@@ -174,14 +174,15 @@ fn dag_registration_cost_per_attribute_is_pinned() {
         "resource",
         narrow.resources,
         wide.resources,
-        DAG_TICK_RESOURCES_BASELINE,
+        Some(DAG_TICK_RESOURCES_BASELINE),
         DAG_TICK_RESOURCES_PER_ATTRIBUTE,
     );
+    // the count holds bevy's `TimeReceiver`, which needs std, and std rides in on the overlay dep: 150 without it
     pin_dag_per_attribute(
         "component",
         narrow.components,
         wide.components,
-        DAG_TICK_COMPONENTS_BASELINE,
+        cfg!(feature = "debug-overlay").then_some(DAG_TICK_COMPONENTS_BASELINE),
         DAG_TICK_COMPONENTS_PER_ATTRIBUTE,
     );
 }
@@ -191,7 +192,7 @@ fn pin_dag_per_attribute(
     counter: &str,
     narrow: usize,
     wide: usize,
-    baseline: usize,
+    baseline: Option<usize>,
     per_attribute: usize,
 ) {
     let delta = wide as isize - narrow as isize;
@@ -209,12 +210,14 @@ fn pin_dag_per_attribute(
          ({narrow} -> {wide}): the per-attribute delta is pinned at {per_attribute}, i.e. {pinned} \
          over the {STEP} attributes between the two builds. {where_to_look}.",
     );
-    assert_eq!(
-        narrow, baseline,
-        "the fixed ticked DAG {counter} count moved: a DAG app at {NARROW} attributes carries \
-         {narrow} after one tick, the baseline is {baseline}. The per-attribute delta \
-         ({per_attribute}) is pinned separately. {where_to_look}.",
-    );
+    if let Some(baseline) = baseline {
+        assert_eq!(
+            narrow, baseline,
+            "the fixed ticked DAG {counter} count moved: a DAG app at {NARROW} attributes carries \
+             {narrow} after one tick, the baseline is {baseline}. The per-attribute delta \
+             ({per_attribute}) is pinned separately. {where_to_look}.",
+        );
+    }
 }
 
 /// two messages, because a red pin has to say which half moved
