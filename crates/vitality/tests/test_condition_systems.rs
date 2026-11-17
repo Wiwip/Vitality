@@ -204,7 +204,7 @@ fn test_dropping_conditions_clears_a_stale_inactive_marker() {
 
     app.world_mut()
         .run_system_once(
-            |mut defs: ResMut<Assets<EffectDef>>, mut rows: Query<&Effect>| {
+            |mut defs: ResMut<Assets<EffectDef>>, rows: Query<&Effect>| {
                 let handle = rows.single().unwrap().0.clone();
                 defs.get_mut(&handle).unwrap().activate_conditions.clear();
             },
