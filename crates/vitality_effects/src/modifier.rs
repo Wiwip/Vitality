@@ -1,6 +1,6 @@
 use crate::EffectTargeting;
 use crate::EffectsMut;
-use crate::context::{EffectExprContext, EffectExprContextMut, EffectExprSchema};
+use crate::context::{EffectExprContext, EffectExprSchema};
 use crate::prelude::*;
 use crate::resolver::ModifierSlot;
 use bevy::ecs::message::MessageCursor;
@@ -30,9 +30,6 @@ pub trait Modifier: Send + Sync {
         fires_on_a_timer: bool,
         commands: &mut EntityCommands,
     );
-
-    /// writes the attributes now, so an ability that activates twice cannot pay its cost twice
-    fn apply_immediate(&self, context: &mut EffectExprContextMut) -> bool;
 
     /// queues the write for the collapsed end-of-schedule node instead of touching the attribute now
     fn apply_delayed(
@@ -169,52 +166,6 @@ where
             );
         }
         commands.insert((modifier, slot, Name::new(shown)));
-    }
-    fn apply_immediate(&self, context: &mut EffectExprContextMut) -> bool {
-        let immutable_context = EffectExprContext {
-            source_actor: context.source_actor.as_readonly(),
-            target_actor: context.target_actor.as_ref().map(|v| v.as_readonly()),
-            effect_holder: context.effect_holder.as_readonly(),
-        };
-
-        let calc = AttributeCalculator::<T>::from_op(self.operation, self.value);
-
-        let attr_ref = match self.who {
-            EffectSubject::Target => immutable_context
-                .target_actor
-                .as_ref()
-                .unwrap_or(&immutable_context.source_actor),
-            EffectSubject::Source => &immutable_context.source_actor,
-            EffectSubject::Effect => &immutable_context.effect_holder,
-        };
-        let Some(attribute) = attr_ref.get::<T>() else {
-            return false;
-        };
-        let new_val = calc.eval(attribute.base_value());
-
-        let attributes_mut = match self.who {
-            EffectSubject::Target => &mut context
-                .target_actor
-                .as_mut()
-                .unwrap_or(&mut context.source_actor),
-            EffectSubject::Source => &mut context.source_actor,
-            EffectSubject::Effect => &mut context.effect_holder,
-        };
-        if let Some(mut attribute) = attributes_mut.get_mut::<T>() {
-            // Ensure that the modifier meaningfully changed the value before we trigger the event.
-            let has_changed = new_val.are_different(attribute.current_value());
-            if has_changed {
-                attribute.set_base_value(new_val);
-            }
-            has_changed
-        } else {
-            warn!(
-                "{} not found on the actor this modifier writes: that write is dropped, put the \
-                 component on the actor",
-                pretty_type_name::<T>()
-            );
-            false
-        }
     }
 
     fn apply_delayed(
