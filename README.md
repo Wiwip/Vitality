@@ -90,12 +90,11 @@ The contract, with what each break looks like from inside an app and the test th
 
 ## Performance
 
-From the `scenario` group of `crates/vitality/benches/bench_systems.rs`, measured at tip `7340cfb` on 2026-11-16 on a shared 8-core box (load 2.5-5.1; absolute values move ~10 % run to run). Shape: 10 000 actors, 20 attributes and 3 effects each.
+From the `scenario` group of `crates/vitality/benches/bench_systems.rs`, measured at tip `5866cd9` on 2026-11-17 on a shared 8-core box (start-of-run loadavg 3.2-3.8 on every quoted run; absolute values move ~10 % run to run). Shape: 10 000 actors, 20 attributes and 3 effects each.
 
-- `steady`, 10 % of the actors' attributes moved, single-threaded: roughly 1.1 ms a tick — 1.1325 / 1.1479 / 1.1436 ms over three runs, against the 2 ms target. Id `scenario/steady/actors=10000/a=20/e=3/st-static`.
-- `storm`, every attribute of every actor, with bevy's `multi_threaded`: roughly 7 ms — mean 7.19 ms, worst run 7.39 ms, worst upper bound 7.73 ms, against the 8 ms target, so it is met with nothing to spare. Id `scenario/storm/actors=10000/a=20/e=3/mt-static`.
-- Multi-threading is worth 1.28x on `storm`, nothing on `steady`, and it loses on the `idle` control.
-- Nothing was benched after that run, so the claim for the current tip rests on the dag tick's code path being unchanged since `7340cfb`.
+- `steady`, 10 % of the actors' attributes moved, single-threaded: 1.1425 / 1.1260 / 1.1950 ms over three runs, median 1.14 ms, 6 % spread — **inside the 2 ms ceiling**, and the slowest run the session produced at similar load (1.3255 ms) still leaves 34 %, so there is headroom. Id `scenario/steady/actors=10000/a=20/e=3/st-static`.
+- `storm`, every attribute of every actor, with bevy's `multi_threaded`: 7.3439 / 6.7178 / 6.6703 ms, median 6.72 ms, 10 % spread — **inside the 8 ms ceiling** by 8-20 %, but the runs sit on two levels 10 % apart and the slowest run of the session (7.5316 ms, upper bound 7.6262 ms) leaves 5 %, so it is met with nothing to spare. Id `scenario/storm/actors=10000/a=20/e=3/mt-static`.
+- Multi-threading is worth 1.28x on `storm`, nothing on `steady`, and it loses on the `idle` control. That pairing was taken at `7340cfb`; only the two ids above were re-taken at this tip.
 
 ## Running the benches
 
