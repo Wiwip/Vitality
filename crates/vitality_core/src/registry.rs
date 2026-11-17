@@ -94,10 +94,8 @@ pub struct AttrInfo {
     pub name: String,
     pub type_id: TypeId,
     pub ids: AttrComponents,
-    /// Recomputes current from base, the folded modifiers and the clamp, writing only on change.
-    /// None when the actor doesn't have the attribute.
+    /// recomputes current from base, the folded modifiers and the clamp, writing only on change; None when the actor doesn't have the attribute
     pub resolve: fn(&mut FilteredEntityMut, AttrComponents, &ErasedCalc) -> Option<Resolved>,
-    /// Modifier entities reading this attribute on the actor.
     pub dependents_of: fn(&FilteredEntityRef, AttrComponents, &mut Vec<Entity>),
     pub notify: fn(&mut Commands, Entity, f64, f64),
     /// Actors of this attribute whose base moved since the last scan, for [`scan_base_writes`].
@@ -201,7 +199,6 @@ pub struct AttributeRegistry {
     edges: HashSet<(AttrId, AttrId)>,
     /// Attributes in dependency order; an edge `a -> b` puts `a` first.
     order: Vec<AttrId>,
-    /// Per attribute, the attributes of the same actor that read it.
     readers: Vec<Vec<AttrId>>,
     cyclic: bool,
 }
@@ -355,10 +352,8 @@ impl AttrSet {
     }
 }
 
-/// What a mark asks of the resolver for one actor.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Mark {
-    /// Attributes whose current value must be recomputed.
     pub dirty: AttrSet,
     /// Attributes whose folded modifiers must be gathered again first.
     pub regather: AttrSet,
@@ -399,7 +394,6 @@ impl ResolveQueue {
             .append(batch);
     }
 
-    /// Everything about this actor's modifiers changed: regather and recompute every attribute.
     pub fn everything(&self, entity: Entity, attributes: usize) {
         let all = AttrSet::all(attributes);
         self.push(
@@ -420,7 +414,6 @@ impl ResolveQueue {
     }
 }
 
-/// Per-actor resolver state: the folded modifiers and the base each attribute was last resolved at.
 #[derive(Component, Default, Debug, Clone)]
 pub struct ModifierTable {
     pub calcs: Vec<ErasedCalc>,
@@ -456,15 +449,13 @@ type BaseScanQuery<T> = QueryState<
     (Changed<T>, With<crate::attributes::ManageAttributes>),
 >;
 
-/// The scan query of one attribute, kept as a resource so the collapsed scan pays nothing per
-/// attribute beyond building it once.
+/// kept as a resource so the collapsed scan pays nothing per attribute beyond building its query once
 #[derive(Resource)]
 struct BaseScanState<T: Attribute> {
     actors: BaseScanQuery<T>,
 }
 
-/// Marks `T` dirty on actors whose base moved since the last scan. A write that leaves the
-/// base where it was, including the resolver's own current-value write, costs a compare.
+/// marks `T` dirty on actors whose base moved since the last scan; a write that leaves the base where it was, including the resolver's own current-value write, costs a compare
 fn base_write_scan<T: Attribute>(world: &mut World, id: AttrId, out: &mut Vec<(Entity, AttrId)>) {
     if !world.contains_resource::<BaseScanState<T>>() {
         let actors = world.query_filtered();
@@ -480,8 +471,7 @@ fn base_write_scan<T: Attribute>(world: &mut World, id: AttrId, out: &mut Vec<(E
     });
 }
 
-/// One node for every attribute: asks each registered attribute for the actors whose base moved,
-/// so the base-write scan does not add a schedule node per attribute.
+/// one node for every attribute, so the base-write scan adds no schedule node of its own per attribute
 pub fn scan_base_writes(world: &mut World, mut batch: Local<Vec<(Entity, AttrId)>>) {
     let scans: Vec<_> = world
         .resource::<AttributeRegistry>()
@@ -531,9 +521,7 @@ mod tests {
         Attr120, Attr121, Attr122, Attr123, Attr124, Attr125, Attr126, Attr127, Attr128
     );
 
-    /// Attribute 129 has no index to hand out, and the refusal has to name what it refused.
-    /// `catch_unwind` cannot read the payload back here: the dev profile builds with cranelift,
-    /// which lets a caught panic escape the catch, so `should_panic` matches the message.
+    /// attribute 129 has no index to hand out and the refusal has to name it; a caught panic escapes `catch_unwind` in the cranelift dev build, so `should_panic` matches the message
     #[test]
     #[should_panic(
         expected = "register Attr128: the attribute registry holds at most 128 attributes"

@@ -47,8 +47,7 @@ where
 /// The `Node` an attribute read compiles to; spelled out it sits over clippy's complexity limit.
 type AttributeNode<A, P, C, Role> = Node<P, C, AttributeVar<A, P, C, Role>>;
 
-/// The setter half of an assignment step, named so `add`/`sub`/`set` do not spell a bare `impl Fn`
-/// in return position. Blanket-implemented, so it constrains nothing the bare form did not.
+/// the setter half of an assignment step, named so `add`/`sub`/`set` don't spell a bare `impl Fn` in return position
 pub trait Setter<P, C: ContextMut>:
     Fn(&mut C::ContextItemMut<'_, '_>, P) + 'static + Send + Sync
 {
@@ -76,7 +75,6 @@ where
     fn val(&self) -> Self::Property;
     fn set_current_value(&mut self, value: Self::Property);
 
-    // Helper to wrap attribute access in an Expression
     fn src<C>() -> AttributeNode<Self, Self::Property, C, Source>
     where
         C: Context,
@@ -334,8 +332,7 @@ macro_rules! tag {
 #[require(crate::registry::ModifierTable)]
 pub struct ManageAttributes;
 
-/// Bounds on an attribute's base and current value, kept up to date by the facade from the
-/// actor definition's clamp expressions.
+/// bounds on an attribute's base and current value, kept up to date by the facade from the actor definition's clamp expressions
 #[derive(Component, Default, Debug, Clone, Reflect)]
 #[reflect(Component, from_reflect = false)]
 pub struct Clamp<T: Attribute> {
@@ -447,8 +444,7 @@ thread_local! {
     static RECORDED: std::cell::RefCell<HashSet<TypeId>> = std::cell::RefCell::new(HashSet::new());
 }
 
-/// Runs `f` and returns the dependency keys of every attribute it read. express-it's operator
-/// nodes don't forward `get_dependencies`, so a composite expression only reports through this.
+/// express-it's operator nodes don't forward `get_dependencies`, so a composite expression only reports its reads through here
 pub fn record_dependencies<R>(f: impl FnOnce() -> R) -> (R, HashSet<TypeId>) {
     let was_recording = RECORDING.replace(true);
     let out = f();
@@ -500,7 +496,6 @@ impl<T, N: fmt::Display, C: Context, Role> fmt::Display for AttributeVar<T, N, C
     }
 }
 
-/// What are the attributes the modifier depends on?
 #[derive(Component, Reflect, Debug)]
 #[relationship(relationship_target = AttributeDependents<T>)]
 pub struct AttributeDependency<T: Attribute + 'static> {
@@ -518,8 +513,6 @@ impl<T: Attribute> AttributeDependency<T> {
     }
 }
 
-/// Usually on actors. Who depends on this entity and for what attributes?
-/// Serves to notify derived modifiers that the attribute has changed.
 #[derive(Component, Reflect, Debug)]
 #[relationship_target(relationship = AttributeDependency<T>)]
 pub struct AttributeDependents<T: Attribute + 'static> {

@@ -4,8 +4,7 @@ use bevy::ecs::world::{EntityMutExcept, EntityRefExcept, FilteredEntityMut, Filt
 use bevy::prelude::{Entity, Mut};
 use std::any::TypeId;
 
-/// Read access to one entity's attributes. Each crate picks its own exclusion list, so the
-/// view type stays local to the crate that owns the components it excludes.
+/// each crate picks its own exclusion list, so the view type stays local to the crate that owns the components it excludes
 pub trait ActorRead {
     fn id(&self) -> Entity;
     fn get<C: Component>(&self) -> Option<&C>;
@@ -20,8 +19,7 @@ impl<B: Bundle> ActorRead for EntityRefExcept<'_, '_, B> {
     fn id(&self) -> Entity {
         EntityRefExcept::id(self)
     }
-    // the query state resolved the bundle's ids into `access` once; the inherent `get` looks every
-    // one of them up in `Components` again on each read
+    // the query state resolved the bundle's ids into `access` once; the inherent `get` looks every one of them up in `Components` again on each read
     fn get<C: Component>(&self) -> Option<&C> {
         FilteredEntityRef::from(self).get::<C>()
     }

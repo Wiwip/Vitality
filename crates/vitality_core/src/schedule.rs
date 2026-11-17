@@ -1,8 +1,5 @@
 use bevy::prelude::SystemSet;
 
-// PreUpdate
-// Tick effects and remove those that expired
-
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum EffectsSet {
     // Runs first. (empty by default)
@@ -13,7 +10,6 @@ pub enum EffectsSet {
     UpdateBaseValues,
     // Traverse the dirty effects tree and updates current values
     UpdateCurrentValues,
-    // Notify
     Notify,
     // Runs last. (empty by default)
     Last,

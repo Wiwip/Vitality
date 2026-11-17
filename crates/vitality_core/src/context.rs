@@ -6,7 +6,6 @@ pub struct Source;
 pub struct Target;
 pub struct Caster;
 
-// A trait for contexts that have a "Source" or primary actor
 pub trait ActorProvider<'a, 'b, Role> {
     type ActorRef: ActorRead;
     fn get_actor(&self) -> &Self::ActorRef;
@@ -16,9 +15,6 @@ pub trait ActorProviderMut<'a, 'b, Role> {
     fn get_actor_mut(&mut self) -> &mut Self::ActorMut;
 }
 
-/*********************************************************
- * Actor
- *********************************************************/
 pub struct ActorExprSchema;
 impl Context for ActorExprSchema {
     type ContextItem<'w, 's> = ActorExprContext<'w, 's>;

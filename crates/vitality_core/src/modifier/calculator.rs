@@ -55,17 +55,11 @@ impl<T: Attribute> AttributeCalculator<T> {
             return set;
         }
 
-        // Additions/Substraction
         let addition_result: T::Property = base_value.saturating_add(self.additive);
         let subtraction_result: f64 = addition_result.saturating_sub(self.subtractive).as_();
-
-        // Increase and Decrease
         let add_multi_result = subtraction_result * (1.0 + self.increase);
-
-        // Apply multipliers
         let result = add_multi_result * self.multiplier;
 
-        // Clamp the result to property's min/max values
         let min = T::Property::min_value();
         let max = T::Property::max_value();
 
@@ -77,17 +71,10 @@ impl<T: Attribute> AttributeCalculator<T> {
     }
 
     pub fn combine(self, other: AttributeCalculator<T>) -> AttributeCalculator<T> {
-        // If either has a set value, the last one wins (or you could define other logic)
         let set = self.set.or(other.set);
-
-        // Combine additive values
         let additive = self.additive + other.additive;
         let subtractive = self.subtractive + other.subtractive;
-
-        // Combine increased values (they stack additively)
         let increase = self.increase + other.increase;
-
-        // Combine more values (they stack multiplicatively)
         let multiplier = self.multiplier * other.multiplier;
 
         AttributeCalculator::<T> {
@@ -99,11 +86,6 @@ impl<T: Attribute> AttributeCalculator<T> {
         }
     }
 
-    /// Combines another AttributeCalculator into this one in-place.
-    /// - set: Uses this calculator's set value if present, otherwise uses other's
-    /// - additive: Adds other's additive value to this one
-    /// - increased: Adds other's increased value to this one
-    /// - more: Multiplies this calculator's more value by other's
     pub fn combine_in_place(&mut self, other: &AttributeCalculator<T>) {
         self.set = self.set.or(other.set);
         self.additive += other.additive;

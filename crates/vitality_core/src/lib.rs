@@ -43,8 +43,7 @@ pub mod prelude {
 #[derive(Resource, Default)]
 struct InstalledPlugins(bevy::platform::collections::HashSet<TypeId>);
 
-/// True the first time it is called for `P` in this app; vitality plugins use it so adding
-/// one twice, or after a plugin that already brings it, is a no-op instead of a panic.
+/// true the first time it is called for `P`, so a plugin added twice or after one that already brings it is a no-op instead of a panic
 pub fn first_install<P: 'static>(app: &mut App) -> bool {
     app.world_mut()
         .get_resource_or_init::<InstalledPlugins>()
@@ -95,7 +94,6 @@ pub struct AppAttributeBindings {
     pub internal: Arc<RwLock<AttributeBindings>>,
 }
 
-/// Which actor of an expression's context a dependency reads from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DepRole {
     Source,
@@ -108,7 +106,6 @@ pub struct DepBinding {
     pub role: DepRole,
     /// The attribute's own type id, shared by all of its role keys.
     pub attribute: TypeId,
-    /// Makes the modifier entity being built a dependent of `T` on the given actor.
     pub insert: fn(Entity, &mut EntityCommands),
 }
 
@@ -145,7 +142,6 @@ impl AttributeBindings {
         self.dependencies.get(type_id).copied()
     }
 
-    // Binds the AttributeId to a specific TypeId used for reflection
     fn bind_type_id<T: 'static>(&mut self) {
         let type_id = TypeId::of::<T>();
         let name = pretty_type_name::<T>();
@@ -169,7 +165,6 @@ impl AttributeBindings {
         };
     }
 
-    // Inserts dependency injection closures
     fn dependency_fn<T: Attribute>(entity: Entity, commands: &mut EntityCommands) {
         commands.insert(AttributeDependency::<T>::new(entity));
     }
@@ -186,7 +181,6 @@ pub fn init_core_attribute<T: Attribute>(app: &mut App) {
             registry.register::<T>(world);
         });
 
-    // Register u64->TypeId bindings for expressions
     app.world_mut()
         .resource_mut::<AppAttributeBindings>()
         .internal
