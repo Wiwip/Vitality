@@ -12,7 +12,8 @@ use gameplay::*;
 use vitality::CurrentValueChanged;
 use vitality::actors::ActorBuilder;
 use vitality::attributes::Attribute;
-use vitality::effect::modifier::ModOp;
+use vitality::effect::EffectBuilder;
+use vitality::effect::modifier::{EffectSubject, ModOp};
 
 /// the event is not `Clone`, so the harness' `record` cannot hold it
 #[derive(Resource, Default)]
@@ -104,6 +105,44 @@ fn modify_base_on_an_attribute_the_actor_does_not_carry_changes_nothing() {
         fires(&app).is_empty(),
         "the dropped write says nothing: {:?}",
         fires(&app)
+    );
+}
+
+/// A NaN base write is a write like any other: it lands, and the dependents recomputed from it land
+/// on NaN too while an attribute that does not read the source stays finite.
+#[test]
+fn a_nan_base_write_lands_and_reaches_the_attributes_that_read_it() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    let scaling = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Armor>(Power::src(), ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+    apply(&mut app, hero, hero, &scaling);
+    ticks(&mut app, 1);
+    assert!(
+        current::<Armor>(&app, hero).is_finite(),
+        "Armor is finite before the write, so what follows is about the cascade"
+    );
+
+    with_vitality(&mut app, move |v| {
+        v.modify_base::<Power>(hero, ModOp::Set, f32::NAN);
+    });
+    ticks(&mut app, 1);
+
+    assert!(
+        current::<Power>(&app, hero).is_nan(),
+        "the NaN has to land on the attribute it was written to"
+    );
+    assert!(
+        current::<Armor>(&app, hero).is_nan(),
+        "Armor is recomputed from Power, so the NaN has to ride the cascade"
+    );
+    assert!(
+        current::<Health>(&app, hero).is_finite(),
+        "Health does not read Power, so the NaN must not reach it"
     );
 }
 
