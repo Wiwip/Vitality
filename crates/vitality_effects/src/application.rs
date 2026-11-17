@@ -324,8 +324,6 @@ pub(crate) fn apply_effect_event_observer(
         return;
     }
 
-    trigger.cleanse(effect, applied, &ctx.effect_tags, &mut commands);
-
     if effect.application_policy == EffectApplicationPolicy::Instant {
         if !effect
             .activate_conditions
@@ -334,6 +332,7 @@ pub(crate) fn apply_effect_event_observer(
         {
             return;
         }
+        trigger.cleanse(effect, applied, &ctx.effect_tags, &mut commands);
         for modifier in &effect.modifiers {
             modifier.apply_delayed(source, target, trigger.entity, &mut commands);
         }
@@ -347,12 +346,14 @@ pub(crate) fn apply_effect_event_observer(
     }
 
     if trigger.queue_stacked_effect(effect, applied, &ctx.effects, &mut writer) {
+        trigger.cleanse(effect, applied, &ctx.effect_tags, &mut commands);
         return;
     }
 
     if let Some(effect_entity) =
         trigger.spawn_persistent_effect(&mut commands, effect, &context, &ctx.type_bindings)
     {
+        trigger.cleanse(effect, applied, &ctx.effect_tags, &mut commands);
         commands.trigger(MarkActorDirty { entity: target });
         commands.trigger(EffectApplied {
             entity: target,
