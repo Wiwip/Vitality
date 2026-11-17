@@ -44,6 +44,20 @@ fn evaluate_effect_conditions(
 ) {
     for (effect_entity_ref, effect, source, target, status) in query.iter_mut() {
         let effect_entity = effect_entity_ref.id();
+        let Some(effect) = effects.get(&effect.0) else {
+            error!(
+                "Effect {} has no effect definition.",
+                effect_entity_ref.id()
+            );
+            continue;
+        };
+
+        // an empty list is always active and this system is the only writer of EffectInactive, so a row
+        // without a marker has nothing to decide; a stale marker has to fall through to the removal below
+        if effect.activate_conditions.is_empty() && status.is_none() {
+            continue;
+        }
+
         let Ok(source_actor_ref) = parents.get(source.get()) else {
             error!(
                 "Effect {} has no parent entity {}.",
@@ -57,14 +71,6 @@ fn evaluate_effect_conditions(
                 "Effect {} has no target entity {}.",
                 effect_entity_ref.id(),
                 target.get()
-            );
-            continue;
-        };
-
-        let Some(effect) = effects.get(&effect.0) else {
-            error!(
-                "Effect {} has no effect definition.",
-                effect_entity_ref.id()
             );
             continue;
         };
