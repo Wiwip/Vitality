@@ -2,14 +2,16 @@ use crate::EffectsRef;
 use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
 use crate::modifier::{ApplyAttributeModifierMessage, AttributeModifier, OwnedModifiers};
+use crate::resolver::ModifierSlot;
 use crate::{Effect, EffectSource, EffectTarget, EffectTicker, Stacks};
 use bevy::ecs::resource::IsResource;
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use std::any::TypeId;
 use vitality_core::attributes::Attribute;
 
-/// fires one attribute's periodic effects; [`PeriodicApplies`] holds one per registered attribute so periodic application costs a single `FixedUpdate` node
-type PeriodicApply = fn(&mut World);
+/// fires one attribute's due writes; [`PeriodicApplies`] holds one per registered attribute so periodic application costs a single `FixedUpdate` node
+type PeriodicApply = fn(&mut World, &[DueModifier]);
 
 #[derive(Resource, Default)]
 pub struct PeriodicApplies(Vec<(TypeId, PeriodicApply)>);
@@ -37,40 +39,52 @@ type PeriodicEffectRow<'w, 's> = (
     &'w EffectSource,
 );
 
-/// kept as a resource so the collapsed node pays nothing per attribute beyond building its queries once
-#[derive(Resource)]
-struct PeriodicState<T: Attribute> {
-    actors: QueryState<EffectsRef<'static, 'static>, Without<IsResource>>,
-    effects: QueryState<PeriodicEffectRow<'static, 'static>, Without<IsResource>>,
-    modifiers: QueryState<&'static AttributeModifier<T>>,
+/// one write a due effect owes, with the verdict behind it already taken
+#[derive(Clone, Copy)]
+struct DueModifier {
+    source: Entity,
+    target: Entity,
+    effect: Entity,
+    stacks: u32,
+    modifier: Entity,
 }
 
-/// the collapsed periodic node for one attribute, driven from world state instead of system params
-fn apply_periodic_effects_of<T: Attribute>(world: &mut World) {
-    if !world.contains_resource::<PeriodicState<T>>() {
-        let actors = world.query_filtered();
-        let effects = world.query_filtered();
-        let modifiers = world.query();
-        world.insert_resource(PeriodicState::<T> {
-            actors,
-            effects,
-            modifiers,
-        });
-    }
+/// kept as a resource so the collapsed node walks the tick table once per tick instead of once per attribute
+#[derive(Resource)]
+struct PeriodicPass {
+    actors: QueryState<EffectsRef<'static, 'static>, Without<IsResource>>,
+    effects: QueryState<PeriodicEffectRow<'static, 'static>, Without<IsResource>>,
+    slots: QueryState<&'static ModifierSlot>,
+    applies: Vec<(TypeId, PeriodicApply)>,
+    /// attribute type -> bucket of `buckets`, rebuilt when an attribute registers
+    index: HashMap<TypeId, usize>,
+    buckets: Vec<Vec<DueModifier>>,
+}
 
-    // the fires ride out of the world so the queries can hold it at the same time
-    let fired = world.resource_scope(|world, mut state: Mut<PeriodicState<T>>| {
+impl PeriodicPass {
+    fn collect(&mut self, world: &mut World) {
+        if self.index.len() != self.applies.len() {
+            self.index.clear();
+            self.buckets.clear();
+            for (index, (attribute, _)) in self.applies.iter().enumerate() {
+                self.index.insert(*attribute, index);
+                self.buckets.push(Vec::new());
+            }
+        }
+        for bucket in &mut self.buckets {
+            bucket.clear();
+        }
+
         // no assets means no definitions, and a panic here would cost every attribute its tick
         let Some(assets) = world.get_resource::<Assets<EffectDef>>() else {
-            return Vec::new();
+            return;
         };
-        let state = &mut *state;
         // get_manual reads the cached archetypes, so refresh them the way a system param would
-        state.actors.update_archetypes(world);
-        state.modifiers.update_archetypes(world);
-        let mut fired = Vec::new();
+        self.actors.update_archetypes(world);
+        self.effects.update_archetypes(world);
+        self.slots.update_archetypes(world);
         for (effect_ref, effect, stacks, timer, owned_modifiers, target, source) in
-            state.effects.iter(world)
+            self.effects.iter(world)
         {
             if !timer.just_finished() {
                 continue;
@@ -85,8 +99,8 @@ fn apply_periodic_effects_of<T: Attribute>(world: &mut World) {
                 continue;
             };
             let (Ok(source_actor_ref), Ok(target_actor_ref)) = (
-                state.actors.get_manual(world, source.0),
-                state.actors.get_manual(world, target.0),
+                self.actors.get_manual(world, source.0),
+                self.actors.get_manual(world, target.0),
             ) else {
                 continue;
             };
@@ -107,18 +121,49 @@ fn apply_periodic_effects_of<T: Attribute>(world: &mut World) {
             }
 
             for children in owned_modifiers.iter() {
-                let Ok(attribute_modifier) = state.modifiers.get_manual(world, children) else {
+                // the slot says whose queue the write belongs to, so no attribute tries every modifier
+                let Ok(slot) = self.slots.get_manual(world, children) else {
                     continue;
                 };
-
-                fired.push(ApplyAttributeModifierMessage {
-                    source_entity: source.0,
-                    target_entity: target.0,
-                    effect_entity: effect_ref.id(),
-                    modifier: attribute_modifier.clone(),
+                let Some(&index) = self.index.get(&slot.attribute) else {
+                    continue;
+                };
+                self.buckets[index].push(DueModifier {
+                    source: source.0,
+                    target: target.0,
+                    effect: effect_ref.id(),
                     stacks: stacks.current_value(),
+                    modifier: children,
                 });
             }
+        }
+    }
+}
+
+/// the attribute's own share of this tick's fires, so it never reads another attribute's effects
+fn apply_periodic_effects_of<T: Attribute>(world: &mut World, due: &[DueModifier]) {
+    if !world.contains_resource::<PeriodicState<T>>() {
+        let modifiers = world.query();
+        world.insert_resource(PeriodicState::<T> { modifiers });
+    }
+
+    // the fires ride out of the world so the query can hold it at the same time
+    let fired = world.resource_scope(|world, mut state: Mut<PeriodicState<T>>| {
+        let state = &mut *state;
+        state.modifiers.update_archetypes(world);
+        let mut fired = Vec::new();
+        for item in due {
+            let Ok(attribute_modifier) = state.modifiers.get_manual(world, item.modifier) else {
+                continue;
+            };
+
+            fired.push(ApplyAttributeModifierMessage {
+                source_entity: item.source,
+                target_entity: item.target,
+                effect_entity: item.effect,
+                modifier: attribute_modifier.clone(),
+                stacks: item.stacks,
+            });
         }
         fired
     });
@@ -132,14 +177,41 @@ fn apply_periodic_effects_of<T: Attribute>(world: &mut World) {
 }
 
 /// asks each registered attribute to fire the periodic effects that are due, so a periodic effect costs one schedule node however many attributes the app has
-pub fn apply_all_periodic_effects(world: &mut World, mut applies: Local<Vec<PeriodicApply>>) {
-    let Some(registry) = world.get_resource::<PeriodicApplies>() else {
+pub fn apply_all_periodic_effects(world: &mut World) {
+    if !world.contains_resource::<PeriodicApplies>() {
         return;
-    };
-    applies.clear();
-    applies.extend(registry.0.iter().map(|(_, apply)| *apply));
-
-    for apply in applies.iter() {
-        apply(world);
     }
+    if !world.contains_resource::<PeriodicPass>() {
+        let actors = world.query_filtered();
+        let effects = world.query_filtered();
+        let slots = world.query();
+        world.insert_resource(PeriodicPass {
+            actors,
+            effects,
+            slots,
+            applies: Vec::new(),
+            index: HashMap::default(),
+            buckets: Vec::new(),
+        });
+    }
+
+    world.resource_scope(|world, mut pass: Mut<PeriodicPass>| {
+        let registry = world.resource::<PeriodicApplies>();
+        pass.applies.clear();
+        pass.applies.extend(registry.0.iter().copied());
+
+        pass.collect(world);
+        for (index, (_, apply)) in pass.applies.iter().enumerate() {
+            let due = &pass.buckets[index];
+            if !due.is_empty() {
+                apply(world, due);
+            }
+        }
+    });
+}
+
+/// kept as a resource so the collapsed node pays nothing per attribute beyond building its query once
+#[derive(Resource)]
+struct PeriodicState<T: Attribute> {
+    modifiers: QueryState<&'static AttributeModifier<T>>,
 }

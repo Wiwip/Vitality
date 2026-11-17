@@ -45,15 +45,17 @@ const DAG_SYSTEMS_BASELINE: usize = 46;
 const DAG_OBSERVERS_BASELINE: usize = 12;
 
 /// the per-attribute query states the collapsed nodes only install on first use, so an at-rest
-/// counter cannot see them
-const DAG_TICK_RESOURCES_BASELINE: usize = 69;
-const DAG_TICK_RESOURCES_PER_ATTRIBUTE: usize = 4;
+/// counter cannot see them. The periodic applier is the odd one: its per-attribute state appears for
+/// an attribute that has a fire, so a world where nothing ticks carries three resources per
+/// attribute plus the once-per-app `PeriodicPass` the collapsed node installs.
+const DAG_TICK_RESOURCES_BASELINE: usize = 67;
+const DAG_TICK_RESOURCES_PER_ATTRIBUTE: usize = 3;
 
 /// exact, so a component the DAG branch starts registering per attribute is red here
-const DAG_TICK_COMPONENTS_BASELINE: usize = 150;
+const DAG_TICK_COMPONENTS_BASELINE: usize = 144;
 /// the same world counted without `debug-overlay`, one component lighter
-const DAG_TICK_COMPONENTS_BASELINE_NO_OVERLAY: usize = 149;
-const DAG_TICK_COMPONENTS_PER_ATTRIBUTE: usize = 10;
+const DAG_TICK_COMPONENTS_BASELINE_NO_OVERLAY: usize = 143;
+const DAG_TICK_COMPONENTS_PER_ATTRIBUTE: usize = 8;
 
 fn spec(attributes: usize) -> WorldSpec {
     WorldSpec {
@@ -207,8 +209,10 @@ fn pin_dag_per_attribute(
          `init_effect_attribute` adds (vitality_effects/src/lib.rs) and the query states the \
          collapsed nodes install on first use: the base-write scan \
          (base_write_scan, vitality_core/src/registry.rs), the instant apply \
-         (apply_queued_modifiers_of, vitality_effects/src/modifier.rs) and the periodic apply \
-         (apply_periodic_effects_of, vitality_effects/src/periodic.rs); the lists those nodes \
+         (apply_queued_modifiers_of, vitality_effects/src/modifier.rs) and, for an attribute that \
+         has a fire this tick, the periodic apply (apply_periodic_effects_of, \
+         vitality_effects/src/periodic.rs); the fixed part carries the tick table the periodic node \
+         walks once per tick (PeriodicPass, vitality_effects/src/periodic.rs). The lists those nodes \
          walk are built in init_effect_attribute (vitality_effects/src/lib.rs)";
     assert_eq!(
         delta, pinned,
