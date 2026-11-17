@@ -84,6 +84,9 @@ impl EntityCommand for SpawnActorCommand {
 
                 register_clamp_edges(world, actor_def);
 
+                // a starting effect reads the actor, so its attributes have to be on it already
+                queue.apply(world);
+
                 for effect in actor_def.effects.iter() {
                     world.trigger(ApplyEffectEvent {
                         entity: actor_entity,
@@ -91,9 +94,6 @@ impl EntityCommand for SpawnActorCommand {
                         handle: effect.clone(),
                     });
                 }
-
-                // Queue the commands for deferred application
-                world.commands().append(&mut queue);
             });
         });
     }

@@ -219,6 +219,26 @@ fn an_effect_that_loses_its_source_reports_despawned() {
     assert_eq!(current::<Power>(&app, hero), 10.0, "the buff dies with it");
 }
 
+#[test]
+fn a_starting_effect_reads_the_attributes_the_builder_gave() {
+    let mut app = app();
+    let starting = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Health>(Power::src(), ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+
+    let hero = spawn(&mut app, hero_def().with_effect(&starting));
+    ticks(&mut app, 1);
+
+    assert_eq!(
+        current::<Health>(&app, hero),
+        110.0,
+        "a starting effect reads the Power the builder put on the actor",
+    );
+}
+
 /// Period of the ticker: 0.25 s is 16 of the harness' 1/64 s ticks.
 const PERIOD: f32 = 0.25;
 
