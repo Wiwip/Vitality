@@ -39,7 +39,7 @@ fn dag_app(attributes: usize) -> App {
 }
 
 /// exact, both directions: a fourth once-per-app node `EffectsPlugin` would add is a +1 here
-const DAG_SYSTEMS_BASELINE: usize = 46;
+const DAG_SYSTEMS_BASELINE: usize = 45;
 
 /// an observer is not a schedule node, so only this counter can see one
 const DAG_OBSERVERS_BASELINE: usize = 12;
@@ -52,9 +52,9 @@ const DAG_TICK_RESOURCES_BASELINE: usize = 67;
 const DAG_TICK_RESOURCES_PER_ATTRIBUTE: usize = 3;
 
 /// exact, so a component the DAG branch starts registering per attribute is red here
-const DAG_TICK_COMPONENTS_BASELINE: usize = 144;
+const DAG_TICK_COMPONENTS_BASELINE: usize = 142;
 /// the same world counted without `debug-overlay`, one component lighter
-const DAG_TICK_COMPONENTS_BASELINE_NO_OVERLAY: usize = 143;
+const DAG_TICK_COMPONENTS_BASELINE_NO_OVERLAY: usize = 141;
 const DAG_TICK_COMPONENTS_PER_ATTRIBUTE: usize = 8;
 
 fn spec(attributes: usize) -> WorldSpec {

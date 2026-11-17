@@ -6,14 +6,9 @@ use crate::tasks::Tasks;
 use bevy::ecs::template::TemplateContext;
 use bevy::prelude::*;
 use hfsm_bevy::MachineInstance;
-use num_traits::{AsPrimitive, Num};
 use std::error::Error;
 use std::fmt::Formatter;
 use std::marker::PhantomPinned;
-use std::time::Duration;
-use vitality_core::attributes::ReflectAccessAttribute;
-use vitality_core::modifier::AttributeCalculatorCached;
-use vitality_effects::prelude::Attribute;
 
 #[derive(Component, Clone, Reflect, Debug)]
 #[relationship(relationship_target = GrantedAbilities)]
@@ -37,7 +32,7 @@ impl GrantedAbilities {
 
 #[derive(Component, Clone, Reflect)]
 #[reflect(Component)]
-#[require(Tasks, AbilityRecovery, AbilityEnding, MachineInstance<AbilityMachine>)]
+#[require(Tasks, AbilityEnding, MachineInstance<AbilityMachine>)]
 pub struct Ability {
     pub handle: Handle<AbilityDef>,
 }
@@ -140,66 +135,3 @@ impl std::fmt::Display for AbilityError {
 }
 
 impl Error for AbilityError {}
-
-#[derive(Component, Debug, Copy, Clone, Reflect, Default)]
-#[require(AttributeCalculatorCached<AbilityRecovery>)]
-#[reflect(Component, AccessAttribute)]
-pub struct AbilityRecovery {
-    duration: Duration,
-    folded_base: Option<f32>,
-}
-
-impl AbilityRecovery {
-    pub fn tick(&mut self, delta: Duration) {
-        self.duration += delta;
-    }
-}
-
-impl Attribute for AbilityRecovery {
-    type Property = f32;
-
-    fn new<T>(value: T) -> Self
-    where
-        T: Num + AsPrimitive<Self::Property> + Copy,
-    {
-        Self {
-            duration: Duration::from_secs_f32(value.as_()),
-            folded_base: None,
-        }
-    }
-    fn base_value(&self) -> f32 {
-        self.duration.as_secs_f32()
-    }
-    fn base(&self) -> f32 {
-        self.duration.as_secs_f32()
-    }
-    fn set_base_value(&mut self, value: f32) {
-        self.duration = Duration::from_secs_f32(value);
-    }
-    fn folded_base(&self) -> Option<f32> {
-        self.folded_base
-    }
-    fn set_folded_base(&mut self, value: f32) {
-        self.folded_base = Some(value);
-    }
-    fn current_value(&self) -> f32 {
-        self.duration.as_secs_f32()
-    }
-    fn val(&self) -> f32 {
-        self.duration.as_secs_f32()
-    }
-    fn set_current_value(&mut self, value: f32) {
-        self.duration = Duration::from_secs_f32(value);
-    }
-}
-
-impl std::fmt::Display for AbilityRecovery {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}: {:.1}",
-            stringify!(AbilityRecovery),
-            self.duration.as_secs_f32()
-        )
-    }
-}

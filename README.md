@@ -78,7 +78,7 @@ fn apply_burn(mut vitality: Vitality, hero: Single<Entity, With<Hero>>) {
 
 Attributes are components: read them with `Query<&Health>`, react with `Changed<Health>` or `On<CurrentValueChanged<Health>>`. `Effects` applies, finds and removes effects (by entity, definition, tag or source) and edits stacks, `Abilities` grants, activates, cancels and revokes, and their events follow the change: `EffectApplied`, `EffectRemoved` (with a reason), `EffectStacksChanged`, `AbilityActivated`, `AbilityActivationFailed` (with an `ActivationError`), `AbilityEnded`. `EffectBlocked` fires only on a tag rule — a failed `attach_if` or `active_while` fires no event at all.
 
-The attribute pipeline (the `EffectsSet` chain) runs on `FixedUpdate`, so a headless app needs a `TimeUpdateStrategy` that advances time; ability timers stay on the frame clock (`tick_ability_cooldown` in `Update`, `handles_wait_task_timers` in `PreUpdate`).
+The attribute pipeline (the `EffectsSet` chain) runs on `FixedUpdate`, so a headless app needs a `TimeUpdateStrategy` that advances time; ability timers stay on the frame clock — `handles_wait_task_timers` runs in `PreUpdate`, and the cooldown is a `StateTimer` entry you read with `cooldown_remaining`.
 
 ## Wiring your own plugin
 

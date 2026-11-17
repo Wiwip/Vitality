@@ -10,7 +10,7 @@ use crate::systems::ActivateAbility;
 use crate::task_states::TaskMachine;
 use crate::task_states::{TaskEvent, TaskState};
 use crate::tasks::Tasks;
-use crate::{Ability, AbilityOf, AbilityRecovery, GrantedAbilities, TargetData};
+use crate::{Ability, AbilityOf, GrantedAbilities, TargetData};
 use crate::{BeginAbility, ExecuteAbility};
 use bevy::asset::Assets;
 use bevy::ecs::query::QueryData;
@@ -23,7 +23,6 @@ use bevy::prelude::{RelationshipTarget, debug};
 use hfsm_bevy::{Access, EventResult, MachineDefinition, MachineEvent, MachineState};
 use hfsm_bevy::{ExternalContext, LocalContext, Machine, MachineQuery, StateId, StateTimer};
 use std::time::Duration;
-use vitality_core::attributes::Attribute;
 use vitality_core::tags::ChangeTag;
 use vitality_core::view::ActorRead;
 
@@ -52,7 +51,6 @@ impl From<AbilityState> for StateId {
 #[query_data(mutable)]
 pub struct AbilityContext {
     pub ability_id: Entity,
-    pub recovery_timer: Write<AbilityRecovery>,
     pub timers: Write<StateTimer<AbilityMachine>>,
     pub ending: Write<AbilityEnding>,
 }
@@ -294,8 +292,6 @@ struct RecoveryState;
 impl MachineState<AbilityMachine> for RecoveryState {
     fn on_enter(&self, ctx: &mut Access<AbilityMachine>) {
         debug!("on_enter: CooldownState");
-
-        ctx.local.recovery_timer.set_base_value(0.0);
 
         let ability_id = ctx.ability_id;
         let cooldown = (|| {

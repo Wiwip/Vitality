@@ -1,16 +1,10 @@
 use crate::AbilityMut;
 use crate::context::AbilityExprContextMut;
 use crate::definition::AbilityDef;
-use crate::{Ability, AbilityRecovery, TargetData};
+use crate::{Ability, TargetData};
 use bevy::asset::Assets;
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
-
-pub fn tick_ability_cooldown(mut query: Query<&mut AbilityRecovery>, time: Res<Time>) {
-    query.par_iter_mut().for_each(|mut recovery| {
-        recovery.tick(time.delta());
-    });
-}
 
 #[derive(EntityEvent)]
 pub struct ActivateAbility {

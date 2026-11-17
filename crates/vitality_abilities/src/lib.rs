@@ -14,7 +14,7 @@ pub mod tasks;
 
 use crate::ability_state::AbilityMachine;
 use crate::command::on_add_ability;
-use crate::systems::{activate_ability, tick_ability_cooldown};
+use crate::systems::activate_ability;
 use crate::task_states::TaskMachine;
 use crate::tasks::{Tasks, WaitTask};
 use crate::tasks::{handles_wait_task_timers, on_task_completion_notification};
@@ -56,8 +56,7 @@ impl Plugin for AbilityPlugin {
         app.add_state_machine::<AbilityMachine>(ability_state::build_machine())
             .add_state_machine::<TaskMachine>(task_states::build_machine());
 
-        app.add_systems(Update, tick_ability_cooldown)
-            .add_systems(PreUpdate, handles_wait_task_timers);
+        app.add_systems(PreUpdate, handles_wait_task_timers);
 
         app.add_observer(activate_ability)
             .add_observer(on_task_completion_notification)
@@ -73,7 +72,6 @@ pub type AbilityMut<'w, 's> = EntityMutExcept<
         GrantedAbilities,
         Tasks,
         AbilityOf,
-        AbilityRecovery,
         lifecycle::AbilityEnding,
         (
             MachineInstance<AbilityMachine>,
@@ -93,7 +91,6 @@ pub type AbilityRef<'w, 's> = EntityRefExcept<
         GrantedAbilities,
         Tasks,
         AbilityOf,
-        AbilityRecovery,
         lifecycle::AbilityEnding,
         (
             MachineInstance<AbilityMachine>,
