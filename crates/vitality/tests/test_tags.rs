@@ -139,3 +139,33 @@ fn a_cleanse_that_fails_its_condition_strips_nothing() {
         "a gated apply fires no EffectRemoved"
     );
 }
+
+#[test]
+fn a_persistent_cleanse_that_fails_its_attach_condition_strips_nothing() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    let burn = effect(&mut app, burn());
+    let water = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .cleanses::<Burning>()
+            .attach_if(HasComponent::<Immune>::target())
+            .build(),
+    );
+    record::<EffectRemoved>(&mut app);
+
+    apply(&mut app, hero, hero, &burn);
+    ticks(&mut app, 1);
+    assert_eq!(current::<Armor>(&app, hero), -2.0);
+
+    apply(&mut app, hero, hero, &water);
+    ticks(&mut app, 1);
+
+    assert!(has::<Burning>(&app, hero), "a gated apply strips nothing");
+    assert_eq!(current::<Armor>(&app, hero), -2.0);
+    assert_eq!(
+        recorded::<EffectRemoved>(&app).len(),
+        0,
+        "a gated apply fires no EffectRemoved"
+    );
+}
