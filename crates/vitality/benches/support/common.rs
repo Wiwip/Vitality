@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-//! World generator shared by the bench target and by `tests/test_bench_harness.rs`. Kept free of
+//! World generator shared by the bench target and by the bench guard tests. Kept free of
 //! criterion so the gate can include it.
 //!
 //! [`build_app_with`] inserts `TimeUpdateStrategy::FixedTimesteps(1)`, so one [`tick`] is exactly
@@ -21,7 +21,6 @@ use bevy::time::TimeUpdateStrategy;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use std::any::TypeId;
-use std::marker::PhantomData;
 use std::sync::Once;
 use vitality::actors::{Actor, ActorBuilder};
 use vitality::attributes::Attribute;
@@ -29,16 +28,14 @@ use vitality::context::Vitality;
 use vitality::effect::EffectBuilder;
 use vitality::effect::definition::EffectDef;
 use vitality::effect::modifier::{EffectSubject, ModOp};
-use vitality::effect::systems::{Dirty, MarkNodeDirty};
 use vitality::prelude::*;
 use vitality::{AttributesPlugin, init_attribute};
-use vitality_core::registry::{AttrId, AttributeRegistry, Mark, ResolveQueue};
 
 /// Every bench draws from the same seed (BENCH-PLAN §1.6).
 pub const SEED: u64 = 7;
 
-/// `VITALITY_RESOLVER=dag` builds harness worlds on the DAG resolver. The default stays v1 because
-/// most of this harness instruments v1's internals (`Dirty<T>`, `MarkNodeDirty`).
+/// `VITALITY_RESOLVER=dag` builds harness worlds on the DAG resolver; the default is still v1 until
+/// D-47 lands.
 pub fn resolver_mode() -> vitality::ResolverMode {
     let mode = match std::env::var("VITALITY_RESOLVER").as_deref() {
         Ok("dag") => vitality::ResolverMode::Dag,
@@ -93,8 +90,6 @@ pub struct AttrSpec {
     base_of: fn(&World, Entity) -> Option<f64>,
     current_of: fn(&World, Entity) -> Option<f64>,
     set_base_of: fn(&mut World, Entity, f64),
-    mark_dirty_of: fn(&mut World, Entity),
-    is_dirty_of: fn(&World, Entity) -> bool,
 }
 
 impl AttrSpec {
@@ -111,8 +106,6 @@ impl AttrSpec {
             base_of: base_of::<T>,
             current_of: current_of::<T>,
             set_base_of: set_base_of::<T>,
-            mark_dirty_of: mark_dirty_of::<T>,
-            is_dirty_of: is_dirty_of::<T>,
         }
     }
 
@@ -140,15 +133,6 @@ impl AttrSpec {
     /// A `DerefMut` write, so `Changed<T>` fires even when the value is the same (BENCH-PLAN §2D).
     pub fn set_base(&self, world: &mut World, actor: Entity, value: f64) {
         (self.set_base_of)(world, actor, value)
-    }
-
-    /// Triggers `MarkNodeDirty<T>`, the library's own way to dirty an attribute.
-    pub fn mark_dirty(&self, world: &mut World, actor: Entity) {
-        (self.mark_dirty_of)(world, actor)
-    }
-
-    pub fn is_dirty(&self, world: &World, actor: Entity) -> bool {
-        (self.is_dirty_of)(world, actor)
     }
 }
 
@@ -191,23 +175,6 @@ where
     }
 }
 
-fn mark_dirty_of<T>(world: &mut World, actor: Entity)
-where
-    T: Attribute<Property = Value>,
-{
-    world.trigger(MarkNodeDirty::<T> {
-        entity: actor,
-        phantom_data: PhantomData,
-    });
-}
-
-fn is_dirty_of<T>(world: &World, actor: Entity) -> bool
-where
-    T: Attribute<Property = Value>,
-{
-    world.get::<Dirty<T>>(actor).is_some()
-}
-
 macro_rules! attr_pool {
     ($( $name:ident ),+ $(,)?) => {
         $( ::vitality::attribute!($name); )+
@@ -233,11 +200,8 @@ pub struct WorldSpec {
     pub effects_per_actor: usize,
     pub modifiers_per_effect: usize,
     pub actors: usize,
-    /// Share of the actors `mark_dirty_fraction` marks — *not* the share the built world is dirty on,
-    /// which is always all of it (see [`build_app_with`]), and not a per-sample thing either: nothing
-    /// clears the marks the spawn observers put there. A shape whose id has to mean what it says
-    /// settles the world first, which is what `floor::prepare_floor` and `recompute::recompute_shape`
-    /// are for.
+    /// Share of the actors the shape is built dirty on: [`build_app_with`] hands back a world the
+    /// spawn observers made dirty on every attribute, and nothing there clears those marks.
     pub dirty_fraction: f32,
     /// Share of the effects built as periodic instead of permanent.
     pub ticking_fraction: f32,
@@ -320,19 +284,9 @@ pub fn seed_rng() -> StdRng {
 /// Builds the world and runs `Startup`, so the returned app holds live actors carrying their
 /// attributes and their effect instances. `attrs` must be at least `spec.attributes_per_actor` long.
 ///
-/// What it does not hand back is the shape's `dirty_fraction`. `on_add_attribute` observes `Insert<T>`
-/// and triggers `MarkNodeDirty` for every attribute the bundle inserts, and `spawn` flushes its
-/// commands inline, so the returned world is dirty on every attribute of every actor and nothing has
-/// resolved yet — measured: a 3-attribute, 4-actor build carries 24 `Dirty<T>` markers when
-/// [`floor::clear_dirty`] walks it, actors and effect nodes alike. The [`mark_dirty_fraction`] call
-/// below therefore adds marks to a world that already has all of them. Ticking does drain them now, and
-/// how many ticks that takes depends on whether the shape has anything to fold: a zero-effect build is
-/// clean after one tick — L-4 put the mark phase ahead of the resolve, and `floor.rs` measures its
-/// 3-attribute, 5-actor, zero-effect world at 5 dirty entities at the build and 0 after tick 1 — while a
-/// build with effects needs two, one to write the fold the startup effects owe and one to find nothing
-/// left to write (`are_different` is `!=` since D-34). Either way a shape that needs its `dirty=` field
-/// to be true clears markers itself rather than paying that work: see `floor::prepare_floor` and
-/// `recompute::recompute_shape`; `test_recompute_ratio` pins the all-dirty build.
+/// What it does not hand back is a settled world: `on_add_attribute` observes `Insert<T>` and marks
+/// every attribute the bundle inserts, and `spawn` flushes its commands inline, so the returned world
+/// is dirty on every attribute of every actor and nothing has resolved yet.
 pub fn build_app_with(spec: &WorldSpec, attrs: &'static [AttrSpec]) -> App {
     build_app_at(spec, attrs, resolver_mode())
 }
@@ -370,19 +324,6 @@ pub fn build_app_at(
     });
     app.add_systems(Startup, prepare_world);
     app.update();
-
-    // Marks the shape's share on top of a world the spawn observers already made 100 % dirty, so this
-    // changes nothing observable for a fraction below 1.0 and is kept only so a shape that clears
-    // markers later can re-mark through the same seeded pick the id is quoted with.
-    let mut rng = seed_rng();
-    let actors = actor_entities(app.world_mut());
-    mark_dirty_fraction(
-        app.world_mut(),
-        attrs,
-        &actors,
-        spec.dirty_fraction,
-        &mut rng,
-    );
     app
 }
 
@@ -462,109 +403,4 @@ pub fn current_values(world: &World, attrs: &[AttrSpec], actor: Entity) -> Vec<f
                 .unwrap_or_else(|| panic!("{} missing on {actor:?}", attr.name))
         })
         .collect()
-}
-
-/// Marks every attribute of `round(fraction * actors.len())` actors dirty and returns how many. The
-/// pick is a seeded shuffle, so the count is exact and repeatable.
-///
-/// The marks are visible when it returns, because it flushes: `AttrSpec::mark_dirty` is a
-/// `World::trigger` and the observer's `try_insert(Dirty<T>)`
-/// (`vitality_effects/src/systems.rs:31-42`) is a deferred command, so without the flush the caller is
-/// handed a count of marks it cannot read back — that is what `mark_dirty_fraction_marks_are_visible`
-/// failed on. Flushing costs one queue drain per sample and is not timed.
-///
-/// What the marks then do is the library's, not this function's. Since D-34 a resolve writes only when
-/// the value it yields differs, so an actor marked through here is dirty for the tick that resolves it
-/// and clean after — `mark_dirty_fraction_marks_are_visible` pins that, and it is why a `dirty=N` id
-/// names the marks a shape is handed rather than a workload it keeps. A write that *does* move a value
-/// still re-marks through `on_change_notify_attribute_parents`
-/// (`vitality_effects/src/systems.rs:306-316`) for one further tick, and the fan-out is unchanged: on
-/// the tiny shape nothing *spreads* — 2 of 4 actors marked stays 2 of 4 — while a shape carrying
-/// cross-actor modifiers does spread, one attribute at a time: a marked source attribute re-appears as
-/// `Dirty<Dep>` on each actor reading it and on no other attribute of any of them
-/// (`tests/test_dirty_spread.rs`).
-pub fn mark_dirty_fraction(
-    world: &mut World,
-    attrs: &[AttrSpec],
-    actors: &[Entity],
-    fraction: f32,
-    rng: &mut StdRng,
-) -> usize {
-    let wanted = (actors.len() as f32 * fraction.clamp(0.0, 1.0)).round() as usize;
-    let mut order: Vec<usize> = (0..actors.len()).collect();
-    for index in (1..order.len()).rev() {
-        let swap = rng.random_range(0..=index);
-        order.swap(index, swap);
-    }
-
-    for &index in order.iter().take(wanted) {
-        for attr in attrs {
-            attr.mark_dirty(world, actors[index]);
-        }
-    }
-    // Without this the `Dirty<T>` inserts are still queued and the returned count is fiction.
-    world.flush();
-    wanted
-}
-
-/// A read of the marks the resolver still owes, taken without spending them: dag's [`ResolveQueue`]
-/// offers `take` and nothing else, so every entry is handed back before `read` returns.
-fn with_queued_marks<R>(
-    world: &World,
-    read: impl FnOnce(&[(Entity, Mark)], &[(Entity, AttrId)]) -> R,
-) -> R {
-    let queue = world.resource::<ResolveQueue>();
-    let (marks, pairs) = queue.take();
-    let out = read(&marks, &pairs);
-    for (entity, mark) in marks {
-        queue.push(entity, mark);
-    }
-    for (entity, attribute) in pairs {
-        queue.dirty(entity, attribute);
-    }
-    out
-}
-
-/// Entities the DAG resolver owes work for, actor or node: the dag twin of
-/// [`floor::dirty_entity_count`], which cannot see anything but v1's `Dirty<T>`.
-pub fn queued_entity_count(world: &World) -> usize {
-    with_queued_marks(world, |marks, pairs| {
-        let mut entities: Vec<Entity> = marks
-            .iter()
-            .map(|(entity, _)| *entity)
-            .chain(pairs.iter().map(|(entity, _)| *entity))
-            .collect();
-        entities.sort();
-        entities.dedup();
-        entities.len()
-    })
-}
-
-/// The attributes of `pool` the running resolver owes `actor`, in pool order — v1's `Dirty<T>`
-/// components, dag's [`ResolveQueue`] marks. One claim in two stores: "a tick on this actor resolves
-/// these attributes".
-pub fn pending_attrs(world: &World, pool: &[AttrSpec], actor: Entity) -> Vec<&'static str> {
-    if resolver_mode() == vitality::ResolverMode::PerAttribute {
-        return pool
-            .iter()
-            .filter(|attr| attr.is_dirty(world, actor))
-            .map(|attr| attr.name)
-            .collect();
-    }
-    let registry = world.resource::<AttributeRegistry>();
-    with_queued_marks(world, |marks, pairs| {
-        pool.iter()
-            .filter(|attr| match registry.id_of(attr.type_id) {
-                Some(id) => {
-                    marks.iter().any(|(entity, mark)| {
-                        *entity == actor && (mark.dirty.contains(id) || mark.regather.contains(id))
-                    }) || pairs
-                        .iter()
-                        .any(|(entity, attribute)| *entity == actor && *attribute == id)
-                }
-                None => false,
-            })
-            .map(|attr| attr.name)
-            .collect()
-    })
 }
