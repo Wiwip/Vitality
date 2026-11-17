@@ -1,5 +1,9 @@
 mod gameplay;
 
+#[path = "support/logs.rs"]
+mod logs;
+
+use crate::logs::Logs;
 use bevy::ecs::relationship::RelationshipTarget;
 use bevy::prelude::Entity;
 use gameplay::*;
@@ -335,6 +339,9 @@ fn a_periodic_source_modifier_writes_its_caster() {
 /// writes the target; what it owes is the apply-time warning, not a silent write.
 #[test]
 fn a_persistent_source_modifier_writes_the_target_and_says_so() {
+    // warn_once! is per call site for the whole binary and the spawn_order cell applies the same
+    // routing, so the assertion reads what the binary captured, whichever cell tripped the site
+    let logs = Logs::of_binary();
     let mut app = app();
     let caster = spawn(&mut app, hero_def().with::<Power>(25.0));
     let target = spawn(&mut app, hero_def());
@@ -357,6 +364,70 @@ fn a_persistent_source_modifier_writes_the_target_and_says_so() {
         0.0,
         "the caster carries the effect it applied, so writing it as well would double the modifier"
     );
+
+    let effect_entity = with_effects(&mut app, move |effects| effects.on(target))[0];
+    let modifier = app
+        .world()
+        .get::<OwnedModifiers>(effect_entity)
+        .expect("the effect owns its modifier")
+        .iter()
+        .next()
+        .expect("one modifier");
+    let described = app
+        .world()
+        .get::<AttributeModifier<Armor>>(modifier)
+        .expect("the modifier component")
+        .describe();
+    assert!(
+        !described.ends_with(" source"),
+        "the overlay prints describe(), so a modifier that ends in `source` tells the developer the \
+         caster's Armor moves: {described}"
+    );
+    assert!(
+        described.contains("source→target"),
+        "and it has to print the actor the folded write really lands on: {described}"
+    );
+
+    let warns = logs.warns();
+    assert!(
+        warns.contains("Mod<Armor>") && warns.contains("folds every modifier"),
+        "the routing the modifier refuses to advertise in its name it owes out loud, at warn \
+         level, got: {warns}"
+    );
+}
+
+/// The instant write names an actor this effect has none of, so nothing moves: the effect holder is
+/// neither its source nor its target.
+#[test]
+fn an_instant_effect_subject_modifier_is_dropped_with_a_warn() {
+    let logs = Logs::of_binary();
+    let mut app = app();
+    let caster = spawn(&mut app, hero_def());
+    let target = spawn(&mut app, hero_def());
+    let hex = effect(
+        &mut app,
+        EffectBuilder::instant()
+            .modify::<Armor>(25.0, ModOp::Add, EffectSubject::Effect)
+            .build(),
+    );
+    apply(&mut app, caster, target, &hex);
+    ticks(&mut app, SETTLE);
+
+    assert_eq!(base::<Armor>(&app, target), 0.0, "the write stays dropped");
+    assert_eq!(current::<Armor>(&app, target), 0.0);
+    assert_eq!(
+        current::<Armor>(&app, caster),
+        0.0,
+        "and it lands on no other actor instead"
+    );
+
+    // warn_once! is per call site for the whole binary, so this matches text and never a count
+    let warns = logs.warns();
+    assert!(
+        warns.contains("Mod<Armor>") && warns.contains("EffectSubject::Effect"),
+        "the dropped write has to name the modifier and the subject that dropped it, at warn \
+         level, got: {warns}"
+    );
 }
 
 /// The resolver is parallel *across* actors only, so rebuilding the same world with the actors
@@ -364,6 +435,7 @@ fn a_persistent_source_modifier_writes_the_target_and_says_so() {
 mod spawn_order {
 
     use crate::gameplay::*;
+    use crate::logs::Logs;
     use bevy::prelude::*;
     use std::collections::BTreeMap;
     use vitality::actors::ActorBuilder;
@@ -421,6 +493,9 @@ mod spawn_order {
     }
 
     fn world(order: [&'static str; 3]) -> (App, BTreeMap<&'static str, Entity>) {
+        // this scenario folds a permanent Source modifier too, so it is a second trip of that one
+        // warn_once! call site: install the capture before anything can fire
+        let _logs = Logs::of_binary();
         let mut app = app();
         let mut by_id = BTreeMap::new();
         for who in order {

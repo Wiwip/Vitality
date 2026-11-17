@@ -54,6 +54,8 @@ pub struct AttributeModifier<T: Attribute> {
     pub expr: Arc<dyn Expr<T::Property, EffectExprSchema> + Send + Sync>,
     pub value: T::Property,
     pub who: EffectSubject,
+    /// a persistent modifier folds into the entity that carries it, so its write lands there and not on `who`
+    pub folds_into_holder: bool,
     pub operation: ModOp,
     pub capture: Capture,
 }
@@ -81,6 +83,7 @@ where
             expr,
             value,
             who,
+            folds_into_holder: false,
             operation: modifier,
             capture: Capture::Live,
         }
@@ -106,10 +109,13 @@ where
     ) {
         let (value, mut deps) = record_dependencies(|| self.expr.eval(ctx));
 
+        // a ticking effect re-fires through the deferred write, which routes by `who`
+        let folds_into_holder = !fires_on_a_timer && !matches!(self.who, EffectSubject::Target);
         let modifier = AttributeModifier::<T> {
             expr: self.expr.clone(),
             value,
             who: self.who,
+            folds_into_holder,
             operation: self.operation,
             capture: self.capture,
         };
@@ -155,18 +161,14 @@ where
             op: modifier.operation,
             value: modifier.value.as_(),
         };
-        // the label is the one place a persistent modifier's routing shows, so it says where the write lands
-        let label = if fires_on_a_timer || matches!(self.who, EffectSubject::Target) {
-            shown
-        } else {
+        if folds_into_holder {
             warn_once!(
                 "Modifier {shown} names {} but a persistent effect folds every modifier into the \
                  actor that carries it, so this one writes the effect's target",
                 self.who,
             );
-            format!("{shown}, writes the target")
-        };
-        commands.insert((modifier, slot, Name::new(label)));
+        }
+        commands.insert((modifier, slot, Name::new(shown)));
     }
     fn apply_immediate(&self, context: &mut EffectExprContextMut) -> bool {
         let immutable_context = EffectExprContext {
@@ -250,13 +252,18 @@ where
     T: Attribute,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let written = if self.folds_into_holder {
+            format!("{}→target", self.who)
+        } else {
+            self.who.to_string()
+        };
         write!(
             f,
             "Mod<{}>({}{}) {}",
             pretty_type_name::<T>(),
             self.operation,
             self.value,
-            self.who,
+            written,
         )
     }
 }

@@ -3,6 +3,9 @@
 
 mod gameplay;
 
+#[path = "support/logs.rs"]
+mod logs;
+
 use bevy::prelude::*;
 use std::any::TypeId;
 use vitality::attributes::ReflectAccessAttribute;
@@ -185,42 +188,18 @@ mod late_registration {
 mod unregistered_instant {
 
     use crate::gameplay::*;
+    use crate::logs::Logs;
     use bevy::log::tracing::subscriber::with_default;
-    use bevy::log::tracing_subscriber::{Registry, fmt, layer::SubscriberExt};
-    use std::io::{self, Write};
-    use std::sync::{Arc, Mutex};
+    use bevy::log::tracing_subscriber::{Registry, layer::SubscriberExt};
     use vitality::effect::modifier::{EffectSubject, ModOp};
     use vitality::prelude::*;
 
     attribute!(Stray, f32);
 
-    #[derive(Clone)]
-    struct Sink(Arc<Mutex<String>>);
-
-    impl Write for Sink {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.0
-                .lock()
-                .unwrap()
-                .push_str(&String::from_utf8_lossy(buf));
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
     #[test]
     fn an_instant_effect_on_an_unregistered_attribute_is_dropped_with_a_warn() {
-        let logs = Arc::new(Mutex::new(String::new()));
-        let writer = logs.clone();
-        let subscriber = Registry::default().with(
-            fmt::layer()
-                .with_ansi(false)
-                .without_time()
-                .with_writer(move || Sink(writer.clone())),
-        );
+        let logs = Logs::default();
+        let subscriber = Registry::default().with(logs.layer());
 
         with_default(subscriber, || {
             let mut app = app();
@@ -244,10 +223,15 @@ mod unregistered_instant {
         });
 
         // warn_once! is per call site, so this cell asserts the text and never a count
-        let logs = logs.lock().unwrap();
+        let warns = logs.warns();
+        let logs = logs.all();
         assert!(
             logs.contains("Stray") && logs.contains("init_attribute"),
             "the dropped instant write has to name the attribute and the call that registers it, got: {logs}"
+        );
+        assert!(
+            warns.contains("Stray"),
+            "a write the app cannot queue is a warning, not a debug note, got: {warns}"
         );
     }
 }

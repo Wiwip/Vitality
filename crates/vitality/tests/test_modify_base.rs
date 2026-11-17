@@ -6,6 +6,8 @@ mod gameplay;
 
 #[path = "../benches/support/common.rs"]
 mod common;
+#[path = "support/logs.rs"]
+mod logs;
 
 use bevy::prelude::*;
 use gameplay::*;
@@ -355,42 +357,18 @@ mod missing_attribute {
 mod despawned_actor {
 
     use crate::gameplay::*;
+    use crate::logs::Logs;
     use bevy::ecs::schedule::IntoScheduleConfigs;
     use bevy::log::tracing::subscriber::with_default;
-    use bevy::log::tracing_subscriber::{Registry, fmt, layer::SubscriberExt};
+    use bevy::log::tracing_subscriber::{Registry, layer::SubscriberExt};
     use bevy::prelude::{Commands, Entity, Local, Update};
-    use std::io::{self, Write};
-    use std::sync::{Arc, Mutex};
     use vitality::effect::modifier::{EffectSubject, ModOp};
     use vitality::prelude::*;
 
-    #[derive(Clone)]
-    struct Sink(Arc<Mutex<String>>);
-
-    impl Write for Sink {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.0
-                .lock()
-                .unwrap()
-                .push_str(&String::from_utf8_lossy(buf));
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
     #[test]
     fn an_instant_write_whose_source_died_on_the_apply_tick_is_dropped_with_a_warn() {
-        let logs = Arc::new(Mutex::new(String::new()));
-        let writer = logs.clone();
-        let subscriber = Registry::default().with(
-            fmt::layer()
-                .with_ansi(false)
-                .without_time()
-                .with_writer(move || Sink(writer.clone())),
-        );
+        let logs = Logs::default();
+        let subscriber = Registry::default().with(logs.layer());
 
         let mut projectile = Entity::PLACEHOLDER;
         with_default(subscriber, || {
@@ -439,7 +417,8 @@ mod despawned_actor {
             assert_eq!(current::<Health>(&app, hero), 100.0);
         });
 
-        let logs = logs.lock().unwrap();
+        let warns = logs.warns();
+        let logs = logs.all();
         assert!(
             logs.contains("Mod<Health>") && logs.contains("dropped"),
             "the dropped instant write has to name the modifier at warn level, got: {logs}"
@@ -447,6 +426,11 @@ mod despawned_actor {
         assert!(
             logs.contains(&format!("source {projectile}")),
             "and it has to name the actor that went missing, got: {logs}"
+        );
+        assert!(
+            warns.contains(&format!("source {projectile}")),
+            "the same words in a debug record are not a dropped write, so the level has to be \
+             WARN, got: {warns}"
         );
     }
 }

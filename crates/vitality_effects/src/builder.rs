@@ -112,6 +112,7 @@ impl EffectBuilder {
             expr,
             value: T::Property::default(),
             who,
+            folds_into_holder: false,
             operation,
             capture,
         }));
