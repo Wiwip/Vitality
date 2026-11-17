@@ -1,7 +1,11 @@
 mod gameplay;
 
+use bevy::ecs::relationship::RelationshipTarget;
+use bevy::prelude::Entity;
 use gameplay::*;
-use vitality::effect::modifier::{EffectSubject, ModOp};
+use vitality::attributes::{AttributeDependency, AttributeDependents};
+use vitality::effect::modifier::{EffectSubject, ModOp, ModifierOf, OwnedModifiers};
+use vitality::effect::{EffectSource, EffectTarget};
 use vitality::prelude::*;
 
 /// The resolver settles a cross-actor chain in the same tick; a few ticks still leaves room.
@@ -164,6 +168,114 @@ fn the_dag_resolver_settles_a_chain_in_one_tick() {
         current::<Power>(&app, c),
         40.0,
         "a -> b -> c within one tick"
+    );
+}
+
+#[test]
+fn a_cross_actor_effect_is_wired_from_its_source_to_its_target() {
+    let mut app = app();
+    let caster = spawn(&mut app, hero_def());
+    let target = spawn(&mut app, hero_def());
+    let aura = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Armor>(Power::src(), ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+    apply(&mut app, caster, target, &aura);
+    ticks(&mut app, SETTLE);
+
+    let on_target = with_effects(&mut app, move |effects| effects.on(target));
+    assert_eq!(
+        on_target.len(),
+        1,
+        "one permanent effect on the target, so the entity read below is the aura's"
+    );
+    assert!(
+        with_effects(&mut app, move |effects| effects.on(caster)).is_empty(),
+        "the caster carries the effect it applied, so an applied effect is not owned per target"
+    );
+
+    let effect_entity = on_target[0];
+    let world = app.world();
+    assert_eq!(
+        world.get::<EffectTarget>(effect_entity).map(|t| t.0),
+        Some(target),
+        "the effect's EffectTarget is not the actor that carries it"
+    );
+    assert_eq!(
+        world.get::<EffectSource>(effect_entity).map(|s| s.0),
+        Some(caster),
+        "the effect's EffectSource is not the actor that applied it, so a src() read has the wrong actor"
+    );
+
+    let modifiers: Vec<Entity> = world
+        .get::<OwnedModifiers>(effect_entity)
+        .expect("the effect owns its modifiers")
+        .iter()
+        .collect();
+    assert_eq!(modifiers.len(), 1, "one modifier per effect in this shape");
+    let modifier = modifiers[0];
+    assert_eq!(
+        world.get::<ModifierOf>(modifier).map(|m| m.0),
+        Some(effect_entity),
+        "the modifier names an effect the target does not carry"
+    );
+
+    // the fan-out has to hang off the actor whose attribute is read, or a caster write reaches nobody
+    let dependency = world
+        .get::<AttributeDependency<Power>>(modifier)
+        .expect("a modifier that reads an attribute spawns with its dependency edge");
+    assert_eq!(
+        dependency.source, caster,
+        "the modifier reads Power from {} and the effect's source is {caster}",
+        dependency.source,
+    );
+    let dependents: Vec<Entity> = world
+        .get::<AttributeDependents<Power>>(caster)
+        .expect("the actor whose Power is read carries the fan-out list")
+        .iter()
+        .collect();
+    assert_eq!(
+        dependents,
+        vec![modifier],
+        "the caster's Power fan-out list is {dependents:?}, not the one modifier that reads it"
+    );
+    assert!(
+        world.get::<AttributeDependents<Power>>(target).is_none(),
+        "the target {target} carries the fan-out list for a read of the caster's Power"
+    );
+}
+
+/// One buffed actor out of sixteen: an apply or a resolve that leaks across actors, or that only
+/// reaches the first actor of the world, fails here rather than in a bench.
+#[test]
+fn only_the_actor_an_effect_lands_on_moves() {
+    let mut app = app();
+    let caster = spawn(&mut app, hero_def().with::<Power>(25.0));
+    let actors: Vec<Entity> = (0..16).map(|_| spawn(&mut app, hero_def())).collect();
+    let aura = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Armor>(Power::src(), ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+    let buffed = actors[7];
+    apply(&mut app, caster, buffed, &aura);
+    ticks(&mut app, SETTLE);
+
+    for (index, actor) in actors.iter().enumerate() {
+        let want = if *actor == buffed { 25.0 } else { 0.0 };
+        assert_eq!(
+            current::<Armor>(&app, *actor),
+            want,
+            "actor {index} reads the wrong value: only {buffed} was given the aura",
+        );
+    }
+    assert_eq!(
+        current::<Armor>(&app, caster),
+        0.0,
+        "a target-subject modifier moved its caster"
     );
 }
 

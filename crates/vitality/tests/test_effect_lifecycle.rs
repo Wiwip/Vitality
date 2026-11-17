@@ -287,6 +287,37 @@ fn a_fire_due_on_the_expiry_tick_beats_the_expiry() {
     );
 }
 
+#[test]
+fn a_periodic_effect_holds_its_first_fire_until_the_interval_elapses() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def().with::<Health>(0.0));
+    let regen = effect(
+        &mut app,
+        EffectBuilder::every_second_permanently(PERIOD)
+            .modify::<Health>(1.0, ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+
+    apply(&mut app, hero, hero, &regen);
+    ticks(&mut app, ticks_for(PERIOD) - 1);
+
+    assert_eq!(
+        base::<Health>(&app, hero),
+        0.0,
+        "a ticker fired within {} ticks of an interval of {}, so the interval does not gate the fire",
+        ticks_for(PERIOD) - 1,
+        PERIOD,
+    );
+
+    ticks(&mut app, 1);
+    assert_eq!(
+        base::<Health>(&app, hero),
+        1.0,
+        "the quiet window above is a waiting ticker, not a dead one: the tick its interval elapses on \
+         has to fire",
+    );
+}
+
 /// read off the schedule's declared dependencies, not off an execution order
 fn ordered_before(schedule: &bevy::ecs::schedule::Schedule, from: &str, to: &str) -> bool {
     let graph = schedule.graph();

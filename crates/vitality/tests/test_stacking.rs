@@ -185,6 +185,54 @@ fn instant_effect_with_a_stacking_policy_applies_but_never_stacks() {
 }
 
 #[test]
+fn add_policy_keeps_one_instance_of_a_handle_per_actor() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    let enemy = spawn(&mut app, hero_def());
+    let buff = effect(
+        &mut app,
+        power_buff(EffectStackingPolicy::Add {
+            count: 1,
+            max_stack: 3,
+        }),
+    );
+
+    apply(&mut app, enemy, hero, &buff);
+    apply(&mut app, enemy, hero, &buff);
+    apply(&mut app, hero, enemy, &buff);
+    ticks(&mut app, 1);
+
+    let on_hero = with_effects(&mut app, move |e| e.on(hero));
+    let on_enemy = with_effects(&mut app, move |e| e.on(enemy));
+    assert_eq!(
+        on_hero.len(),
+        1,
+        "the second apply spawned a second instance instead of stacking on the first"
+    );
+    assert_eq!(
+        on_enemy.len(),
+        1,
+        "the same handle on a second actor has to get its own instance"
+    );
+    assert_ne!(
+        on_hero[0], on_enemy[0],
+        "one effect entity is shared by two actors"
+    );
+    assert_eq!(
+        with_effects(&mut app, move |e| e.stacks(on_hero[0])),
+        Some(2),
+        "the hero's instance owes it two stacks"
+    );
+    assert_eq!(
+        with_effects(&mut app, move |e| e.stacks(on_enemy[0])),
+        Some(1),
+        "the hero's applies stacked onto the enemy's instance"
+    );
+    assert_eq!(current::<Power>(&app, hero), 20.0);
+    assert_eq!(current::<Power>(&app, enemy), 15.0);
+}
+
+#[test]
 fn periodic_damage_scales_with_stacks() {
     let mut app = app();
     let hero = spawn(&mut app, hero_def());
