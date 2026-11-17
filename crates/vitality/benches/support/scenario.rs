@@ -18,7 +18,7 @@ use vitality::effect::{ApplyEffectEvent, EffectStackingPolicy, EffectTargeting};
 use vitality::prelude::*;
 use vitality::tags::ChangeTag;
 
-use crate::common::{Attr0, Attr1, Attr2, Attr3, Attr4, Attr5, Attr6, Attr7, Attr8};
+use crate::common::{Attr0, Attr1, Attr2, Attr3, Attr4, Attr5, Attr6, Attr7, Attr8, Attr9};
 
 pub const ATTRIBUTES: usize = 20;
 pub const EFFECTS_PER_ACTOR: usize = 3;
@@ -60,10 +60,12 @@ pub enum Workload {
     Immunity,
     /// A buff on 10 % of the actors per tick, sized from a value captured at apply.
     Snapshot,
+    /// A DoT ticking on a fixed 20 %, re-applied every tick so the periodic fire is what is measured.
+    Dot,
 }
 
 impl Workload {
-    pub const ALL: [Workload; 14] = [
+    pub const ALL: [Workload; 15] = [
         Workload::Idle,
         Workload::Steady,
         Workload::Storm,
@@ -78,6 +80,7 @@ impl Workload {
         Workload::TagRequired,
         Workload::Immunity,
         Workload::Snapshot,
+        Workload::Dot,
     ];
 
     pub fn name(self) -> &'static str {
@@ -96,6 +99,7 @@ impl Workload {
             Workload::TagRequired => "tag_required",
             Workload::Immunity => "immunity",
             Workload::Snapshot => "snapshot",
+            Workload::Dot => "dot",
         }
     }
 }
@@ -245,6 +249,22 @@ pub fn build_in(workload: Workload, actors: usize) -> ScenarioWorld {
                     .build(),
             ));
         }
+        Workload::Dot => {
+            let timestep = world.app.world().resource::<Time<Fixed>>().timestep();
+            world.window = actor_list[..actor_list.len() / 5].to_vec();
+            // under one timestep, so a ticker is due on every tick the sample runs
+            world.effect = Some(add_effect(
+                &mut world.app,
+                EffectBuilder::every_second_permanently(timestep.as_secs_f32() * 0.5)
+                    .modify::<Attr9>(-1.0, ModOp::Add, EffectSubject::Target)
+                    .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
+                    .build(),
+            ));
+            let handle = world.effect.clone().expect("just added");
+            let window = world.window.clone();
+            world.queue_apply(&handle, &window);
+            world.app.world_mut().flush();
+        }
         _ => {}
     }
 
@@ -364,7 +384,7 @@ impl ScenarioWorld {
                 let window = self.round_robin(n / 10);
                 self.queue_apply(&handle, &window);
             }
-            Workload::StackRefresh => {
+            Workload::StackRefresh | Workload::Dot => {
                 let handle = self.effect.clone().expect("workload has an effect");
                 let window = self.window.clone();
                 self.queue_apply(&handle, &window);

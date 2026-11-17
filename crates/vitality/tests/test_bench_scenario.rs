@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use common::ATTRIBUTE_POOL;
 use expr::{NODE_COUNTS, eval_erased, eval_mono, eval_typemap, expected, expr_fixture};
 use scenario::{Workload, build, build_in};
-use vitality::effect::ApplyEffectEvent;
+use vitality::effect::{ApplyEffectEvent, EffectTarget, EffectTicker};
 
 const ACTORS: usize = 40;
 
@@ -26,6 +26,17 @@ fn bases(world: &mut scenario::ScenarioWorld, attr: usize) -> Vec<f64> {
 
 fn moved(before: &[f64], after: &[f64]) -> usize {
     before.iter().zip(after).filter(|(a, b)| a != b).count()
+}
+
+/// the ticker sits on the effect entity, so `EffectTarget` is what says whose actor is ticking
+fn ticker_targets(world: &mut scenario::ScenarioWorld) -> Vec<Entity> {
+    let mut rows = world
+        .app
+        .world_mut()
+        .query_filtered::<&EffectTarget, With<EffectTicker>>();
+    rows.iter(world.app.world())
+        .map(|target| target.0)
+        .collect()
 }
 
 // README's Performance numbers claim exactly these shares: steady moves 10 % of the actors, storm all
@@ -60,6 +71,7 @@ fn drive_queues_the_applies_and_tick_dispatches_them() {
         (Workload::TagRequired, ACTORS / 5),
         (Workload::Immunity, ACTORS / 5),
         (Workload::Snapshot, ACTORS / 10),
+        (Workload::Dot, ACTORS / 5),
     ] {
         let mut world = build_in(workload, ACTORS);
         // on the world: `App::add_observer` waits for the next `First`, which this tick never runs
@@ -83,6 +95,35 @@ fn drive_queues_the_applies_and_tick_dispatches_them() {
             "{workload:?}: the timed window must contain every apply drive queued"
         );
     }
+}
+
+/// A ticker that never fires inside the sample measures the periodic path not at all, so both halves are
+/// pinned. Attr9 base moves only from a fire: the three effects the build applies fold onto current
+/// values and the re-apply lands on the existing row, so nothing else here writes that base.
+#[test]
+fn dot_actors_carry_ticker_rows_and_the_ticker_fires_in_the_window() {
+    let mut world = build_in(Workload::Dot, ACTORS);
+    let ticking = ticker_targets(&mut world);
+    assert_eq!(ticking.len(), ACTORS / 5, "one ticker row per dot actor");
+    assert!(
+        ticking.iter().all(|actor| world.actors.contains(actor)),
+        "a ticker row on a non-actor entity"
+    );
+
+    let before = bases(&mut world, 9);
+    world.drive();
+    world.tick();
+    let after = bases(&mut world, 9);
+    assert_eq!(
+        moved(&before, &after),
+        ACTORS / 5,
+        "the ticker must fire inside the timed tick"
+    );
+    assert_eq!(
+        ticker_targets(&mut world).len(),
+        ACTORS / 5,
+        "the re-apply refreshes the ticking row, it does not stack another"
+    );
 }
 
 #[derive(Resource, Default)]
