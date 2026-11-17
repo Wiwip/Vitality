@@ -33,6 +33,31 @@ fn health_follows_a_lowered_max() {
     assert_eq!(base::<Health>(&app, hero), 60.0, "the base is clamped too");
 }
 
+/// A limit that is an expression, not a bare attribute read, still has to pull the clamped attribute.
+#[test]
+fn health_follows_a_lowered_computed_limit() {
+    let mut app = app();
+    let hero = spawn(
+        &mut app,
+        vitality::actors::ActorBuilder::new()
+            .name("Hero")
+            .with::<Health>(80.0)
+            .with::<MaxHealth>(100.0)
+            .clamp::<Health>(0.0, MaxHealth::src() * 0.5),
+    );
+    assert_eq!(current::<Health>(&app, hero), 50.0, "half of MaxHealth");
+
+    with_vitality(&mut app, move |v| v.set_base::<MaxHealth>(hero, 60.0));
+    ticks(&mut app, 3);
+
+    assert_eq!(current::<MaxHealth>(&app, hero), 60.0);
+    assert_eq!(
+        current::<Health>(&app, hero),
+        30.0,
+        "Health kept the limit it read before MaxHealth moved"
+    );
+}
+
 #[test]
 fn a_buff_cannot_push_current_past_the_max() {
     let mut app = app();

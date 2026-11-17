@@ -15,7 +15,7 @@ use vitality_core::attributes::{Attribute, ManageAttributes};
 use vitality_core::modifier::ModOp;
 use vitality_core::num_traits::AsPrimitive;
 use vitality_core::registry::{
-    AttrId, AttributeRegistry, ErasedCalc, Mark, ModifierTable, ResolveQueue,
+    AttrId, AttributeRegistry, ErasedCalc, Mark, ModifierTable, ResolveQueue, add_clamp_edges,
 };
 
 /// Passes per tick before leftover cross-actor work waits for the next tick.
@@ -100,6 +100,8 @@ type ActorQuery = QueryState<ActorItem, With<ManageAttributes>>;
 struct Output {
     changes: Vec<(Entity, AttrId, f64, f64)>,
     readers: Vec<Entity>,
+    /// the limits of a clamp evaluated for the first time, before their edges exist
+    clamp_reads: Vec<(TypeId, TypeId)>,
 }
 
 /// The per-effect flags the walk needs to know whether an effect folds into a value at all.
@@ -257,7 +259,7 @@ impl ResolverState {
                 }
                 let (resolve, ids, dependents_of) = vtables[id.index()];
                 let calc = table.calc(id);
-                let Some(resolved) = resolve(&mut view, ids, &calc) else {
+                let Some(resolved) = resolve(&mut view, ids, &calc, &mut out.clamp_reads) else {
                     continue;
                 };
                 if let Some((old, new)) = resolved.moved {
@@ -339,6 +341,7 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
     }
 
     let mut changes = Vec::new();
+    let mut clamp_reads = Vec::new();
     for pass in 0..MAX_PASSES {
         state.actor_query(world);
         state.regather(world, &marks);
@@ -348,6 +351,7 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
         for out in state.output.iter_mut() {
             changes.append(&mut out.changes);
             readers.append(&mut out.readers);
+            clamp_reads.append(&mut out.clamp_reads);
         }
         marks = state.recalc(world, readers);
         if marks.is_empty() {
@@ -363,6 +367,9 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
             }
         }
     }
+
+    // the walk already read this tick's order, so a limit's edge only takes effect on the next one
+    add_clamp_edges(world, clamp_reads.into_iter());
 
     if changes.is_empty() {
         return;

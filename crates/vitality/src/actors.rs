@@ -5,13 +5,12 @@ use std::any::TypeId;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use vitality_abilities::{Ability, AbilityDef, AbilityOf, GrantedAbilities};
-use vitality_core::AppAttributeBindings;
 use vitality_core::attributes::{Attribute, Clamp, ClampBounds, ManageAttributes};
 use vitality_core::context::ActorExprSchema;
 use vitality_core::modifier::AttributeCalculatorCached;
 use vitality_core::mutator::EntityActions;
 use vitality_core::num_traits::{AsPrimitive, Num};
-use vitality_core::registry::AttributeRegistry;
+use vitality_core::registry::add_clamp_edges;
 use vitality_effects::definition::EffectDef;
 use vitality_effects::graph::NodeType;
 use vitality_effects::{ApplyEffectEvent, EffectTargeting};
@@ -100,30 +99,15 @@ impl EntityCommand for SpawnActorCommand {
     }
 }
 
-/// Clamped attributes read their limits' attributes, so those resolve first.
+/// Clamped attributes read their limits' attributes, so those resolve first. A limit that reads
+/// several attributes reports the rest of them later, from the resolver's first pass.
 fn register_clamp_edges(world: &mut World, def: &ActorDef) {
-    if def.clamp_dependents.is_empty() {
-        return;
-    }
-    let bindings = world.resource::<AppAttributeBindings>().clone();
-    let bindings = bindings
-        .internal
-        .read()
-        .unwrap_or_else(|err| err.into_inner());
-    let mut registry = world.resource_mut::<AttributeRegistry>();
-    for (key, clamped) in &def.clamp_dependents {
-        let Some(read) = bindings
-            .dependency(key)
-            .and_then(|binding| registry.id_of(binding.attribute))
-        else {
-            continue;
-        };
-        for clamped_type in clamped {
-            if let Some(reader) = registry.id_of(*clamped_type) {
-                registry.add_edge(read, reader);
-            }
-        }
-    }
+    add_clamp_edges(
+        world,
+        def.clamp_dependents
+            .iter()
+            .flat_map(|(key, clamped)| clamped.iter().map(move |clamped| (*key, *clamped))),
+    );
 }
 
 pub struct ActorBuilder {

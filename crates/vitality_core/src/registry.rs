@@ -1,7 +1,7 @@
 //! Erased per-attribute operations and the type-level dependency DAG the resolver walks.
 
 use crate::CurrentValueChanged;
-use crate::attributes::{Attribute, AttributeDependents, Clamp, ClampBounds};
+use crate::attributes::{Attribute, AttributeDependents, Clamp, ClampBounds, record_dependencies};
 use crate::context::ActorExprContext;
 use crate::modifier::{AttributeCalculator, ModOp};
 use crate::util::pretty_type_name;
@@ -88,6 +88,15 @@ impl ErasedCalc {
     }
 }
 
+/// The resolve step and the sink it fills with `(limit key, clamped attribute)` pairs; spelled out
+/// inside the struct it sits over clippy's complexity limit.
+type ResolveFn = fn(
+    &mut FilteredEntityMut,
+    AttrComponents,
+    &ErasedCalc,
+    &mut Vec<(TypeId, TypeId)>,
+) -> Option<Resolved>;
+
 /// What the resolver needs to do to one attribute without knowing its type.
 pub struct AttrInfo {
     pub id: AttrId,
@@ -95,7 +104,8 @@ pub struct AttrInfo {
     pub type_id: TypeId,
     pub ids: AttrComponents,
     /// recomputes current from base, the folded modifiers and the clamp, writing only on change; None when the actor doesn't have the attribute
-    pub resolve: fn(&mut FilteredEntityMut, AttrComponents, &ErasedCalc) -> Option<Resolved>,
+    /// the sink collects the limits a first clamp pass read, see [`add_clamp_edges`]
+    pub resolve: ResolveFn,
     pub dependents_of: fn(&FilteredEntityRef, AttrComponents, &mut Vec<Entity>),
     pub notify: fn(&mut Commands, Entity, f64, f64),
     /// Actors of this attribute whose base moved since the last scan, for [`scan_base_writes`].
@@ -121,17 +131,28 @@ fn resolve<T: Attribute>(
     entity: &mut FilteredEntityMut,
     ids: AttrComponents,
     calc: &ErasedCalc,
+    clamp_reads: &mut Vec<(TypeId, TypeId)>,
 ) -> Option<Resolved> {
     let mut clamp: Option<Clamp<T>> = None;
     if entity.get_by_id(ids.clamp_bounds).is_some() {
-        let limits = {
+        // a limit only reports the attributes it reads while recording, and one pass per clamp is enough
+        let capture = entity
+            .get_by_id(ids.clamp)
+            .is_some_and(|clamp| unsafe { !clamp.deref::<Clamp<T>>().ready });
+        let (limits, reads) = {
             let view = entity.as_readonly();
             let bounds = unsafe { view.get_by_id(ids.clamp_bounds)?.deref::<ClampBounds<T>>() };
             let context = ActorExprContext {
                 actor_context: view,
             };
-            (bounds.min.eval(&context), bounds.max.eval(&context))
+            let eval = || (bounds.min.eval(&context), bounds.max.eval(&context));
+            if capture {
+                record_dependencies(eval)
+            } else {
+                (eval(), Default::default())
+            }
         };
+        clamp_reads.extend(reads.into_iter().map(|key| (key, TypeId::of::<T>())));
         if let Some(untyped) = entity.get_mut_by_id(ids.clamp) {
             let mut stored = unsafe { untyped.with_type::<Clamp<T>>() };
             if !stored.ready || stored.min_limit != limits.0 || stored.max_limit != limits.1 {
@@ -307,6 +328,33 @@ impl AttributeRegistry {
             );
         }
         self.order = order;
+    }
+}
+
+/// Clamped attributes read their limits' attributes, so those resolve first. `reads` pairs a
+/// dependency key with the attribute clamped by it; a key no binding knows is dropped.
+pub fn add_clamp_edges(world: &mut World, reads: impl Iterator<Item = (TypeId, TypeId)>) {
+    let mut reads = reads.peekable();
+    if reads.peek().is_none() {
+        return;
+    }
+    let bindings = world.resource::<crate::AppAttributeBindings>().clone();
+    let bindings = bindings
+        .internal
+        .read()
+        .unwrap_or_else(|err| err.into_inner());
+    let mut registry = world.resource_mut::<AttributeRegistry>();
+    for (key, clamped) in reads {
+        let Some(read) = bindings
+            .dependency(&key)
+            .and_then(|binding| registry.id_of(binding.attribute))
+        else {
+            continue;
+        };
+        let Some(reader) = registry.id_of(clamped) else {
+            continue;
+        };
+        registry.add_edge(read, reader);
     }
 }
 
