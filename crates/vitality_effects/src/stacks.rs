@@ -12,7 +12,6 @@ pub enum EffectStackingPolicy {
     None, // Each effect is independently added to the entity
     Add { count: u32, max_stack: u32 },
     RefreshDuration, // The effect overrides previous applications
-                     //RefreshDurationWithOverflow, // The effect overrides previous applications
 }
 attribute!(EffectIntensity, f32);
 
@@ -31,7 +30,7 @@ pub struct NotifyAddStackEvent {
 }
 
 impl EffectStackingPolicy {
-    /// Returns the (old, new) stack count when it changed.
+    /// returns the (old, new) stack count when it changed
     fn apply(
         &self,
         effect_entity: Entity,
@@ -68,7 +67,6 @@ impl EffectStackingPolicy {
     }
 }
 
-/// Sets an effect's stack count directly.
 pub(crate) fn set_stacks(
     effect_entity: Entity,
     count: u32,

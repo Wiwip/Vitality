@@ -1,3 +1,5 @@
+//! a modifier applies to the attribute of the actor named by its [`EffectSubject`](crate::modifier::EffectSubject) — the target, or the source for a `Source` modifier
+
 use crate::{AppliedEffects, EffectSource};
 use bevy::ecs::system::SystemParam;
 use bevy::ecs::system::lifetimeless::Read;
@@ -6,18 +8,6 @@ use petgraph::visit::{DfsEvent, Visitable, depth_first_search};
 use petgraph::visit::{GraphBase, IntoNeighbors};
 use ptree::{TreeBuilder, print_tree};
 use std::collections::HashSet;
-
-/// Attributes are Components and inserted on Entities.
-/// - Derived attributes could be used
-///
-/// Effects are spawned as child of entities
-/// - Effects can modify the modifiers till now, such as an intensity metric or stacks
-///
-/// A modifier is an [`AttributeModifier<T>`](crate::modifier::AttributeModifier) component on a
-/// modifier entity linked to the effect entity by [`ModifierOf`](crate::modifier::ModifierOf), and
-/// it must apply to an attribute of the actor named by its
-/// [`EffectSubject`](crate::modifier::EffectSubject) — the target, or the source for a `Source`
-/// modifier.
 
 #[derive(Component, Default, Copy, Clone, Reflect, Debug)]
 pub enum NodeType {
@@ -32,7 +22,6 @@ impl std::fmt::Display for NodeType {
     }
 }
 
-// Lightweight wrapper that implements petgraph traits
 #[derive(SystemParam)]
 pub struct DependencyGraph<'w, 's> {
     node_type: Query<'w, 's, Read<NodeType>>,
@@ -50,7 +39,6 @@ impl DependencyGraph<'_, '_> {
         let mut tree = TreeBuilder::new("Root".into());
         tree.begin_child(format!("{}({})", node_type, entity));
 
-        // Use petgraph's depth_first_search with a custom visitor
         depth_first_search(self, Some(entity), |event| {
             match event {
                 DfsEvent::Discover(_entity, _time) => {}

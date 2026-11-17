@@ -8,12 +8,10 @@ use smol_str::SmolStr;
 pub struct EffectToken(SmolStr);
 
 impl EffectToken {
-    /// Construct a new [`EffectToken`] from a [`SmolStr`].
     pub const fn new(text: SmolStr) -> Self {
         Self(text)
     }
 
-    /// Construct a new [`EffectToken`] from a static string.
     pub const fn new_static(text: &'static str) -> Self {
         Self(SmolStr::new_static(text))
     }

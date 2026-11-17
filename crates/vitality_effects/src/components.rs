@@ -61,22 +61,18 @@ impl Effect {
     }
 }
 
-/// The source of this effect.
 #[derive(Component, Reflect, Debug)]
 #[relationship(relationship_target = EffectSources)]
 pub struct EffectSource(pub Entity);
 
-/// All effects originating from this entity.
 #[derive(Component, Reflect, Debug)]
 #[relationship_target(relationship = EffectSource, linked_spawn)]
 pub struct EffectSources(Vec<Entity>);
 
-/// The target entity of this effect.
 #[derive(Component, Reflect, Debug)]
 #[relationship(relationship_target = AppliedEffects)]
 pub struct EffectTarget(pub Entity);
 
-/// All effects that are targeting this entity.
 #[derive(Component, Reflect, Debug)]
 #[relationship_target(relationship = EffectTarget, linked_spawn)]
 pub struct AppliedEffects(Vec<Entity>);

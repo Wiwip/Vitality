@@ -21,27 +21,20 @@ use vitality_core::AppAttributeBindings;
 use vitality_core::tags::ChangeTag;
 use vitality_core::view::ActorRead;
 
-/// Describes how the effect is applied to entities
 #[derive(Debug, Clone, Reflect, PartialEq)]
 pub enum EffectApplicationPolicy {
-    /// Applied once immediately
     Instant,
 
-    /// Applied once and persists forever
     Permanent,
 
-    /// Applied once, persists for a duration, then removed
     Temporary { duration: Timer },
 
-    /// Applied repeatedly at intervals, forever
     Periodic { interval: Timer },
 
-    /// Applied repeatedly at intervals for a limited time
     PeriodicTemporary { interval: Timer, duration: Timer },
 }
 
 impl EffectApplicationPolicy {
-    // Constructor methods
     pub fn instant() -> Self {
         Self::Instant
     }
@@ -69,7 +62,6 @@ impl EffectApplicationPolicy {
         }
     }
 
-    // State checking methods
     pub fn is_expired(&self) -> bool {
         match self {
             Self::Instant => true,
@@ -207,8 +199,7 @@ impl ApplyEffectEvent {
         }
     }
 
-    /// A stacking policy lands on the copy already applied: the stack event says so, and the spawn
-    /// has nothing left to do. Returns true when that is what happened.
+    /// a stacking policy lands on the copy already applied, so the spawn has nothing left to do; true when that is what happened
     fn queue_stacked_effect(
         &self,
         effect: &EffectDef,

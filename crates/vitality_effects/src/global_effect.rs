@@ -13,8 +13,7 @@ pub struct GlobalActor;
 #[derive(Component, Clone, Copy)]
 pub struct GlobalEffect;
 
-/// A plugin that manages global effects within the game.
-/// Its purpose is to add effects that are applied to any spawned actor.
+/// applies every [`GlobalEffects`] handle to each actor as it spawns
 pub struct GlobalEffectPlugin;
 
 impl Plugin for GlobalEffectPlugin {
@@ -42,7 +41,6 @@ pub fn spawn_global_actor(mut commands: Commands) {
     ));
 }
 
-/// When an actor is spawned, ensures that the global effects apply to the actor.
 fn observe_spawned_actor(
     trigger: On<Add<ManageAttributes>>,
     global_actor: Query<Entity, With<GlobalActor>>,

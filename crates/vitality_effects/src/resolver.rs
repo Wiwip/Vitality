@@ -1,6 +1,4 @@
-//! The attribute-agnostic resolver: one exclusive system that folds each dirty actor's modifiers
-//! and walks its attributes in dependency order, actors in parallel. Cross-actor reads settle in
-//! extra passes inside the same tick.
+//! one exclusive system that folds each dirty actor's modifiers and walks its attributes in dependency order, actors in parallel; cross-actor reads settle in extra passes inside the same tick
 
 use crate::components::{AppliedEffects, Effect, EffectInactive, EffectTarget};
 use crate::modifier::{AttributeModifier, DependencyProxyOf, ModifierOf, OwnedModifiers};
@@ -274,7 +272,6 @@ impl ResolverState {
         });
     }
 
-    /// Re-evaluates the live modifiers reading what changed; returns the marks they cause.
     fn recalc(&mut self, world: &mut World, readers: Vec<Entity>) -> EntityHashMap<Mark> {
         let mut next: EntityHashMap<Mark> = EntityHashMap::default();
         if readers.is_empty() {

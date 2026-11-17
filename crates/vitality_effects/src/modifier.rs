@@ -21,8 +21,7 @@ use vitality_core::util::pretty_type_name;
 use vitality_core::{AttributeBindings, DepRole};
 
 pub trait Modifier: Send + Sync {
-    /// Spawns the modifier as a component on the effect, targeting the actor for observers.
-    /// The EntityCommand is the already inserted attribute modifier component.
+    /// spawns the modifier onto the effect entity; `commands` already carries the attribute modifier component
     fn spawn_persistent_modifier(
         &self,
         targeting: &EffectTargeting,
@@ -31,12 +30,10 @@ pub trait Modifier: Send + Sync {
         commands: &mut EntityCommands,
     );
 
-    /// Immediately makes the modifications to the attributes.
-    /// Good for ability cost calculations. Prevents them from paying the cost once but doubly activate.
+    /// writes the attributes now, so an ability that activates twice cannot pay its cost twice
     fn apply_immediate(&self, context: &mut EffectExprContextMut) -> bool;
 
-    /// Sends a message to apply the message at the end of the schedule together with all other mods.
-    /// Good for damage, heals, etc.
+    /// queues the write for the collapsed end-of-schedule node instead of touching the attribute now
     fn apply_delayed(
         &self,
         source: Entity,
@@ -59,7 +56,6 @@ pub struct AttributeModifier<T: Attribute> {
     pub capture: Capture,
 }
 
-/// Whether a persistent modifier follows the attributes its expression reads.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
 pub enum Capture {
     /// Re-evaluated whenever a read attribute changes, in the same tick.
@@ -188,7 +184,6 @@ where
             EffectSubject::Source => &mut context.source_actor,
             EffectSubject::Effect => &mut context.effect_holder,
         };
-        // Apply the modifier
         if let Some(mut attribute) = attributes_mut.get_mut::<T>() {
             // Ensure that the modifier meaningfully changed the value before we trigger the event.
             let has_changed = new_val.are_different(attribute.current_value());
@@ -244,8 +239,7 @@ pub struct ApplyAttributeModifierMessage<T: Attribute> {
     pub stacks: u32,
 }
 
-/// Drains one attribute's [`ApplyAttributeModifierMessage`] queue; [`ModifierApplies`] holds one per
-/// registered attribute so instant modifiers cost a single `FixedUpdate` node for the whole app.
+/// one attribute's [`ApplyAttributeModifierMessage`] queue; [`ModifierApplies`] holds one per registered attribute so instant modifiers cost a single `FixedUpdate` node
 type ModifierApply = fn(&mut World);
 
 #[derive(Resource, Default)]
@@ -264,8 +258,7 @@ impl ModifierApplies {
     }
 }
 
-/// The message cursor and actor query of one attribute, kept as a resource so the collapsed node
-/// pays nothing per attribute beyond building them once.
+/// kept as a resource so the collapsed node pays nothing per attribute beyond building its cursor and query once
 #[derive(Resource)]
 struct ApplyState<T: Attribute> {
     cursor: MessageCursor<ApplyAttributeModifierMessage<T>>,
@@ -298,8 +291,7 @@ fn apply_queued_modifiers_of<T: Attribute>(world: &mut World) {
     );
 }
 
-/// One node for every attribute: asks each registered attribute to apply the modifier messages it
-/// queued, so an instant modifier costs one schedule node however many attributes the app has.
+/// asks each registered attribute to apply the modifier messages it queued, so an instant modifier costs one schedule node however many attributes the app has
 pub fn apply_all_modifier_events(world: &mut World, mut applies: Local<Vec<ModifierApply>>) {
     let Some(registry) = world.get_resource::<ModifierApplies>() else {
         return;
@@ -328,7 +320,6 @@ pub fn apply_modifier<T: Attribute>(
         ))?
         .base_value();
 
-    // We update the modifier's internal value before applying it.
     let context = EffectExprContext {
         source_actor: source,
         target_actor: Some(target), // Needs to be fixed.
@@ -337,7 +328,6 @@ pub fn apply_modifier<T: Attribute>(
     let mut modifier = trigger.modifier.clone();
     modifier.update_value(&context);
 
-    // Apply the modifier
     let calculator = AttributeCalculator::<T>::from_op_stacked(
         modifier.operation,
         modifier.value,
@@ -434,12 +424,10 @@ pub struct DependencyProxyOf(pub Entity);
 #[relationship_target(relationship = DependencyProxyOf, linked_spawn)]
 pub struct DependencyProxies(Vec<Entity>);
 
-/// The effect this modifier belongs to.
 #[derive(Component, Reflect, Debug)]
 #[relationship(relationship_target = OwnedModifiers)]
 pub struct ModifierOf(pub Entity);
 
-/// All modifiers belonging to this effect.
 #[derive(Component, Reflect, Debug)]
 #[relationship_target(relationship = ModifierOf, linked_spawn)]
 pub struct OwnedModifiers(Vec<Entity>);

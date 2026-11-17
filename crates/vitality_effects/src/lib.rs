@@ -106,8 +106,7 @@ impl Plugin for EffectsPlugin {
                 .in_set(EffectsSet::UpdateCurrentValues)
                 .before(resolver::resolve_system),
         );
-        // one node for every attribute again; the fire on the tick a duration expires still has
-        // to be written, so the expiry that despawns the effect cannot win the tick
+        // one node for every attribute again; the fire on the tick a duration expires must still be written, so the expiry that despawns the effect cannot win the tick
         app.add_systems(
             FixedUpdate,
             apply_all_periodic_effects
@@ -118,9 +117,7 @@ impl Plugin for EffectsPlugin {
     }
 }
 
-/// Registers the effect-side per-attribute state for one attribute: the collapsed nodes
-/// `EffectsPlugin::build` installed cover every attribute, so this adds no system and no observer.
-/// Pair with `vitality_core::init_core_attribute`.
+/// registers one attribute's effect-side state and adds no system: the collapsed nodes in `EffectsPlugin::build` cover every attribute. pair with `vitality_core::init_core_attribute`
 pub fn init_effect_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<AttributeModifier<T>>();
     app.add_message::<ApplyAttributeModifierMessage<T>>();

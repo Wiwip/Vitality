@@ -60,10 +60,7 @@ impl EffectBuilder {
         ))
     }
 
-    /// Modifies an attribute.
-    ///
-    /// The value is anything implementing [`AsExpression`] for the attribute's property: a literal
-    /// (`100u32`) or an attribute node (`Damage::src()`), as below.
+    /// the value is anything implementing [`AsExpression`] for the attribute's property: a literal (`100u32`) or an attribute node (`Damage::src()`)
     ///
     /// # Example
     /// ```
@@ -71,7 +68,6 @@ impl EffectBuilder {
     /// attribute!(Health, u32);
     /// attribute!(Damage, u32);
     ///
-    /// // A simple effect that increases the source's health by 100.
     /// let effect = EffectBuilder::new(EffectApplicationPolicy::Instant)
     ///     .modify::<Health>(100u32, ModOp::Add, EffectSubject::Source)
     ///     .build();
@@ -80,7 +76,6 @@ impl EffectBuilder {
     ///     .modify::<Health>(Damage::src(), ModOp::Sub, EffectSubject::Target)
     ///     .build();
     ///
-    /// // Regen 2 health every 1.0 seconds for 12.0 seconds.
     /// let regen = EffectBuilder::every_second_for_duration(1.0, 12.0)
     ///     .modify::<Health>(2u32, ModOp::Add, EffectSubject::Source)
     ///     .build();
@@ -94,8 +89,7 @@ impl EffectBuilder {
         self.push_modifier::<T>(Arc::new(expr.as_expr()), op, who, Capture::Live)
     }
 
-    /// Like [`Self::modify`], but the expression is evaluated once when the effect is applied and
-    /// never follows later changes of the attributes it reads.
+    /// like [`Self::modify`], but the expression is evaluated once at application and never follows later changes of the attributes it reads
     pub fn modify_snapshot<T: Attribute>(
         self,
         expr: impl AsExpression<T::Property, EffectExprSchema> + Send + Sync + 'static,
@@ -122,21 +116,15 @@ impl EffectBuilder {
         self
     }
 
-    /// Attach the effect to the target entity only if the condition is met.
+    /// read once at application, unlike [`Self::active_while`], and instant effects never read it at all
     ///
-    /// Read once, when the effect is applied: a miss spawns no entity and fires no event, and nothing
-    /// re-checks it on a later tick ([`Self::active_while`] is what gates an attached effect). Instant
-    /// effects never read it, so they apply either way.
-    ///
-    /// # Examples
-    ///
+    /// # Example
     /// ```
     /// # use vitality_effects::prelude::*;
     /// # use vitality_effects::conditions::ChanceCondition;
     /// attribute!(Health, f32);
     /// attribute!(Damage, f32);
     ///
-    /// // A damage over time effect with a 10% chance of attaching at all, rolled once at application.
     /// EffectBuilder::every_second_for_duration(1.0, 12.0)
     ///     .modify::<Health>(Damage::src(), ModOp::Add, EffectSubject::Target)
     ///     .attach_if(ChanceCondition(0.10))

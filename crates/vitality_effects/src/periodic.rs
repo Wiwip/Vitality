@@ -8,8 +8,7 @@ use bevy::prelude::*;
 use std::any::TypeId;
 use vitality_core::attributes::Attribute;
 
-/// Fires one attribute's periodic effects; [`PeriodicApplies`] holds one per registered attribute so
-/// periodic application costs a single `FixedUpdate` node for the whole app.
+/// fires one attribute's periodic effects; [`PeriodicApplies`] holds one per registered attribute so periodic application costs a single `FixedUpdate` node
 type PeriodicApply = fn(&mut World);
 
 #[derive(Resource, Default)]
@@ -28,7 +27,6 @@ impl PeriodicApplies {
     }
 }
 
-/// One periodic effect, as the collapsed node reads it.
 type PeriodicEffectRow<'w, 's> = (
     EffectsRef<'w, 's>,
     &'w Effect,
@@ -39,8 +37,7 @@ type PeriodicEffectRow<'w, 's> = (
     &'w EffectSource,
 );
 
-/// The actor, effect and modifier queries of one attribute, kept as a resource so the collapsed node
-/// pays nothing per attribute beyond building them once.
+/// kept as a resource so the collapsed node pays nothing per attribute beyond building its queries once
 #[derive(Resource)]
 struct PeriodicState<T: Attribute> {
     actors: QueryState<EffectsRef<'static, 'static>, Without<IsResource>>,
@@ -48,7 +45,7 @@ struct PeriodicState<T: Attribute> {
     modifiers: QueryState<&'static AttributeModifier<T>>,
 }
 
-/// What [`apply_periodic_effect`] does for one attribute, from world state instead of system state.
+/// the collapsed periodic node for one attribute, driven from world state instead of system params
 fn apply_periodic_effects_of<T: Attribute>(world: &mut World) {
     if !world.contains_resource::<PeriodicState<T>>() {
         let actors = world.query_filtered();
@@ -99,7 +96,6 @@ fn apply_periodic_effects_of<T: Attribute>(world: &mut World) {
                 effect_holder: effect_ref,
             };
 
-            // Determines whether the effect should activate
             let should_be_activated = effect_def
                 .activate_conditions
                 .iter()
@@ -109,7 +105,6 @@ fn apply_periodic_effects_of<T: Attribute>(world: &mut World) {
                 continue;
             }
 
-            // Timer has triggered. Grab modifiers and apply them.
             for children in owned_modifiers.iter() {
                 let Ok(attribute_modifier) = state.modifiers.get_manual(world, children) else {
                     continue;
@@ -135,8 +130,7 @@ fn apply_periodic_effects_of<T: Attribute>(world: &mut World) {
         .write_batch(fired);
 }
 
-/// One node for every attribute: asks each registered attribute to fire the periodic effects that are
-/// due, so a periodic effect costs one schedule node however many attributes the app has.
+/// asks each registered attribute to fire the periodic effects that are due, so a periodic effect costs one schedule node however many attributes the app has
 pub fn apply_all_periodic_effects(world: &mut World, mut applies: Local<Vec<PeriodicApply>>) {
     let Some(registry) = world.get_resource::<PeriodicApplies>() else {
         return;

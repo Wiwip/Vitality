@@ -20,7 +20,6 @@ impl Plugin for ConditionPlugin {
         if !vitality_core::first_install::<Self>(app) {
             return;
         }
-        // activates/deactivates effects based on their conditions
         app.add_systems(
             FixedUpdate,
             evaluate_effect_conditions.in_set(EffectsSet::Prepare),
@@ -28,7 +27,7 @@ impl Plugin for ConditionPlugin {
     }
 }
 
-/// One non-periodic effect with the actors it reads conditions from.
+/// one non-periodic effect with the actors it reads its conditions from
 type ConditionRow<'w, 's> = (
     EffectsRef<'w, 's>,
     &'w Effect,
@@ -76,7 +75,6 @@ pub fn evaluate_effect_conditions(
             effect_holder: effect_entity_ref,
         };
 
-        // Determines whether the effect should activate
         let should_be_active = effect
             .activate_conditions
             .iter()
@@ -84,15 +82,11 @@ pub fn evaluate_effect_conditions(
 
         let is_inactive = status.is_some();
         if should_be_active && is_inactive {
-            // Effect was inactive and its conditions are now met, so activate it.
             debug!("Effect {effect_entity} is now active.");
             commands.entity(effect_entity).remove::<EffectInactive>();
-            // Nothing else tells the target: no attribute of its own changed, so no `Changed<T>` and no
-            // cascade reaches it, and since L-4 no leftover mark carries the fold into the next tick
-            // either. The flip changes what the resolve folds, so ask for that resolve.
+            // nothing else dirties the target: no attribute of its own changed and no leftover mark carries the fold into the next tick
             commands.trigger(MarkActorDirty { entity: target.0 });
         } else if !should_be_active && !is_inactive {
-            // Effect was active and its conditions are no longer met, so deactivate it.
             debug!("Effect {effect_entity} is now inactive.");
             commands.entity(effect_entity).insert(EffectInactive);
             commands.trigger(MarkActorDirty { entity: target.0 });

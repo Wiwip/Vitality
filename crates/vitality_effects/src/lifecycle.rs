@@ -9,8 +9,7 @@ pub enum EffectRemovalReason {
     Expired,
     Removed,
     Cleansed,
-    /// The effect entity went away without going through a removal API, e.g. its source or
-    /// target despawned.
+    /// the effect entity went away without going through a removal API, e.g. its source or target despawned
     Despawned,
 }
 
@@ -20,7 +19,6 @@ pub struct PendingRemoval(pub EffectRemovalReason);
 
 #[derive(EntityEvent, Clone, Debug)]
 pub struct EffectApplied {
-    /// The target actor.
     pub entity: Entity,
     pub source: Entity,
     /// None for instant effects, which never spawn an entity.
@@ -30,7 +28,6 @@ pub struct EffectApplied {
 
 #[derive(EntityEvent, Clone, Debug)]
 pub struct EffectRemoved {
-    /// The target actor.
     pub entity: Entity,
     pub effect: Entity,
     pub handle: Handle<EffectDef>,
@@ -39,7 +36,6 @@ pub struct EffectRemoved {
 
 #[derive(EntityEvent, Clone, Debug)]
 pub struct EffectStacksChanged {
-    /// The target actor.
     pub entity: Entity,
     pub effect: Entity,
     pub old: u32,
@@ -48,7 +44,6 @@ pub struct EffectStacksChanged {
 
 #[derive(EntityEvent, Clone, Debug)]
 pub struct EffectBlocked {
-    /// The target actor.
     pub entity: Entity,
     pub source: Entity,
     pub handle: Handle<EffectDef>,

@@ -11,7 +11,6 @@ use std::any::TypeId;
 use std::time::Duration;
 use vitality_core::attributes::Attribute;
 
-/// What `Effects` reads per effect entity.
 type EffectInfo = (
     &'static Effect,
     &'static EffectSource,
