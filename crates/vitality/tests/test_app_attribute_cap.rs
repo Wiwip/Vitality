@@ -1,5 +1,7 @@
-//! The facade's cap sentence, asserted at the facade: `Stacks` takes one of the 128 slots, so the
-//! app-level half of "127 game attributes" is invisible to a bare `AttributeRegistry` unit test.
+//! The app-level attribute rules, asserted at the facade: the cap sentence, the short-name
+//! collision hint, and what an attribute registered outside `build` gets.
+
+mod gameplay;
 
 use bevy::prelude::*;
 use std::any::TypeId;
@@ -65,4 +67,113 @@ fn an_app_gets_127_game_attributes_because_the_framework_holds_one_slot() {
 #[should_panic(expected = "register Attr127: the attribute registry holds at most 128 attributes")]
 fn the_128th_game_attribute_is_the_one_the_app_refuses() {
     let _app = app_with(AttrSet::CAPACITY);
+}
+
+mod game_a {
+    use vitality::prelude::*;
+    vitality::attribute!(Health, f32);
+    vitality::attribute!(Armor, f32);
+}
+
+mod game_b {
+    use vitality::prelude::*;
+    vitality::attribute!(Health, f32);
+    vitality::attribute!(Mana, f32);
+}
+
+/// called, not passed to `add_plugins`: two values of type `fn(&mut App)` carry one plugin type id,
+/// so bevy rejects the second before either attribute is registered
+fn app_of_crates(game: &[fn(&mut App)]) -> App {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+    for register in game {
+        register(&mut app);
+    }
+    app
+}
+
+#[test]
+#[should_panic(expected = "already holds the short name: rename one of them")]
+fn two_crates_sharing_a_short_name_are_told_to_rename_one() {
+    let _shared = app_of_crates(&[
+        init_attribute::<game_a::Health>,
+        init_attribute::<game_b::Health>,
+    ]);
+}
+
+/// The wiring contract's first rule from the bad side: an attribute registered in `Plugin::finish`
+/// is never registered at all, and everything downstream of it stays silent.
+mod late_registration {
+
+    use crate::gameplay::*;
+    use bevy::prelude::*;
+    use vitality::CurrentValueChanged;
+    use vitality::effect::modifier::{EffectSubject, ModOp};
+    use vitality::prelude::*;
+
+    attribute!(Regen, f32);
+
+    /// the event is not `Clone`, so the harness' `record` cannot hold it
+    #[derive(Resource, Default, Debug)]
+    struct Fired(pub usize);
+
+    struct LatePlugin;
+
+    impl Plugin for LatePlugin {
+        fn build(&self, _app: &mut App) {}
+
+        fn finish(&self, app: &mut App) {
+            init_attribute::<Regen>(app);
+        }
+    }
+
+    #[test]
+    fn an_attribute_registered_in_finish_applies_nothing() {
+        let mut app = app();
+        app.add_plugins(LatePlugin);
+        ticks(&mut app, 1);
+
+        assert!(
+            app.world()
+                .resource::<AppTypeRegistry>()
+                .read()
+                .get(std::any::TypeId::of::<Regen>())
+                .is_none(),
+            "App::update() ran Plugin::finish, which the contract says only the app runner does"
+        );
+
+        let hero = spawn(&mut app, hero_def().with::<Regen>(4.0));
+        let buff = effect(
+            &mut app,
+            EffectBuilder::permanent()
+                .modify::<Regen>(5.0, ModOp::Add, EffectSubject::Target)
+                .build(),
+        );
+        app.init_resource::<Fired>();
+        app.add_observer(
+            |_: On<CurrentValueChanged<Regen>>, mut fired: ResMut<Fired>| {
+                fired.0 += 1;
+            },
+        );
+
+        apply(&mut app, hero, hero, &buff);
+        ticks(&mut app, 2);
+
+        assert_eq!(
+            with_effects(&mut app, move |effects| effects.on(hero)).len(),
+            1,
+            "the applied effect still spawns its modifier entity"
+        );
+        assert_eq!(base::<Regen>(&app, hero), 4.0, "the base never moves");
+        assert_eq!(
+            current::<Regen>(&app, hero),
+            4.0,
+            "and neither does the current value"
+        );
+        assert_eq!(
+            app.world().resource::<Fired>().0,
+            0,
+            "no CurrentValueChanged is triggered"
+        );
+    }
 }

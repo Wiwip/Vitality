@@ -5,6 +5,7 @@ use vitality::actors::ActorBuilder;
 use vitality::context::Vitality;
 use vitality::effect::AppliedEffects;
 use vitality::effect::Effect;
+use vitality::effect::EffectApplicationPolicy;
 use vitality::effect::conditions::IsAttributeWithinBounds;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
@@ -181,4 +182,61 @@ fn test_instant_effect_application() {
     let mut query = app.world_mut().query::<&TestInt>();
     let test_c = query.single(app.world()).unwrap();
     assert_eq!(test_c.current_value(), init_value + modifier_value);
+}
+
+attribute!(TestU32, u32);
+
+fn prepare_zero_actor(mut ctx: Vitality) {
+    let actor_template = ctx.add_actor(
+        ActorBuilder::new()
+            .name("TestU32ctor")
+            .with::<TestU32>(0)
+            .build(),
+    );
+    ctx.spawn_actor_from_handle(&actor_template);
+}
+
+#[test]
+fn test_update_current_values() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+    app.add_plugins(init_attribute::<TestU32>);
+    app.add_systems(Startup, prepare_zero_actor);
+    // A headless update lasts microseconds, so with the real clock FixedUpdate never runs.
+    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+
+    app.update();
+
+    let mut query = app.world_mut().query::<(Entity, &TestU32)>();
+    let (entity, _) = query.single(app.world()).unwrap();
+
+    let attribute = app.world().get::<TestU32>(entity).unwrap();
+    assert_eq!(0, attribute.base_value());
+    assert_eq!(0, attribute.current_value());
+
+    app.world_mut()
+        .run_system_once(move |mut ctx: Vitality| {
+            let effect_def = EffectBuilder::new(EffectApplicationPolicy::Permanent)
+                .modify::<TestU32>(42u32, ModOp::Add, EffectSubject::Target)
+                .build();
+
+            ctx.apply_dynamic_effect_to_self(entity, effect_def);
+        })
+        .unwrap();
+
+    app.update();
+
+    let attribute = app.world().get::<TestU32>(entity).unwrap();
+    assert_eq!(0, attribute.base_value());
+    assert_eq!(42, attribute.current_value());
+
+    let mut query = app.world_mut().query::<(Entity, &Effect)>();
+    let (effect_entity, _) = query.single(app.world()).unwrap();
+    app.world_mut().despawn(effect_entity);
+
+    app.update();
+
+    let attribute = app.world().get::<TestU32>(entity).unwrap();
+    assert_eq!(0, attribute.base_value());
+    assert_eq!(0, attribute.current_value());
 }

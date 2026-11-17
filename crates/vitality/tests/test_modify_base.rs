@@ -1,7 +1,11 @@
 //! `Vitality::modify_base`, the base-write entry point: every op lands on the base, the current
-//! value follows in one fixed tick, and a write to an attribute the actor lacks is dropped silently.
+//! value follows in one fixed tick, and an attribute the actor lacks is silent whether it is read or
+//! written.
 
 mod gameplay;
+
+#[path = "../benches/support/common.rs"]
+mod common;
 
 use bevy::prelude::*;
 use gameplay::*;
@@ -101,4 +105,204 @@ fn modify_base_on_an_attribute_the_actor_does_not_carry_changes_nothing() {
         "the dropped write says nothing: {:?}",
         fires(&app)
     );
+}
+
+/// A live self-targeted modifier (`source == target == owner`) does not follow a base write to the
+/// attribute it reads: what decides it is the write's cadence and the registration order, not density.
+mod self_buff_base_write {
+
+    use crate::common::{
+        ATTRIBUTE_POOL, Attr0, Attr1, WorldSpec, actor_entities, build_app_with, tick,
+    };
+    use bevy::prelude::*;
+    use vitality::attributes::{Attribute, AttributeDependents};
+    use vitality::effect::definition::EffectDef;
+    use vitality::effect::modifier::{AttributeModifier, EffectSubject, ModOp, OwnedModifiers};
+    use vitality::effect::{AppliedEffects, ApplyEffectEvent, EffectBuilder, EffectTargeting};
+
+    const WRITE: f64 = 100.0;
+
+    const SETTLE: usize = 3;
+
+    #[test]
+    fn a_self_buff_written_the_tick_after_it_lands_follows_the_source_move() {
+        let spec = WorldSpec {
+            attributes_per_actor: 2,
+            effects_per_actor: 0,
+            modifiers_per_effect: 1,
+            actors: 1,
+            dirty_fraction: 0.0,
+            ticking_fraction: 0.0,
+        };
+        let mut app = build_app_with(&spec, ATTRIBUTE_POOL);
+        let actor = actor_entities(app.world_mut())[0];
+        let handle = app.world_mut().resource_mut::<Assets<EffectDef>>().add(
+            EffectBuilder::permanent()
+                .modify::<Attr1>(Attr0::src(), ModOp::Add, EffectSubject::Target)
+                .build(),
+        );
+
+        // the apply cadence `scenario::queue_apply` uses: queued, so it lands inside the next tick
+        {
+            let world = app.world_mut();
+            let mut commands = world.commands();
+            commands.trigger(ApplyEffectEvent {
+                entity: actor,
+                targeting: EffectTargeting::new(actor, actor),
+                handle,
+            });
+        }
+        app.world_mut().flush();
+        tick(&mut app);
+
+        let (effect, modifier) = {
+            let world = app.world();
+            let effects: Vec<Entity> = world.get::<AppliedEffects>(actor).unwrap().iter().collect();
+            let effect = *effects.last().expect("the self-buff landed on the actor");
+            let modifiers: Vec<Entity> = world
+                .get::<OwnedModifiers>(effect)
+                .unwrap()
+                .iter()
+                .collect();
+            (effect, modifiers[0])
+        };
+        let source = ATTRIBUTE_POOL[0].current(app.world(), actor).unwrap() as f32;
+        let before = ATTRIBUTE_POOL[1].current(app.world(), actor).unwrap() as f32;
+        let base = ATTRIBUTE_POOL[1].base(app.world(), actor).unwrap() as f32;
+        assert!(
+            app.world()
+                .get::<AttributeDependents<Attr0>>(actor)
+                .is_some(),
+            "the dependency edge has to be on the actor or this test is not about the notify step"
+        );
+        assert!(
+            (before - (base + source)).abs() < 1e-3,
+            "the apply is not folded yet: Attr1 {before}, want base {base} + Attr0 {source}"
+        );
+
+        ATTRIBUTE_POOL[0].set_base(app.world_mut(), actor, source as f64 + WRITE);
+        for _ in 0..SETTLE {
+            tick(&mut app);
+        }
+
+        // the cascade ran: the modifier knows the new value, so the loss is the refresh after it
+        let value = app
+            .world()
+            .get::<AttributeModifier<Attr1>>(modifier)
+            .unwrap()
+            .value;
+        assert!(
+            (value - (source + WRITE as f32)).abs() < 1e-3,
+            "the dependent modifier was not even re-evaluated: {value}, want {}",
+            source + WRITE as f32
+        );
+        let after = ATTRIBUTE_POOL[1].current(app.world(), actor).unwrap() as f32;
+        assert!(
+            (after - (before + WRITE as f32)).abs() < 1e-3,
+            "self-buff on {actor:?} (effect {effect:?}): Attr0 moved +{WRITE} and the modifier followed, \
+         but Attr1 stayed at {after}, want {}",
+            before + WRITE as f32
+        );
+    }
+}
+
+/// The missing-attribute fallback: a `T::src()` read of an attribute the actor lacks reads zero.
+/// `warn_once!` is per call site, so one warning covers both actors and every tick of the run.
+mod missing_attribute {
+
+    use crate::gameplay::*;
+    use bevy::log::tracing::subscriber::with_default;
+    use bevy::log::tracing_subscriber::{Registry, fmt, layer::SubscriberExt};
+    use std::io::{self, Write};
+    use std::sync::{Arc, Mutex};
+    use vitality::actors::ActorBuilder;
+    use vitality::effect::modifier::{EffectSubject, ModOp};
+    use vitality::prelude::*;
+
+    /// The resolver settles a dependent hop in the same tick, so 4 leaves room.
+    const SETTLE: usize = 4;
+
+    fn drain() -> EffectBuilder {
+        EffectBuilder::permanent().modify::<Health>(Power::src(), ModOp::Sub, EffectSubject::Target)
+    }
+
+    #[derive(Clone)]
+    struct Sink(Arc<Mutex<String>>);
+
+    impl Write for Sink {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0
+                .lock()
+                .unwrap()
+                .push_str(&String::from_utf8_lossy(buf));
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn reading_an_attribute_the_actor_lacks_is_zero() {
+        let logs = Arc::new(Mutex::new(String::new()));
+        let writer = logs.clone();
+        let subscriber = Registry::default().with(
+            fmt::layer()
+                .with_ansi(false)
+                .without_time()
+                .with_writer(move || Sink(writer.clone())),
+        );
+
+        // thread-local layer: the global one LogPlugin::build installs would race the other tests here
+        with_default(subscriber, || {
+            let mut app = app();
+            let full = spawn(
+                &mut app,
+                ActorBuilder::new()
+                    .name("full")
+                    .with::<Health>(100.0)
+                    .with::<Power>(10.0),
+            );
+            let bare = spawn(
+                &mut app,
+                ActorBuilder::new().name("bare").with::<Health>(100.0),
+            );
+            assert!(
+                !has::<Power>(&app, bare),
+                "the bare actor has to lack the attribute the shared definition reads"
+            );
+
+            let drain = effect(&mut app, drain().build());
+            apply(&mut app, full, full, &drain);
+            apply(&mut app, bare, bare, &drain);
+            ticks(&mut app, SETTLE);
+
+            // equality is the NaN guard too: NaN compares false against every number
+            assert_eq!(current::<Health>(&app, full), 90.0);
+            assert_eq!(
+                current::<Health>(&app, bare),
+                100.0,
+                "the missing Power has to read as zero, not NaN"
+            );
+
+            ticks(&mut app, SETTLE);
+            assert_eq!(current::<Health>(&app, full), 90.0);
+            assert_eq!(base::<Health>(&app, bare), 100.0);
+            assert_eq!(
+                current::<Health>(&app, bare),
+                100.0,
+                "the fallback has to be stable across ticks, not creep"
+            );
+        });
+
+        let logs = logs.lock().unwrap();
+        let warned = logs.matches("reading it as zero").count();
+        assert_eq!(
+            warned,
+            1,
+            "one missing-attribute read across two actors and {} ticks has to warn once, saw {warned}: {logs:?}",
+            2 * SETTLE
+        );
+    }
 }
