@@ -299,6 +299,26 @@ impl AttributeRegistry {
         true
     }
 
+    /// Walking the edges already in the graph from `reader`, does `read` come back? Then adding
+    /// `read -> reader` would close a cycle, which is a startup error rather than a live-world one.
+    /// A self edge never needs asking: `add_edge` drops `read == reader` before it touches the graph.
+    pub fn closes_cycle(&self, read: AttrId, reader: AttrId) -> bool {
+        let mut seen = AttrSet::default();
+        seen.insert(reader);
+        let mut walking = vec![reader];
+        while let Some(next) = walking.pop() {
+            for &downstream in &self.readers[next.index()] {
+                if downstream == read {
+                    return true;
+                }
+                if seen.insert(downstream) {
+                    walking.push(downstream);
+                }
+            }
+        }
+        false
+    }
+
     fn rebuild_order(&mut self) {
         let n = self.infos.len();
         let mut indegree = vec![0usize; n];
@@ -335,9 +355,9 @@ impl AttributeRegistry {
 }
 
 /// Clamped attributes read their limits' attributes, so those resolve first. `reads` pairs an actor
-/// with a dependency key and the attribute clamped by it; a key no binding knows is dropped. The
-/// attributes walked before an edge that only appeared in this call come back, so they resolve again
-/// against the order the walk never had.
+/// with a dependency key and the attribute clamped by it; a key no binding knows is dropped, and so
+/// is an edge that would close a cycle. The attributes walked before an edge that only appeared in
+/// this call come back, so they resolve again against the order the walk never had.
 pub fn add_clamp_edges(
     world: &mut World,
     reads: impl Iterator<Item = (Entity, TypeId, TypeId)>,
@@ -364,6 +384,18 @@ pub fn add_clamp_edges(
         let Some(reader) = registry.id_of(clamped) else {
             continue;
         };
+        if registry.closes_cycle(read, reader) {
+            let (read_name, reader_name) = (
+                registry.info(read).name.clone(),
+                registry.info(reader).name.clone(),
+            );
+            warn_once!(
+                "a clamp on {reader_name} reads {read_name}, which closes an attribute dependency \
+                 cycle: the edge is dropped, so {reader_name} keeps the clamping it had before, \
+                 without {read_name} resolved ahead of it"
+            );
+            continue;
+        }
         if registry.add_edge(read, reader) {
             fresh.push((read, reader));
         }

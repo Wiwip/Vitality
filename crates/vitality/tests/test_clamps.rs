@@ -1,5 +1,9 @@
 mod gameplay;
 
+#[path = "support/logs.rs"]
+mod logs;
+
+use crate::logs::Logs;
 use gameplay::*;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
@@ -136,6 +140,49 @@ fn damage_below_zero_stops_at_the_min() {
 
     assert_eq!(base::<Health>(&app, hero), 0.0);
     assert_eq!(current::<Health>(&app, hero), 0.0);
+}
+
+/// A limit whose expression closes a cycle is refused at registration instead of reaching the
+/// startup-class cycle panic from inside a tick.
+#[test]
+fn a_clamp_limit_that_closes_a_cycle_is_refused_rather_than_panicking_the_tick() {
+    let logs = Logs::of_binary();
+    let mut app = app();
+    let hero = spawn(
+        &mut app,
+        hero_def()
+            .with::<Power>(200.0)
+            .with::<Armor>(50.0)
+            // a bare limit is known at spawn, so Armor -> Power is already in the graph
+            .clamp::<Power>(0.0, Armor::src())
+            // a computed limit reports Power on its first pass, inside the tick, and that edge
+            // would close Armor -> Power -> Armor
+            .clamp::<Armor>(0.0, Power::src() * 2.0),
+    );
+    ticks(&mut app, 2);
+
+    assert_eq!(
+        current::<Power>(&app, hero),
+        50.0,
+        "the edge that is legal still clamps Power to its limit"
+    );
+    assert_eq!(current::<Armor>(&app, hero), 50.0);
+
+    let warns = logs.warns();
+    assert!(
+        warns.contains("closes an attribute dependency cycle")
+            && warns.contains("Power")
+            && warns.contains("Armor"),
+        "the refused edge has to name both attributes and why: {warns}"
+    );
+
+    with_vitality(&mut app, move |v| v.set_base::<Power>(hero, 20.0));
+    ticks(&mut app, 1);
+    assert_eq!(
+        current::<Power>(&app, hero),
+        20.0,
+        "the refused edge left the order usable"
+    );
 }
 
 #[test]
