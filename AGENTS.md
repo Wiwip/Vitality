@@ -27,8 +27,8 @@ A sprint is a branch `sprint/<date>` on which an agent works through the owner's
 ```sprint
 base      = main
 gate      = scripts/gate.sh
-max_items = 10
-max_hours = 8
+max_items = 20
+max_hours = 16
 protected = .cargo/**
 protected = rust-toolchain.toml
 protected = .agent-sandbox
