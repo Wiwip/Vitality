@@ -20,8 +20,8 @@ use crate::tasks::{Tasks, WaitTask};
 use crate::tasks::{handles_wait_task_timers, on_task_completion_notification};
 use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
 use bevy::prelude::*;
+use hfsm_bevy::MachineInstance;
 use hfsm_bevy::StateMachineAppExt;
-use hfsm_bevy::{MachineInstance, StateTimer};
 
 pub mod prelude {
     pub use crate::context::AbilityExprSchema;
@@ -30,6 +30,8 @@ pub mod prelude {
 pub use builder::AbilityBuilder;
 pub use components::*;
 pub use definition::AbilityDef;
+// the cooldown is a StateTimer entry, so callers outside this crate need the name to read it
+pub use hfsm_bevy::StateTimer;
 pub use lifecycle::{
     AbilityActivated, AbilityActivationFailed, AbilityEnded, ActivationError, cooldown_remaining,
 };

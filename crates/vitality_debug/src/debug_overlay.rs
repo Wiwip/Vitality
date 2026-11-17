@@ -3,8 +3,9 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use ptree::{TreeBuilder, write_tree};
 use std::any::TypeId;
+use vitality_abilities::ability_state::AbilityMachine;
 use vitality_abilities::tasks::Tasks;
-use vitality_abilities::{Ability, AbilityRecovery, GrantedAbilities};
+use vitality_abilities::{Ability, GrantedAbilities, StateTimer, cooldown_remaining};
 use vitality_core::attributes::ManageAttributes;
 use vitality_core::attributes::ReflectAccessAttribute;
 use vitality_effects::modifier::{ModifierMarker, OwnedModifiers, ReflectAccessModifier};
@@ -19,6 +20,16 @@ type ActorQuery<'w, 's> = Query<
     's,
     (EntityRef<'static>, Option<&'static AppliedEffects>),
     (With<ManageAttributes>, With<DebugOverlayMarker>),
+>;
+
+type AbilityQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static Ability,
+        Option<&'static StateTimer<AbilityMachine>>,
+        Option<&'static Name>,
+    ),
 >;
 
 type OverlayQuery<'w, 's> = Query<
@@ -70,15 +81,7 @@ pub struct ExploreParams<'w, 's> {
         ),
     >,
     granted_abilities: Query<'w, 's, &'static GrantedAbilities>,
-    ability_query: Query<
-        'w,
-        's,
-        (
-            &'static Ability,
-            Option<&'static AbilityRecovery>,
-            Option<&'static Name>,
-        ),
-    >,
+    ability_query: AbilityQuery<'w, 's>,
     tasks: Query<'w, 's, &'static Tasks>,
     names: Query<'w, 's, &'static Name>,
     modifiers: Query<'w, 's, EntityRef<'static>, With<ModifierMarker>>,
@@ -252,25 +255,28 @@ fn list_tasks(
     }
 }
 
+fn cooldown_column(timer: Option<&StateTimer<AbilityMachine>>) -> String {
+    match timer.and_then(cooldown_remaining) {
+        Some(remaining) => format!(" ({:.1}s)", remaining.as_secs_f32()),
+        None => "".to_string(),
+    }
+}
+
 fn list_abilities(
     builder: &mut TreeBuilder,
     abilities: &GrantedAbilities,
-    ability_query: &Query<(&Ability, Option<&AbilityRecovery>, Option<&Name>)>,
+    ability_query: &AbilityQuery<'_, '_>,
     task_query: &Query<&Tasks>,
     names: &Query<&Name>,
 ) {
     builder.begin_child("Abilities".to_string());
     for ability_entity in abilities.iter() {
-        let Ok((_ability, recovery, name)) = ability_query.get(*ability_entity) else {
+        let Ok((_, timer, name)) = ability_query.get(*ability_entity) else {
             continue;
         };
 
         let name = name.map(|n| n.as_str()).unwrap_or("Ability");
-        let cooldown_str = if let Some(cooldown) = recovery {
-            format!(" ({:.1}s)", cooldown.current_value())
-        } else {
-            "".to_string()
-        };
+        let cooldown_str = cooldown_column(timer);
 
         builder.begin_child(format!("[{ability_entity}] {name}{cooldown_str}"));
 
@@ -345,5 +351,33 @@ fn list_modifiers_for_effect(
         builder
             .begin_child(format!("[{}] {}", modifier_ref.id(), modifier.describe(),))
             .end_child();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    use vitality_abilities::ability_state::{AbilityEvent, AbilityState};
+
+    fn recovering(seconds: f32) -> StateTimer<AbilityMachine> {
+        let mut timer = StateTimer::<AbilityMachine>::default();
+        timer.set_timer(
+            Duration::from_secs_f32(seconds),
+            AbilityEvent::Recovered,
+            AbilityState::Recovery,
+        );
+        timer
+    }
+
+    #[test]
+    fn an_ability_that_never_activated_shows_no_cooldown() {
+        assert_eq!(cooldown_column(None), "");
+    }
+
+    #[test]
+    fn a_cooldown_shows_the_time_left() {
+        let timer = recovering(0.5);
+        assert_eq!(cooldown_column(Some(&timer)), " (0.5s)");
     }
 }
