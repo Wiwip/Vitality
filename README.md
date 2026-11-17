@@ -90,10 +90,10 @@ The contract, with what each break looks like from inside an app and the test th
 
 ## Performance
 
-From the `scenario` group of `crates/vitality/benches/bench_systems.rs`, measured at tip `5866cd9` on 2026-11-17 on a shared 8-core box (start-of-run loadavg 3.2-3.8 on every quoted run; absolute values move ~10 % run to run). Shape: 10 000 actors, 20 attributes and 3 effects each.
+From the `scenario` group of `crates/vitality/benches/bench_systems.rs`, measured 2026-11-17 on a shared 8-core box (start-of-run loadavg 3.1-3.9 on every quoted run; absolute values move ~10 % run to run, so the pair below each number is the previous build run alternately in the same session). Shape: 10 000 actors, 20 attributes and 3 effects each.
 
-- `steady`, 10 % of the actors' attributes moved, single-threaded: 1.1425 / 1.1260 / 1.1950 ms over three runs, median 1.14 ms, 6 % spread — **inside the 2 ms ceiling**, and the slowest run the session produced at similar load (1.3255 ms) still leaves 34 %, so there is headroom. Id `scenario/steady/actors=10000/a=20/e=3/st-static`.
-- `storm`, every attribute of every actor, with bevy's `multi_threaded`: 7.3439 / 6.7178 / 6.6703 ms, median 6.72 ms, 10 % spread — **inside the 8 ms ceiling** by 8-20 %, but the runs sit on two levels 10 % apart and the slowest run of the session (7.5316 ms, upper bound 7.6262 ms) leaves 5 %, so it is met with nothing to spare. Id `scenario/storm/actors=10000/a=20/e=3/mt-static`.
+- `steady`, 10 % of the actors' attributes moved, single-threaded: 1.0463 / 1.0479 / 1.0501 / 1.0527 ms over four runs, median 1.05 ms, 0.6 % spread — **inside the 2 ms ceiling** with 47 % to spare. The paired runs, same session: 1.1445 / 1.1517 / 1.1729 / 1.2396 ms, median 1.16 ms; 4/4 pairs and 9.8 % on the medians. Id `scenario/steady/actors=10000/a=20/e=3/st-static`.
+- `storm`, every attribute of every actor, with bevy's `multi_threaded`: median 6.52 ms over six alternating pairs (6.1753-6.9185 ms, 12 % spread) against 7.07 ms on the paired build (6.7606-7.3073 ms); 6/6 pairs and 7.9 % on the medians. **Inside the 8 ms ceiling** with room now: the slowest run of the six (6.9185 ms, upper bound 6.9805 ms) leaves 12.7 %, where `5866cd9` left 5 %. Id `scenario/storm/actors=10000/a=20/e=3/mt-static`.
 - Multi-threading is worth 1.28x on `storm`, nothing on `steady`, and it loses on the `idle` control. That pairing was taken at `7340cfb`; only the two ids above were re-taken at this tip.
 
 ## Running the benches

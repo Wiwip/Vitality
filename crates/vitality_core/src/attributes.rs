@@ -69,6 +69,9 @@ where
     fn base_value(&self) -> Self::Property;
     fn base(&self) -> Self::Property;
     fn set_base_value(&mut self, value: Self::Property);
+    /// the base the last fold turned into `current_value`, so the base-write scan compares in place
+    fn folded_base(&self) -> Option<Self::Property>;
+    fn set_folded_base(&mut self, value: Self::Property);
     fn current_value(&self) -> Self::Property;
     fn val(&self) -> Self::Property;
     fn set_current_value(&mut self, value: Self::Property);
@@ -266,6 +269,7 @@ macro_rules! attribute_impl {
             pub base_value: $ValueType,
             #[deref]
             current_value: $ValueType,
+            folded_base: Option<$ValueType>,
         }
 
         impl $crate::attributes::Attribute for $StructName {
@@ -278,6 +282,7 @@ macro_rules! attribute_impl {
                 Self {
                     base_value: value.as_(),
                     current_value: value.as_(),
+                    folded_base: None,
                 }
             }
             #[inline(always)]
@@ -290,6 +295,13 @@ macro_rules! attribute_impl {
             }
             fn set_base_value(&mut self, value: $ValueType) {
                 self.base_value = value;
+            }
+            #[inline(always)]
+            fn folded_base(&self) -> Option<$ValueType> {
+                self.folded_base
+            }
+            fn set_folded_base(&mut self, value: $ValueType) {
+                self.folded_base = Some(value);
             }
             #[inline(always)]
             fn current_value(&self) -> $ValueType {

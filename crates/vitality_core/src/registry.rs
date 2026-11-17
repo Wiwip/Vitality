@@ -113,7 +113,6 @@ pub struct AttrComponents {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Resolved {
-    pub base: f64,
     pub moved: Option<(f64, f64)>,
 }
 
@@ -165,10 +164,10 @@ fn resolve<T: Attribute>(
         attribute.set_current_value(new);
         Some((old.as_(), new.as_()))
     };
-    Some(Resolved {
-        base: base.as_(),
-        moved,
-    })
+    if attribute.folded_base() != Some(base) {
+        attribute.set_folded_base(base);
+    }
+    Some(Resolved { moved })
 }
 
 fn dependents_of<T: Attribute>(
@@ -417,7 +416,6 @@ impl ResolveQueue {
 #[derive(Component, Default, Debug, Clone)]
 pub struct ModifierTable {
     pub calcs: Vec<ErasedCalc>,
-    pub bases: Vec<Option<f64>>,
 }
 
 impl ModifierTable {
@@ -431,23 +429,10 @@ impl ModifierTable {
         }
         self.calcs[id.index()] = calc;
     }
-
-    pub fn base(&self, id: AttrId) -> Option<f64> {
-        self.bases.get(id.index()).copied().flatten()
-    }
-
-    pub fn set_base(&mut self, id: AttrId, base: f64) {
-        if self.bases.len() <= id.index() {
-            self.bases.resize(id.index() + 1, None);
-        }
-        self.bases[id.index()] = Some(base);
-    }
 }
 
-type BaseScanQuery<T> = QueryState<
-    (Entity, &'static T, Option<&'static ModifierTable>),
-    (Changed<T>, With<crate::attributes::ManageAttributes>),
->;
+type BaseScanQuery<T> =
+    QueryState<(Entity, &'static T), (Changed<T>, With<crate::attributes::ManageAttributes>)>;
 
 /// kept as a resource so the collapsed scan pays nothing per attribute beyond building its query once
 #[derive(Resource)]
@@ -462,9 +447,8 @@ fn base_write_scan<T: Attribute>(world: &mut World, id: AttrId, out: &mut Vec<(E
         world.insert_resource(BaseScanState::<T> { actors });
     }
     world.resource_scope(|world, mut state: Mut<BaseScanState<T>>| {
-        for (entity, attribute, table) in state.actors.iter(world) {
-            let base: f64 = attribute.base_value().as_();
-            if table.and_then(|table| table.base(id)) != Some(base) {
+        for (entity, attribute) in state.actors.iter(world) {
+            if attribute.folded_base() != Some(attribute.base_value()) {
                 out.push((entity, id));
             }
         }

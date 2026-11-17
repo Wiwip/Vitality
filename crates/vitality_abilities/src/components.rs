@@ -146,6 +146,7 @@ impl Error for AbilityError {}
 #[reflect(Component, AccessAttribute)]
 pub struct AbilityRecovery {
     duration: Duration,
+    folded_base: Option<f32>,
 }
 
 impl AbilityRecovery {
@@ -163,6 +164,7 @@ impl Attribute for AbilityRecovery {
     {
         Self {
             duration: Duration::from_secs_f32(value.as_()),
+            folded_base: None,
         }
     }
     fn base_value(&self) -> f32 {
@@ -173,6 +175,12 @@ impl Attribute for AbilityRecovery {
     }
     fn set_base_value(&mut self, value: f32) {
         self.duration = Duration::from_secs_f32(value);
+    }
+    fn folded_base(&self) -> Option<f32> {
+        self.folded_base
+    }
+    fn set_folded_base(&mut self, value: f32) {
+        self.folded_base = Some(value);
     }
     fn current_value(&self) -> f32 {
         self.duration.as_secs_f32()

@@ -243,7 +243,7 @@ impl ResolverState {
         let query_state = self.actors.as_mut().expect("built by regather");
         let mut query = query_state.query_mut(world);
         query.par_iter_many_unique_mut(dirty).for_each(|item| {
-            let Ok((entity, mut view, mut table)) = item else {
+            let Ok((entity, mut view, table)) = item else {
                 return;
             };
             let Some(mark) = marks.get(&entity) else {
@@ -260,7 +260,6 @@ impl ResolverState {
                 let Some(resolved) = resolve(&mut view, ids, &calc) else {
                     continue;
                 };
-                table.set_base(id, resolved.base);
                 if let Some((old, new)) = resolved.moved {
                     out.changes.push((entity, id, old, new));
                     dependents_of(&view.as_readonly(), ids, &mut out.readers);
