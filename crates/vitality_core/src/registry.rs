@@ -308,12 +308,7 @@ impl AttributeRegistry {
                 .filter(|&i| indegree[i] > 0)
                 .map(|i| self.infos[i].name.clone())
                 .collect();
-            warn!("attribute dependency cycle through {names:?}; extra passes will settle it");
-            for (i, &left) in indegree.iter().enumerate() {
-                if left > 0 {
-                    order.push(AttrId(i as u16));
-                }
-            }
+            panic!("attribute dependency cycle through {names:?}");
         }
         self.order = order;
     }
@@ -505,11 +500,7 @@ mod tests {
     use super::*;
     use crate::attributes::Attribute;
     use crate::prelude::{ReflectAccessAttribute, ReflectComponent};
-    use bevy::log::tracing::subscriber::with_default;
-    use bevy::log::tracing_subscriber::{Registry, fmt, layer::SubscriberExt};
     use bevy::prelude::World;
-    use std::io;
-    use std::sync::{Arc, Mutex};
 
     fn register_one<T: Attribute>(registry: &mut AttributeRegistry, world: &mut World) {
         registry.register::<T>(world);
@@ -573,60 +564,19 @@ mod tests {
     crate::attribute!(Haste);
     crate::attribute!(Armor);
 
-    /// A cyclic graph today: the `warn!` names the attributes the sort could not place, and `order`
-    /// keeps the acyclic prefix, then appends the rest in `AttrId` order.
+    /// A cycle is a startup error, and the message names the attributes in it, not the downstream ones.
     #[test]
-    fn a_cycle_warns_and_appends_the_unplaced_attributes_in_id_order() {
-        #[derive(Clone)]
-        struct Sink(Arc<Mutex<String>>);
-
-        impl io::Write for Sink {
-            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-                self.0
-                    .lock()
-                    .unwrap()
-                    .push_str(&String::from_utf8_lossy(buf));
-                Ok(buf.len())
-            }
-
-            fn flush(&mut self) -> io::Result<()> {
-                Ok(())
-            }
-        }
-
-        let logs = Arc::new(Mutex::new(String::new()));
-        let writer = logs.clone();
-        let subscriber = Registry::default().with(
-            fmt::layer()
-                .with_ansi(false)
-                .without_time()
-                .with_writer(move || Sink(writer.clone())),
-        );
-
-        with_default(subscriber, || {
-            let mut world = World::new();
-            let mut registry = AttributeRegistry::default();
-            let attack = registry.register::<Attack>(&mut world);
-            let power = registry.register::<Power>(&mut world);
-            let haste = registry.register::<Haste>(&mut world);
-            let armor = registry.register::<Armor>(&mut world);
-            registry.add_edge(haste, armor);
-            // add_edge takes (read, reader), so these two are Attack and Power reading each other.
-            registry.add_edge(attack, power);
-            registry.add_edge(power, attack);
-
-            assert!(registry.is_cyclic(), "the mutual read has to be reported");
-            assert_eq!(registry.order(), &[haste, armor, attack, power][..]);
-        });
-
-        let logs = logs.lock().unwrap();
-        assert!(
-            logs.contains(r#"attribute dependency cycle through ["Attack", "Power"]"#),
-            "warned with {logs:?}"
-        );
-        assert!(
-            !logs.contains("Haste") && !logs.contains("Armor"),
-            "{logs:?}"
-        );
+    #[should_panic(expected = r#"attribute dependency cycle through ["Attack", "Power"]"#)]
+    fn a_cycle_panics_naming_the_attributes_in_it() {
+        let mut world = World::new();
+        let mut registry = AttributeRegistry::default();
+        let attack = registry.register::<Attack>(&mut world);
+        let power = registry.register::<Power>(&mut world);
+        let haste = registry.register::<Haste>(&mut world);
+        let armor = registry.register::<Armor>(&mut world);
+        registry.add_edge(haste, armor);
+        // add_edge takes (read, reader), so these two are Attack and Power reading each other.
+        registry.add_edge(attack, power);
+        registry.add_edge(power, attack);
     }
 }
