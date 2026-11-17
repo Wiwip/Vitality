@@ -14,6 +14,7 @@ use crate::{
 use bevy::asset::Assets;
 use bevy::asset::Handle;
 use bevy::ecs::resource::IsResource;
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use std::cmp::PartialEq;
 use vitality_core::AppAttributeBindings;
@@ -305,17 +306,22 @@ impl ApplyEffectEvent {
     }
 }
 
+#[derive(SystemParam)]
+pub(crate) struct ApplyContext<'w, 's> {
+    effects: Query<'w, 's, &'static Effect>,
+    effect_tags: Query<'w, 's, &'static EffectTags>,
+    effect_assets: Res<'w, Assets<EffectDef>>,
+    type_bindings: Res<'w, AppAttributeBindings>,
+}
+
 pub(crate) fn apply_effect_event_observer(
     trigger: On<ApplyEffectEvent>,
     actors: ActorQuery,
-    effects: Query<&Effect>,
-    effect_tags: Query<&EffectTags>,
-    effect_assets: Res<Assets<EffectDef>>,
+    ctx: ApplyContext<'_, '_>,
     mut writer: MessageWriter<NotifyAddStackEvent>,
     mut commands: Commands,
-    type_bindings: Res<AppAttributeBindings>,
 ) {
-    let Some(effect) = effect_assets.get(&trigger.handle) else {
+    let Some(effect) = ctx.effect_assets.get(&trigger.handle) else {
         warn!("Effect {:?} has no loaded definition.", trigger.handle);
         return;
     };
@@ -334,7 +340,7 @@ pub(crate) fn apply_effect_event_observer(
         return;
     }
 
-    trigger.cleanse(effect, applied, &effect_tags, &mut commands);
+    trigger.cleanse(effect, applied, &ctx.effect_tags, &mut commands);
 
     if effect.application_policy == EffectApplicationPolicy::Instant {
         if !effect
@@ -356,12 +362,12 @@ pub(crate) fn apply_effect_event_observer(
         return;
     }
 
-    if trigger.queue_stacked_effect(effect, applied, &effects, &mut writer) {
+    if trigger.queue_stacked_effect(effect, applied, &ctx.effects, &mut writer) {
         return;
     }
 
     if let Some(effect_entity) =
-        trigger.spawn_persistent_effect(&mut commands, effect, &context, &type_bindings)
+        trigger.spawn_persistent_effect(&mut commands, effect, &context, &ctx.type_bindings)
     {
         commands.trigger(MarkActorDirty { entity: target });
         commands.trigger(EffectApplied {
