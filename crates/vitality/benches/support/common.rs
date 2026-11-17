@@ -1,20 +1,8 @@
 #![allow(dead_code)]
 
-//! World generator shared by the bench target and by the bench guard tests. Kept free of
-//! criterion so the gate can include it.
-//!
-//! [`build_app_with`] inserts `TimeUpdateStrategy::FixedTimesteps(1)`, so one [`tick`] is exactly
-//! one fixed tick, while [`run_fixed_tick`] steps `FixedUpdate` on a stale delta. Every random
-//! choice comes from [`seed_rng`], so a [`WorldSpec`] always rebuilds the same world, and
-//! [`WorldSpec::shape_id`] is the label any number taken from it has to carry.
-//!
-//! The default pool is 24 attributes deep. A bench that wants more declares its own types with
-//! `vitality::attribute!`, builds its own `&'static [AttrSpec]` of [`AttrSpec::new`] entries, and
-//! hands that to [`build_app_with`].
-//!
-//! Timed loops take [`build_app_with`] as their `iter_batched_ref` setup and
-//! `criterion::BatchSize::PerIteration` as their batch size: criterion 0.8 has no `LargeSample`, and
-//! an `App` is not a value to hold several of at once.
+//! World generator shared by the bench target and by the bench guard tests, kept free of criterion so
+//! the gate can include it. Every random choice comes from [`seed_rng`], so a [`WorldSpec`] always
+//! rebuilds the same world, and [`WorldSpec::shape_id`] is the label any number taken from it carries.
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
@@ -30,7 +18,6 @@ use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 use vitality::{AttributesPlugin, init_attribute};
 
-/// Every bench draws from the same seed (BENCH-PLAN §1.6).
 pub const SEED: u64 = 7;
 
 /// The build a number came from: `st`/`mt` from the `multi_threaded` feature, `static`/`dyn` from `dyn`.
@@ -43,15 +30,13 @@ pub fn build_label() -> &'static str {
     }
 }
 
-/// Attribute property the harness supports. `attribute!` defaults to this.
+/// `attribute!` defaults to this, which is what lets the pool declare bare `attribute!(Attr0)`.
 type Value = f32;
 
 /// One attribute type erased behind `fn` pointers, so a spec can pick attributes by index.
 pub struct AttrSpec {
     pub name: &'static str,
-    /// `init_attribute::<T>` registration, run once per app.
     pub register: fn(&mut App),
-    /// What [`AttributeRegistry::id_of`] answers, so a dag read can find this attribute's `AttrId`.
     pub type_id: TypeId,
     add_attribute: fn(ActorBuilder, Value) -> ActorBuilder,
     /// Adds one `ModOp::Add` modifier for `T` with `EffectSubject::Target`.
@@ -99,7 +84,7 @@ impl AttrSpec {
         (self.current_of)(world, actor)
     }
 
-    /// A `DerefMut` write, so `Changed<T>` fires even when the value is the same (BENCH-PLAN §2D).
+    /// A `DerefMut` write, so `Changed<T>` fires even when the value is the same.
     pub fn set_base(&self, world: &mut World, actor: Entity, value: f64) {
         (self.set_base_of)(world, actor, value)
     }
@@ -148,10 +133,8 @@ macro_rules! attr_pool {
     ($( $name:ident ),+ $(,)?) => {
         $( ::vitality::attribute!($name); )+
 
-        /// The pool a [`WorldSpec`] indexes into.
         pub static ATTRIBUTE_POOL: &[AttrSpec] = &[$(AttrSpec::new::<$name>(stringify!($name))),+];
 
-        /// Highest `attributes_per_actor` the default pool can serve.
         pub const POOL_LEN: usize = ATTRIBUTE_POOL.len();
     };
 }
@@ -169,8 +152,8 @@ pub struct WorldSpec {
     pub effects_per_actor: usize,
     pub modifiers_per_effect: usize,
     pub actors: usize,
-    /// Share of the actors the shape is built dirty on: [`build_app_with`] hands back a world the
-    /// spawn observers made dirty on every attribute, and nothing there clears those marks.
+    /// Share of the actors the shape is built dirty on. It is a label, not an input: [`build_app_with`]
+    /// hands back a world the spawn observers made dirty on every attribute and nothing clears them.
     pub dirty_fraction: f32,
     /// Share of the effects built as periodic instead of permanent.
     pub ticking_fraction: f32,
@@ -203,7 +186,6 @@ impl WorldSpec {
         )
     }
 
-    /// A ready app built from the default attribute pool.
     pub fn build_app(&self) -> App {
         build_app_with(self, ATTRIBUTE_POOL)
     }
@@ -219,12 +201,10 @@ fn percent(fraction: f32) -> u32 {
 pub struct HarnessWorld {
     pub spec: WorldSpec,
     attrs: &'static [AttrSpec],
-    /// One entry per effect asset the actors got.
     pub plan: Vec<EffectPlan>,
 }
 
 impl HarnessWorld {
-    /// The attribute pool this world was built with.
     pub fn attrs(&self) -> &'static [AttrSpec] {
         self.attrs
     }
@@ -240,21 +220,17 @@ pub struct EffectPlan {
 
 #[derive(Clone, Debug)]
 pub struct ModifierPlan {
-    /// Index into [`HarnessWorld::attrs`].
     pub attribute: usize,
     pub amount: f32,
 }
 
-/// Seeded RNG so two runs of the same spec build the same world.
 pub fn seed_rng() -> StdRng {
     StdRng::seed_from_u64(SEED)
 }
 
-/// Builds the world and runs `Startup`, so the returned app holds live actors carrying their
-/// attributes and their effect instances. `attrs` must be at least `spec.attributes_per_actor` long.
-///
-/// What it does not hand back is a settled world: the bundle insert marks every attribute of every
-/// actor it carries, and `spawn` flushes its commands inline, so nothing has resolved yet.
+/// Builds the world and runs `Startup`, so the app holds live actors with their attributes and their
+/// effect instances. It is not a settled world: `spawn` flushes its commands inline and the bundle
+/// insert marks every attribute it carries, so nothing has resolved yet.
 pub fn build_app_with(spec: &WorldSpec, attrs: &'static [AttrSpec]) -> App {
     build_app_at(spec, attrs)
 }
@@ -341,14 +317,14 @@ pub fn tick(app: &mut App) {
     app.update();
 }
 
-/// One `FixedUpdate` on a bare `World`, so `Time` is never advanced: `tick_effect_tickers` still
-/// runs, on the delta the last [`tick`] charged, so a periodic effect fires here too.
+/// One `FixedUpdate` on a bare `World`: `Time` is never advanced, so tickers run on the delta the last
+/// [`tick`] charged.
 pub fn run_fixed_tick(world: &mut World) {
     world.run_schedule(FixedUpdate);
 }
 
-/// The actors this world spawned, excluding the global-effect actor. Sorted so the order is the
-/// same whatever order the archetypes happen to be walked in.
+/// The actors this world spawned, excluding the global-effect actor. Sorted so the order is the same
+/// whatever order the archetypes happen to be walked in.
 pub fn actor_entities(world: &mut World) -> Vec<Entity> {
     let mut query = world.query_filtered::<Entity, With<Actor>>();
     let mut actors: Vec<Entity> = query.iter(world).collect();
@@ -356,7 +332,6 @@ pub fn actor_entities(world: &mut World) -> Vec<Entity> {
     actors
 }
 
-/// Current value of every attribute of one actor, in pool order.
 pub fn current_values(world: &World, attrs: &[AttrSpec], actor: Entity) -> Vec<f64> {
     attrs
         .iter()

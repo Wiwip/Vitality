@@ -1,37 +1,10 @@
-//! Criterion entry point for the vitality resolver benches (`.auto/BENCH-PLAN.md`).
+//! The only bench target (`[[bench]] name = "bench_systems", harness = false`): cargo turns any other
+//! top-level `benches/*.rs` into a `harness = true` target that cannot link, so shared code lives in
+//! `benches/support/`, pulled in below with `#[path]`. Add a group to `resolver_benches`, never a file
+//! next to this one, and remember the gate compiles tests and never bench targets.
 //!
-//! Only this one bench target exists (`[[bench]] name = "bench_systems", harness = false`), and
-//! cargo turns any *other* top-level `benches/*.rs` into a `harness = true` target that cannot
-//! link. So shared code lives in `benches/support/` and is pulled in below with `#[path]`: add a
-//! group to `resolver_benches`, do not add a file next to this one.
-//!
-//! Running this in the sandbox. The repo's manifests, lockfile and `~/.cargo/registry` are read-only
-//! and there is no network, which is why every cargo call below carries `--offline --locked` and runs
-//! in the tree itself: a read-only `Cargo.toml`/`Cargo.lock` costs `--locked` nothing, and the shared
-//! `sccache` keeps this profile warm without a mirror or a second `CARGO_HOME`. If `--locked` ever
-//! complains the lockfile is stale, which is something to report, never a reason to drop the flag. The
-//! gate never compiles bench targets, so compiling them has to be asked for:
-//!
-//! ```text
-//! cd /mnt/rust/RustroverProjects/vitality
-//! bash scripts/gate.sh                                       # tests only, no bench targets
-//! cargo bench --offline --locked -p vitality --bench bench_systems --no-run   # compile the bench targets (links)
-//! cargo bench --offline --locked -p vitality --bench bench_systems   # full run
-//! cargo bench --offline --locked -p vitality --bench bench_systems -- scenario \
-//!     --warm-up-time 0.5 --measurement-time 1 --sample-size 10       # short run for the log
-//! ```
-//!
-//! Exactly one `--` in that last line (D-35): everything after it goes to criterion, so a second one is
-//! what turns a filtered run into the whole suite. Keep the load discipline `.auto/LOG.md` records —
-//! read `/proc/loadavg` before and after the run, and report anything under ~10 % as directional
-//! (D-36).
-//!
-//! A bench id is `<group>/<WorldSpec::shape_id()>`, so a number never travels without the shape it
-//! came from.
-//!
-//! Build labels come from `common::build_label`. Plain `cargo bench` is `st-static`; add
-//! `--features multi_threaded` for `mt-static`, and `--features dyn` only to reproduce pre-2026-11-10
-//! numbers, which were all `mt-dyn` (D-22).
+//! A bench id is `<group>/<WorldSpec::shape_id()>`, so a number never travels without the shape it came
+//! from, and `common::build_label` says which feature build measured it.
 
 #[path = "support/common.rs"]
 mod common;
@@ -43,9 +16,7 @@ mod scenario;
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
-/// Every bench group hangs off here.
-/// Game-shaped ticks at 1k/5k/10k actors (`support/scenario.rs`). Owner's budget at 10k actors:
-/// `steady` under 2 ms, `storm` under 8 ms. Set `VITALITY_SCENARIO_ACTORS=10000` to run one size.
+/// Game-shaped ticks at 1k/5k/10k actors; `VITALITY_SCENARIO_ACTORS` replaces the sizes.
 fn scenario_ticks(c: &mut Criterion) {
     let sizes: Vec<usize> = match std::env::var("VITALITY_SCENARIO_ACTORS") {
         Ok(list) => list
@@ -79,9 +50,7 @@ fn scenario_ticks(c: &mut Criterion) {
     group.finish();
 }
 
-/// P-12, BENCH-PLAN §2C `leaf/expr_depth` + `leaf/typed_vs_hashmap`: one expression evaluated
-/// through `Arc<dyn Expr>`, through its concrete type, and as typemap lookups. Differences under
-/// ~10 % are noise on this box (D-36). Results: `.auto/BENCH-RESULTS.md`, P-12 table.
+/// One expression evaluated through `Arc<dyn Expr>`, through its concrete type, and as typemap lookups.
 fn leaf_expr_shape(c: &mut Criterion) {
     let fixture = expr::expr_fixture();
     let mut group = c.benchmark_group("leaf/expr_shape");

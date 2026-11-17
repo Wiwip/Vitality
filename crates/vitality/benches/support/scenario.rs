@@ -3,9 +3,6 @@
 //! Game-shaped workloads for the scaling question: does a tick stay inside budget at thousands of
 //! actors? Every workload drives the library only through what a game would touch (base writes,
 //! effect application and expiry, spawns), so the same id measures any resolver behind it.
-//!
-//! The per-tick input runs untimed in [`ScenarioWorld::drive`]; the timed part is one
-//! `app.update()`, which is exactly one fixed tick under the harness clock.
 
 use crate::common::{
     ATTRIBUTE_POOL, WorldSpec, actor_entities, build_app_at, build_label, seed_rng, tick,
@@ -17,19 +14,17 @@ use std::collections::VecDeque;
 use vitality::actors::{Actor, SpawnActorCommand};
 use vitality::effect::definition::EffectDef;
 use vitality::effect::modifier::{EffectSubject, ModOp};
-use vitality::effect::{ApplyEffectEvent, Effect, EffectStackingPolicy, EffectTargeting};
+use vitality::effect::{ApplyEffectEvent, EffectStackingPolicy, EffectTargeting};
 use vitality::prelude::*;
 use vitality::tags::ChangeTag;
 
 use crate::common::{Attr0, Attr1, Attr2, Attr3, Attr4, Attr5, Attr6, Attr7, Attr8};
 
-/// Attributes per actor in every scenario; the owner's target shape.
 pub const ATTRIBUTES: usize = 20;
 pub const EFFECTS_PER_ACTOR: usize = 3;
 /// Settling ticks after the build, so the startup fold is not in the first sample.
 pub const SETTLE_TICKS: usize = 4;
-/// High enough that no run reaches it, so `stack_add` measures the add path and never the clamped
-/// no-op a capped stack takes instead.
+/// High enough that no run reaches it: `stack_add` measures the add path, never a clamped no-op.
 const STACK_CAP: u32 = u32::MAX;
 
 vitality::tag!(Burning);
@@ -41,9 +36,9 @@ pub enum Workload {
     Idle,
     /// 10 % of the actors get every attribute's base moved by one each tick.
     Steady,
-    /// Every actor, every attribute, every tick (BENCH-PLAN D: `churn/dirty_storm`).
+    /// Every actor, every attribute, every tick.
     Storm,
-    /// Every attribute rewritten with the value it already has (BENCH-PLAN D: `churn/no_op_write`).
+    /// Every attribute rewritten with the value it already has.
     NoOpWrite,
     /// 10 % of the actors take a hit on one attribute.
     Damage,
@@ -207,7 +202,7 @@ pub fn build_in(workload: Workload, actors: usize) -> ScenarioWorld {
         Workload::StackRefresh => {
             let timestep = world.app.world().resource::<Time<Fixed>>().timestep();
             world.window = actor_list[..actor_list.len() / 10].to_vec();
-            // long enough to outlive the settle, short enough for the guard test to outlast it
+            // outlives the settle but not a gap in the refresh
             world.effect = Some(add_effect(
                 &mut world.app,
                 EffectBuilder::for_seconds(timestep.as_secs_f32() * (SETTLE_TICKS as f32 + 3.0))
@@ -244,7 +239,7 @@ pub fn build_in(workload: Workload, actors: usize) -> ScenarioWorld {
             let timestep = world.app.world().resource::<Time<Fixed>>().timestep();
             world.effect = Some(add_effect(
                 &mut world.app,
-                // three ticks, plus the two the guard test spends proving the value does not follow
+                // settle plus one tick, so a timed run sees it applied and then lapsing
                 EffectBuilder::for_seconds(timestep.as_secs_f32() * (SETTLE_TICKS as f32 + 1.0))
                     .modify_snapshot::<Attr8>(Attr1::src(), ModOp::Add, EffectSubject::Target)
                     .build(),
@@ -263,8 +258,7 @@ fn add_effect(app: &mut App, def: EffectDef) -> Handle<EffectDef> {
     app.world_mut().resource_mut::<Assets<EffectDef>>().add(def)
 }
 
-/// Grants `T` to every other actor, so a tag rule splits the world into two halves the guard test
-/// can tell apart while both halves keep taking applies.
+/// Grants `T` to every other actor: a tag rule splits the world, both halves keep taking applies.
 fn grant_every_other<T: Component + Default>(app: &mut App, actors: &[Entity]) {
     let world = app.world_mut();
     for &actor in actors.iter().step_by(2) {
@@ -383,7 +377,6 @@ impl ScenarioWorld {
         }
     }
 
-    /// `count` actors from the round-robin cursor, which this advances.
     fn round_robin(&mut self, count: usize) -> Vec<Entity> {
         let n = self.actors.len();
         let picked: Vec<Entity> = (0..count)
@@ -393,9 +386,8 @@ impl ScenarioWorld {
         picked
     }
 
-    /// Queues one self-targeted apply per actor, deferred: `World::trigger` dispatches its observers
-    /// inline (`bevy_ecs-0.20.1/src/observer/mod.rs:63-69`), so only a command-queue trigger leaves
-    /// the tag test, the condition eval and the stacking decision for `tick` to time.
+    /// Queues one self-targeted apply per actor: `World::trigger` dispatches its observers inline, so
+    /// only a command-queue trigger leaves the tag test, condition eval and stacking for `tick` to time.
     fn queue_apply(&mut self, handle: &Handle<EffectDef>, targets: &[Entity]) {
         let world = self.app.world_mut();
         let mut commands = world.commands();
@@ -408,28 +400,13 @@ impl ScenarioWorld {
         }
     }
 
-    /// The timed unit: one fixed tick, plus the flush that decides *where* this tick's input lands.
-    /// Under the dag resolver it is not what keeps the queued apply inside the window — bevy flushes
-    /// the command queue after every exclusive system
-    /// (`bevy_ecs-0.20.1/src/system/function_system.rs:738`) and `resolve_system` is one, so the
-    /// applies land either way and deleting this flush leaves every scenario guard green. What the
-    /// flush pins is the place: the input is in before any of the tick's systems run, instead of
-    /// mid-tick at whatever exclusive system drains the queue first. A same-tick realism and
-    /// determinism choice, not a measurement boundary.
+    /// The timed unit: one fixed tick, preceded by the flush that decides *where* this tick's input
+    /// lands. bevy drains the command queue after every exclusive system and `resolve_system` is one, so
+    /// the applies land either way and deleting this flush keeps every guard green; what the flush pins is
+    /// the place — the input is in before any of the tick's systems run, not mid-tick at whatever
+    /// exclusive system drains the queue first. Realism, not a measurement boundary.
     pub fn tick(&mut self) {
-        // the applies and spawns `drive` queued land here: a tick that started after they were
-        // applied would time an already-settled world.
         self.app.world_mut().flush();
         tick(&mut self.app);
-    }
-
-    pub fn effect_count(&mut self) -> usize {
-        let world = self.app.world_mut();
-        world.query::<&Effect>().iter(world).count()
-    }
-
-    pub fn actor_count(&mut self) -> usize {
-        let world = self.app.world_mut();
-        world.query::<&Actor>().iter(world).count()
     }
 }
