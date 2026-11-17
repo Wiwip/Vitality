@@ -1,207 +1,62 @@
-//! Gameplay attributes, effects and abilities for Bevy.
-//!
-//! # Getting started
-//!
-//! The README's scenario, run: register the attributes and the tag, build the actor with
-//! [`ActorBuilder`](crate::actors::ActorBuilder), apply a burn that scales with `Power`. With
-//! [`TimeUpdateStrategy`](bevy::time::TimeUpdateStrategy)::`ManualDuration` one `update` is one
-//! fixed tick, so the update count is the number of seconds.
+//! Gameplay attributes, effects and abilities for Bevy: one attribute registry, an effect runtime
+//! that writes modifiers into it, and an ability state machine on top. [`VitalityPlugin`] wires the
+//! three; the example below is the README's scenario, run.
 //!
 //! ```
 //! use bevy::ecs::system::RunSystemOnce;
 //! use bevy::prelude::*;
 //! use bevy::time::TimeUpdateStrategy;
 //! use std::time::Duration;
-//! use vitality::actors::ActorBuilder;
-//! use vitality::effect::modifier::{EffectSubject, ModOp};
-//! use vitality::prelude::*;
-//! use vitality::{attribute, tag};
+//! use vitality::{actors::ActorBuilder, attribute, effect::modifier::{EffectSubject, ModOp}, prelude::*, tag};
 //!
-//! attribute!(Health, f32);
-//! attribute!(MaxHealth, f32);
-//! attribute!(Power, f32);
-//! tag!(Burning);
+//! attribute!(Health, f32); attribute!(MaxHealth, f32); attribute!(Power, f32); tag!(Burning);
 //!
-//! // bevy's default fixed timestep
+//! // bevy's default fixed timestep, so with ManualDuration one update is one tick
 //! const STEP: Duration = Duration::from_micros(15_625);
 //! const TICKS_PER_SECOND: usize = 64;
 //!
 //! let mut app = App::new();
-//! app.add_plugins((
-//!     MinimalPlugins,
-//!     AssetPlugin::default(),
-//!     VitalityPlugin::new()
-//!         .attribute::<Health>()
-//!         .attribute::<MaxHealth>()
-//!         .attribute::<Power>(),
-//! ))
-//! .insert_resource(TimeUpdateStrategy::ManualDuration(STEP));
-//!
+//! app.add_plugins((MinimalPlugins, AssetPlugin::default(), VitalityPlugin::new()
+//!     .attribute::<Health>().attribute::<MaxHealth>().attribute::<Power>()))
+//!     .insert_resource(TimeUpdateStrategy::ManualDuration(STEP));
 //! // the first update primes the fixed clock and runs no tick of it
 //! app.update();
 //!
-//! let hero = app
-//!     .world_mut()
-//!     .run_system_once(|mut vitality: Vitality| {
-//!         vitality
-//!             .add_spawn_actor(
-//!                 ActorBuilder::new()
-//!                     .name("Hero")
-//!                     .with::<Health>(100.0)
-//!                     .with::<MaxHealth>(100.0)
-//!                     .with::<Power>(10.0)
-//!                     .clamp::<Health>(0.0, MaxHealth::src())
-//!                     .build(),
-//!             )
-//!             .id()
-//!     })
-//!     .unwrap();
-//!
+//! let hero = app.world_mut().run_system_once(|mut vitality: Vitality| vitality.add_spawn_actor(
+//!     ActorBuilder::new().name("Hero")
+//!         .with::<Health>(100.0).with::<MaxHealth>(100.0).with::<Power>(10.0)
+//!         .clamp::<Health>(0.0, MaxHealth::src()).build()).id()).unwrap();
 //! // one tick of separation: the spawn flushed with its system, so an apply there would have landed too
 //! app.update();
-//! let burn = app
-//!     .world_mut()
-//!     .run_system_once(|mut vitality: Vitality| {
-//!         vitality.add_effect(
-//!             EffectBuilder::every_second_for_duration(1.0, 5.0)
-//!                 .with_tag::<Burning>()
-//!                 .modify::<Health>(Power::src(), ModOp::Sub, EffectSubject::Target)
-//!                 .build(),
-//!         )
-//!     })
-//!     .unwrap();
-//! app
-//!     .world_mut()
-//!     .run_system_once(move |mut vitality: Vitality| vitality.apply_effect_to_self(hero, &burn))
-//!     .unwrap();
+//!
+//! let burn = app.world_mut().run_system_once(|mut vitality: Vitality| vitality.add_effect(
+//!     EffectBuilder::every_second_for_duration(1.0, 5.0).with_tag::<Burning>()
+//!         .modify::<Health>(Power::src(), ModOp::Sub, EffectSubject::Target).build())).unwrap();
+//! app.world_mut().run_system_once(move |mut vitality: Vitality|
+//!     vitality.apply_effect_to_self(hero, &burn)).unwrap();
 //!
 //! let health = |app: &App| app.world().get::<Health>(hero).unwrap().current_value();
 //! let burning = |app: &App| app.world().get::<Burning>(hero).is_some();
-//!
-//! for _ in 0..TICKS_PER_SECOND {
-//!     app.update();
-//! }
+//! for _ in 0..TICKS_PER_SECOND { app.update(); }
 //! assert_eq!(health(&app), 90.0, "one fire a second, one Power each");
 //! assert!(burning(&app), "the hero carries Burning while the burn lasts");
-//!
-//! for _ in 0..(4 * TICKS_PER_SECOND) {
-//!     app.update();
-//! }
+//! for _ in 0..(4 * TICKS_PER_SECOND) { app.update(); }
 //! assert_eq!(health(&app), 50.0, "five fires in the five seconds, not one more");
 //! assert!(!burning(&app), "the tag goes with the effect");
 //! ```
 //!
-//! # Wiring a plugin
+//! Wiring it by hand is five rules, each with its `crates/vitality/tests` pin beside it.
+//! - Register attributes in `Plugin::build`, never `Plugin::finish`: `App::update()` never runs `finish`, so the attribute is never registered and an effect on it spawns a modifier that never moves the base (`an_attribute_registered_in_finish_applies_nothing`).
+//! - The 128-attribute cap is one counter for the whole app and the framework's own [`effect::Stacks`] holds a slot, so an app gets 127 game attributes and the 128th is the one refused by name (`an_app_gets_127_game_attributes_because_the_framework_holds_one_slot`, `the_128th_game_attribute_is_the_one_the_app_refuses`).
+//! - An `AttrId` is `infos.len()` when it is handed out, so reordering or deleting a registration renumbers the rest: never persist one, persist the `AttrInfo::name` the registry records, which is the short name with the module path dropped and therefore unique across the app's crates or the app panics (`two_crates_sharing_a_short_name_are_told_to_rename_one`).
+//! - Add [`AttributesPlugin`] before any plugin that calls [`init_attribute`], or the app dies at build with `resource does not exist: vitality_core::registry::AttributeRegistry` — no test, that one aborts instead of misbehaving.
+//! - [`effect::EffectsPlugin`] adds the apply-path nodes once for the app (`resolve_system`, `apply_all_modifier_events`, `scan_base_writes`, `apply_all_periodic_effects`) and [`effect::init_effect_attribute`] adds no node and no observer (`dag_registration_cost_per_attribute_is_pinned`), so attributes installed without it leave `Effects::apply` doing nothing; `a_fire_due_on_the_expiry_tick_beats_the_expiry` pins the one ordering among them that decides a tick, `apply_all_periodic_effects` ahead of `tick_effect_durations`.
 //!
-//! [`AttributesPlugin`] owns the app-wide state everything else reads and [`init_attribute`] writes
-//! into it, and both are `build`-time, which is why the order below is a contract rather than a style
-//! choice. Two of the five rules fail silently; the other three abort the build with a message that
-//! names the cause.
-//!
-//! - Register attributes in `Plugin::build`, not `Plugin::finish`. `App::update()` never runs
-//!   `Plugin::finish` — only `App::finish()` does, and that is the app runner's job (`App::run`,
-//!   `ScheduleRunnerPlugin`), so an app driven by `update()` (every test harness) never registers
-//!   the attribute at all. Silently: an effect applied to it still spawns its modifier entity, but
-//!   the base never moves and no [`CurrentValueChanged`] is triggered. Registering after the app has
-//!   ticked does not repair actors that already hold modifiers either: they stay at the unmodified
-//!   value until the next thing that writes one of their attributes or applies another effect.
-//! - The 128-attribute cap is one counter for the whole app, not one per crate: the registry is a
-//!   single resource and it refuses the 129th registration by name
-//!   (`cannot register X: the attribute registry holds at most 128 attributes`). Two plugins with 64
-//!   attributes each already trip it — the 128th game attribute is the one refused, because the
-//!   framework's own [`effect::Stacks`] attribute holds a slot, so an app gets 127.
-//! - An `AttrId` is `infos.len()` at the moment of registration, i.e. a registration index, so
-//!   reordering two `add_plugins` calls or deleting one attribute renumbers the rest. Never persist
-//!   one; persist the name the registry records for the attribute (`AttrInfo::name`). That name is
-//!   the type's *short* name — the module path is dropped — so it must be unique across every crate
-//!   in the app, and the app enforces it for you: registering `game_a::Health` and
-//!   `game_b::Health` panics with `Attribute type ID collision for Health`.
-//! - Add [`AttributesPlugin`] before any plugin that calls [`init_attribute`]. That one is loud: the
-//!   registry does not exist yet, so the app dies with
-//!   `resource does not exist: vitality_core::registry::AttributeRegistry`.
-//! - The DAG schedule nodes are added once, by [`effect::EffectsPlugin`]: `resolve_system`,
-//!   `apply_all_modifier_events`, `scan_base_writes` and `apply_all_periodic_effects` are the only
-//!   apply-path nodes the app ever gets, because [`effect::init_effect_attribute`] adds no node and
-//!   no observer for an attribute. One way out of that contract is silent: an app that installs
-//!   attributes with `init_attribute`/`init_effect_attribute` and never adds `EffectsPlugin` has no
-//!   `EffectRegistry` and no listener for the apply event, so `Effects::apply` quietly does nothing.
-//!   Inserting anything once the plugins are all built changes nothing — the nodes are added at
-//!   `EffectsPlugin::build` and the per-attribute state at `init_effect_attribute`, both build time.
-//!
-//! Whether the contract stays "add `EffectsPlugin` before any attribute is registered" or
-//! `init_effect_attribute` grows a first-install guard that installs the collapsed nodes itself is
-//! still the owner's call (D-52). It is not reachable in this repo: [`AttributesPlugin`] adds
-//! [`effect::EffectsPlugin`] in its `build`, so the first needs an app that registers attributes
-//! straight through `vitality_core`/`vitality_effects` instead.
-//!
-//! ```
-//! use bevy::prelude::*;
-//! use vitality::prelude::*;
-//! use vitality::{AttributesPlugin, init_attribute};
-//!
-//! attribute!(Health, f32);
-//!
-//! struct MyGamePlugin;
-//!
-//! impl Plugin for MyGamePlugin {
-//!     fn build(&self, app: &mut App) {
-//!         // AttributesPlugin owns the registry init_attribute writes into, so it goes first
-//!         app.add_plugins(AttributesPlugin);
-//!         app.add_plugins(init_attribute::<Health>);
-//!     }
-//! }
-//!
-//! let mut app = App::new();
-//! app.add_plugins((MinimalPlugins, AssetPlugin::default(), MyGamePlugin));
-//!
-//! assert!(
-//!     app.world()
-//!         .resource::<AppTypeRegistry>()
-//!         .read()
-//!         .get(std::any::TypeId::of::<Health>())
-//!         .is_some(),
-//!     "registration is a build-time effect, so the attribute is already there"
-//! );
-//! ```
-//!
-//! The duplicate short name of the third rule, pinned. This form cannot name the message, so the
-//! example builds the same two modules twice: two names is fine, one name twice is not.
-//!
-//! ```should_panic
-//! use bevy::prelude::*;
-//! use vitality::prelude::*;
-//! use vitality::{AttributesPlugin, init_attribute};
-//!
-//! // the registry keys on the short name, so two crates shipping a Health is one name
-//! mod game_a {
-//!     use vitality::prelude::*;
-//!     vitality::attribute!(Health, f32);
-//!     vitality::attribute!(Armor, f32);
-//! }
-//! mod game_b {
-//!     use vitality::prelude::*;
-//!     vitality::attribute!(Health, f32);
-//!     vitality::attribute!(Mana, f32);
-//! }
-//!
-//! let mut app = App::new();
-//! app.add_plugins((
-//!     MinimalPlugins,
-//!     AssetPlugin::default(),
-//!     AttributesPlugin,
-//!     init_attribute::<game_a::Health>,
-//!     init_attribute::<game_b::Mana>,
-//! ));
-//!
-//! let mut app = App::new();
-//! app.add_plugins((
-//!     MinimalPlugins,
-//!     AssetPlugin::default(),
-//!     AttributesPlugin,
-//!     init_attribute::<game_a::Health>,
-//!     init_attribute::<game_b::Health>,
-//! ));
-//! ```
+//! [`actors`] turns an [`ActorBuilder`](actors::ActorBuilder) into an
+//! [`ActorDef`] that [`context::Vitality`] spawns and reads, [`clamp`] is the
+//! min/max component an actor carries, [`registry`] holds the effect and ability registries, and
+//! [`effect`] and [`ability`] are the runtime crates behind them.
+//! `crates/vitality/examples/` has whole apps.
 
 use crate::actors::{ActorDef, ActorRegistry};
 use crate::clamp::Clamp;
@@ -280,25 +135,7 @@ impl Plugin for AttributesPlugin {
     }
 }
 
-/// [`AttributesPlugin`] plus the attributes this game uses.
-///
-/// ```
-/// use bevy::prelude::*;
-/// use vitality::prelude::*;
-/// use vitality::VitalityPlugin;
-///
-/// attribute!(Health, f32);
-/// attribute!(Mana, f32);
-///
-/// let mut app = App::new();
-/// app.add_plugins((
-///     MinimalPlugins,
-///     AssetPlugin::default(),
-///     VitalityPlugin::new()
-///         .attribute::<Health>()
-///         .attribute::<Mana>(),
-/// ));
-/// ```
+/// [`AttributesPlugin`] plus the attributes this game uses; the [crate page][crate] builds one.
 #[derive(Default)]
 pub struct VitalityPlugin {
     attributes: Vec<fn(&mut App)>,
