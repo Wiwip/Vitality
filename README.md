@@ -111,39 +111,28 @@ that page is a three-line pointer to it and holds no contract. Short version:
 - `AttrId` is a registration index, so it moves when plugin order moves. Persist the attribute's
   name, never the id — and keep names unique across crates, because the name is the type's short
   name and a duplicate panics at build.
-- Set the resolver mode before the plugins are added (`VitalityPlugin::new().resolver(mode)`), and
-  add `EffectsPlugin`. The DAG's apply-path nodes (`resolve_system`, `apply_all_modifier_events`,
+- Add `EffectsPlugin`. The DAG's apply-path nodes (`resolve_system`, `apply_all_modifier_events`,
   `scan_base_writes`, `apply_all_periodic_effects`) are installed once by `EffectsPlugin::build` and
-  only for the mode it sees there; `init_effect_attribute` installs none in DAG mode. So an app that
-  skips `EffectsPlugin` never applies anything at all — nothing listens for the apply event — and one
-  that runs `EffectsPlugin::build` under `ResolverMode::PerAttribute` while its attributes register
-  under `ResolverMode::Dag` (add `AttributesPlugin` under `PerAttribute`, insert `ResolverMode::Dag`,
-  then call `init_attribute`) applies no modifier and never fires a periodic effect, even though the
-  effect still reports itself applied. The reverse order is not that case: `Dag` at
-  `EffectsPlugin::build` with the attributes registered under `PerAttribute` runs as a mixed-mode
-  app — vitality's own attributes keep the DAG nodes, the later ones take the per-attribute path —
-  and applies and fires like a plain per-attribute app. It pays both paths though: the later
-  attributes are also picked up by the mode-blind `scan_base_writes`, which walks every registered
-  attribute each tick, by `resolve_system` whenever anything is queued, and by the global
-  `mark_actor_dirty_dag` observer — and nothing orders `resolve_system` against
-  `update_current_value_system::<T>`. That mixed mode runs, but no test pins it.
-  A mode inserted after the plugins are built changes nothing: all three reads of it are at build.
-  Whether that stays a contract or becomes a first-install guard inside
-  `init_effect_attribute` is open (D-52).
+  `init_effect_attribute` installs none of them, so an app that skips `EffectsPlugin` never applies
+  anything at all — nothing listens for the apply event. Inserting anything once the plugins are all
+  built changes nothing: those nodes, and the per-attribute state `init_effect_attribute` adds, are
+  all added at build.
 
 ## Performance
 
 The numbers come from the `scenario` group of `crates/vitality/benches/bench_systems.rs`, which
-measures them rather than storing them. The short version, from the 2026-11-15 retake on a shared
-8-core box where absolute values move ~10 % run to run: at 10 000 actors with 20 attributes and 3
-effects each, moving 10 % of the actors' attributes — the `steady` workload — costs roughly 1.1 ms a
-tick single-threaded, and moving every attribute of every actor — `storm` — roughly 7 ms with bevy's
-`multi_threaded` feature, against the 2 ms / 8 ms performance targets; the `idle` control of that same
-session was 0.25 ms st and 0.33 ms mt. Both are DAG-resolver ticks, so their criterion ids are
-`scenario/steady/actors=10000/a=20/e=3/dag/st-static` and
-`scenario/storm/actors=10000/a=20/e=3/dag/mt-static`: `Workload::ALL` names the workloads and
+measures them rather than storing them. The short version, from the 2026-11-16 run at tip `7340cfb`
+on a shared 8-core box (load 2.5-5.1, absolute values move ~10 % run to run): at 10 000 actors with
+20 attributes and 3 effects each, moving 10 % of the actors' attributes — the `steady` workload —
+costs roughly 1.1 ms a tick single-threaded (1.1325 / 1.1479 / 1.1436 ms over three runs, against the
+2 ms target), and moving every attribute of every actor — `storm` — roughly 7 ms with bevy's
+`multi_threaded` feature (mean 7.19 ms, worst run 7.39 ms, worst upper bound 7.73 ms against the 8 ms
+target, so it is met with nothing to spare). Multi-threading is worth 1.28x on `storm`, nothing on
+`steady`, and it loses on the `idle` control. Nothing was benched after that run, so the claim for the
+current tip rests on the dag tick's code path being unchanged since `7340cfb`. Their criterion ids are
+`scenario/steady/actors=10000/a=20/e=3/st-static` and
+`scenario/storm/actors=10000/a=20/e=3/mt-static`: `Workload::ALL` names the workloads and
 `scenario_id` builds that id, both in `crates/vitality/benches/support/scenario.rs`, and criterion
-matches a trailing filter against the full id as a regex, so
-`VITALITY_SCENARIOS_ONLY=1 VITALITY_RESOLVER=dag VITALITY_SCENARIO_ACTORS=10000 cargo bench
---offline --locked -p vitality --bench bench_systems -- 'scenario/(steady|storm)/'` is how they are
-taken — add `--features multi_threaded` for the `storm` figure.
+matches a trailing filter against the full id as a regex, so a filtered run is
+`cargo bench --offline --locked -p vitality --bench bench_systems -- scenario`, with
+`VITALITY_SCENARIO_ACTORS=10000` for one size and `--features multi_threaded` for the `storm` figure.

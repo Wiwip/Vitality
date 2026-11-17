@@ -272,7 +272,7 @@ struct ApplyState<T: Attribute> {
     actors: QueryState<EffectsMut<'static, 'static>, Without<IsResource>>,
 }
 
-/// Marks nothing: only DAG-mode attributes are listed, so no `mark_node_dirty_observer` exists; `scan_base_writes` runs after.
+/// Marks nothing: there is no per-attribute dirty node to mark, and `scan_base_writes` runs after.
 fn apply_queued_modifiers_of<T: Attribute>(world: &mut World) {
     if !world.contains_resource::<ApplyState<T>>() {
         let actors = world.query_filtered();

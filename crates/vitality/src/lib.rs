@@ -94,9 +94,9 @@
 //! # Wiring a plugin
 //!
 //! [`AttributesPlugin`] owns the app-wide state everything else reads and [`init_attribute`] writes
-//! into it, and both are `build`-time. The resolver mode is read at that same moment, which is why
-//! the order below is a contract rather than a style choice. Two of the five rules fail silently;
-//! the other three abort the build with a message that names the cause.
+//! into it, and both are `build`-time, which is why the order below is a contract rather than a style
+//! choice. Two of the five rules fail silently; the other three abort the build with a message that
+//! names the cause.
 //!
 //! - Register attributes in `Plugin::build`, not `Plugin::finish`. `App::update()` never runs
 //!   `Plugin::finish` — only `App::finish()` does, and that is the app runner's job (`App::run`,

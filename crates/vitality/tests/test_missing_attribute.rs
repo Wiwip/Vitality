@@ -20,7 +20,7 @@ use vitality::actors::ActorBuilder;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 
-/// v1 settles one hop per fixed tick, the dag resolver in the same tick, so 4 leaves room on both.
+/// The resolver settles a dependent hop in the same tick, so 4 leaves room.
 const SETTLE: usize = 4;
 
 /// `README.md`'s burn without the duration: one definition, two differently-kitted actors.
