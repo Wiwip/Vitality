@@ -11,7 +11,6 @@ use vitality::actors::ActorBuilder;
 use vitality::attributes::ReflectAccessAttribute;
 use vitality::context::{Source, Vitality};
 use vitality::effect::definition::EffectDef;
-use vitality::effect::graph::DependencyGraph;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::effect::{Effect, EffectStackingPolicy};
 use vitality::inspector::ActorInspectorPlugin;
@@ -280,8 +279,6 @@ fn setup_camera(mut commands: Commands) {
 fn inputs(
     mut players: Query<(Entity, &AttackPower), With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
-    graph: DependencyGraph,
-    actors: Query<Entity, With<Player>>,
     mut abilities: Abilities,
 ) {
     if let Ok((player_entity, _)) = players.single_mut() {
@@ -291,18 +288,6 @@ fn inputs(
         if keys.just_pressed(KeyCode::KeyE) {
             abilities.try_activate_by_tag::<Frost>(player_entity, TargetData::SelfCast);
         }
-        if keys.just_pressed(KeyCode::KeyR) {
-            analyze_dependencies_with_petgraph(graph, actors);
-        }
-    }
-}
-
-pub fn analyze_dependencies_with_petgraph(
-    graph: DependencyGraph,
-    actors: Query<Entity, With<Player>>,
-) {
-    for actor_entity in actors.iter() {
-        graph.print_dependencies(actor_entity);
     }
 }
 
