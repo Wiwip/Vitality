@@ -1,4 +1,3 @@
-use crate::actors::{ActorDef, ActorRegistry, ActorToken};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
@@ -13,7 +12,6 @@ use vitality_effects::registry::EffectToken;
 pub struct Registry<'w> {
     effects: vitality_effects::registry::Registry<'w>,
     abilities: vitality_abilities::registry::Registry<'w>,
-    actors: Res<'w, ActorRegistry>,
 }
 
 impl Registry<'_> {
@@ -24,18 +22,12 @@ impl Registry<'_> {
     pub fn ability(&self, name: &AbilityToken) -> Handle<AbilityDef> {
         self.abilities.ability(name)
     }
-
-    pub fn actor(&self, name: &ActorToken) -> Handle<ActorDef> {
-        self.actors.get(name).clone()
-    }
 }
 
 #[derive(SystemParam)]
 pub struct RegistryMut<'w> {
     effects: vitality_effects::registry::RegistryMut<'w>,
     abilities: vitality_abilities::registry::RegistryMut<'w>,
-    actors: ResMut<'w, ActorRegistry>,
-    actor_assets: ResMut<'w, Assets<ActorDef>>,
 }
 
 impl RegistryMut<'_> {
@@ -53,14 +45,5 @@ impl RegistryMut<'_> {
 
     pub fn ability(&self, name: &AbilityToken) -> Handle<AbilityDef> {
         self.abilities.ability(name)
-    }
-
-    pub fn add_actor(&mut self, name: ActorToken, actor: ActorDef) {
-        let handle = self.actor_assets.add(actor);
-        self.actors.add(name, handle);
-    }
-
-    pub fn actor(&self, name: &ActorToken) -> Handle<ActorDef> {
-        self.actors.get(name).clone()
     }
 }

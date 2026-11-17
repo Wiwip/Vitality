@@ -1,7 +1,6 @@
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use express_it::expr::{AsExpression, Expr};
-use smol_str::SmolStr;
 use std::any::TypeId;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -224,47 +223,5 @@ impl ActorBuilder {
 
     pub fn build(self) -> ActorDef {
         self.actor
-    }
-}
-
-#[derive(Default, Clone, PartialEq, Eq, Hash, Reflect)]
-pub struct ActorToken(SmolStr);
-
-impl ActorToken {
-    pub const fn new(text: SmolStr) -> Self {
-        Self(text)
-    }
-
-    pub const fn new_static(text: &'static str) -> Self {
-        Self(SmolStr::new_static(text))
-    }
-}
-
-impl core::fmt::Display for ActorToken {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl core::fmt::Debug for ActorToken {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "AbilityToken({:?})", self.0)
-    }
-}
-
-#[derive(Resource, Default)]
-pub struct ActorRegistry {
-    map: HashMap<ActorToken, Handle<ActorDef>>,
-}
-
-impl ActorRegistry {
-    pub fn add(&mut self, token: ActorToken, handle: Handle<ActorDef>) {
-        self.map.insert(token, handle);
-    }
-
-    pub fn get(&self, token: &ActorToken) -> &Handle<ActorDef> {
-        self.map
-            .get(token)
-            .unwrap_or_else(|| panic!("{:?} not registered", token))
     }
 }

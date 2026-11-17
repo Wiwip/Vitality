@@ -58,7 +58,7 @@
 //! [`effect`] and [`ability`] are the runtime crates behind them.
 //! `crates/vitality/examples/` has whole apps.
 
-use crate::actors::{ActorDef, ActorRegistry};
+use crate::actors::ActorDef;
 use bevy::prelude::*;
 use vitality_abilities::AbilityPlugin;
 use vitality_core::CorePlugin;
@@ -127,7 +127,6 @@ impl Plugin for AttributesPlugin {
             GlobalEffectPlugin,
         ))
         .init_asset::<ActorDef>()
-        .insert_resource(ActorRegistry::default())
         .add_plugins(init_attribute::<Stacks>);
     }
 }

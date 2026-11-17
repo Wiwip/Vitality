@@ -1,4 +1,4 @@
-use crate::actors::{ActorDef, ActorToken, SpawnActorCommand};
+use crate::actors::{ActorDef, SpawnActorCommand};
 use crate::registry::Registry;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
@@ -62,11 +62,6 @@ impl<'s, 'w> Vitality<'w, 's> {
         self.actor_assets.add(actor)
     }
 
-    pub fn spawn_actor(&mut self, token: &ActorToken) -> EntityCommands<'_> {
-        let handle = self.registry.actor(token);
-        self.spawn_actor_from_handle(&handle)
-    }
-
     pub fn spawn_actor_from_handle(&mut self, handle: &Handle<ActorDef>) -> EntityCommands<'_> {
         let mut entity_commands = self.commands.spawn_empty();
         entity_commands.queue(SpawnActorCommand {
@@ -78,17 +73,6 @@ impl<'s, 'w> Vitality<'w, 's> {
     pub fn add_spawn_actor(&mut self, actor: ActorDef) -> EntityCommands<'_> {
         let handle = self.actor_assets.add(actor);
         self.spawn_actor_from_handle(&handle)
-    }
-
-    pub fn insert_actor(&mut self, entity: Entity, handle: &Handle<ActorDef>) {
-        self.commands.entity(entity).queue(SpawnActorCommand {
-            handle: handle.clone(),
-        });
-    }
-
-    pub fn insert_actor_from_token(&mut self, entity: Entity, token: &ActorToken) {
-        let handle = self.registry.actor(token);
-        self.insert_actor(entity, &handle);
     }
 
     /// Writes an attribute's base value; the current value follows on the next resolve.

@@ -46,11 +46,11 @@ const DAG_OBSERVERS_BASELINE: usize = 12;
 
 /// the per-attribute query states the collapsed nodes only install on first use, so an at-rest
 /// counter cannot see them
-const DAG_TICK_RESOURCES_BASELINE: usize = 70;
+const DAG_TICK_RESOURCES_BASELINE: usize = 69;
 const DAG_TICK_RESOURCES_PER_ATTRIBUTE: usize = 4;
 
 /// exact, so a component the DAG branch starts registering per attribute is red here
-const DAG_TICK_COMPONENTS_BASELINE: usize = 151;
+const DAG_TICK_COMPONENTS_BASELINE: usize = 150;
 const DAG_TICK_COMPONENTS_PER_ATTRIBUTE: usize = 10;
 
 fn spec(attributes: usize) -> WorldSpec {
@@ -177,7 +177,7 @@ fn dag_registration_cost_per_attribute_is_pinned() {
         Some(DAG_TICK_RESOURCES_BASELINE),
         DAG_TICK_RESOURCES_PER_ATTRIBUTE,
     );
-    // the count holds bevy's `TimeReceiver`, which needs std, and std rides in on the overlay dep: 150 without it
+    // the count holds bevy's `TimeReceiver`, which needs std, and std rides in on the overlay dep: 149 without it
     pin_dag_per_attribute(
         "component",
         narrow.components,
