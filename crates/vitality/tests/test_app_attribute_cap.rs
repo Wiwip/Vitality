@@ -179,3 +179,75 @@ mod late_registration {
         );
     }
 }
+
+/// The instant half of the same rule, from the bad side: the write is deferred, and the queue it
+/// rides only exists for a registered attribute.
+mod unregistered_instant {
+
+    use crate::gameplay::*;
+    use bevy::log::tracing::subscriber::with_default;
+    use bevy::log::tracing_subscriber::{Registry, fmt, layer::SubscriberExt};
+    use std::io::{self, Write};
+    use std::sync::{Arc, Mutex};
+    use vitality::effect::modifier::{EffectSubject, ModOp};
+    use vitality::prelude::*;
+
+    attribute!(Stray, f32);
+
+    #[derive(Clone)]
+    struct Sink(Arc<Mutex<String>>);
+
+    impl Write for Sink {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0
+                .lock()
+                .unwrap()
+                .push_str(&String::from_utf8_lossy(buf));
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn an_instant_effect_on_an_unregistered_attribute_is_dropped_with_a_warn() {
+        let logs = Arc::new(Mutex::new(String::new()));
+        let writer = logs.clone();
+        let subscriber = Registry::default().with(
+            fmt::layer()
+                .with_ansi(false)
+                .without_time()
+                .with_writer(move || Sink(writer.clone())),
+        );
+
+        with_default(subscriber, || {
+            let mut app = app();
+            let hero = spawn(&mut app, hero_def().with::<Stray>(4.0));
+            let buff = effect(
+                &mut app,
+                EffectBuilder::instant()
+                    .modify::<Stray>(5.0, ModOp::Add, EffectSubject::Target)
+                    .build(),
+            );
+
+            apply(&mut app, hero, hero, &buff);
+            ticks(&mut app, 2);
+
+            assert_eq!(base::<Stray>(&app, hero), 4.0, "the base never moves");
+            assert_eq!(
+                current::<Stray>(&app, hero),
+                4.0,
+                "and neither does the current value"
+            );
+        });
+
+        // warn_once! is per call site, so this cell asserts the text and never a count
+        let logs = logs.lock().unwrap();
+        assert!(
+            logs.contains("Stray") && logs.contains("init_attribute"),
+            "the dropped instant write has to name the attribute and the call that registers it, got: {logs}"
+        );
+    }
+}

@@ -46,7 +46,7 @@
 //! ```
 //!
 //! Wiring it by hand is five rules, each with its `crates/vitality/tests` pin beside it.
-//! - Register attributes in `Plugin::build`, never `Plugin::finish`: `App::update()` never runs `finish`, so the attribute is never registered and an effect on it spawns a modifier that never moves the base (`an_attribute_registered_in_finish_applies_nothing`).
+//! - Register attributes in `Plugin::build`, never `Plugin::finish`: `App::update()` never runs `finish`, so the attribute is never registered, and each policy then does its own thing with it: a permanent effect spawns a modifier that silently moves nothing (`an_attribute_registered_in_finish_applies_nothing`), an instant one drops its queued write with a warn naming the attribute (`an_instant_effect_on_an_unregistered_attribute_is_dropped_with_a_warn`).
 //! - The 128-attribute cap is one counter for the whole app and the framework's own [`effect::Stacks`] holds a slot, so an app gets 127 game attributes and the 128th is the one refused by name (`an_app_gets_127_game_attributes_because_the_framework_holds_one_slot`, `the_128th_game_attribute_is_the_one_the_app_refuses`).
 //! - An `AttrId` is `infos.len()` when it is handed out, so reordering or deleting a registration renumbers the rest: never persist one, persist the `AttrInfo::name` the registry records, which is the short name with the module path dropped and therefore unique across the app's crates or the app panics (`two_crates_sharing_a_short_name_are_told_to_rename_one`).
 //! - Add [`AttributesPlugin`] before any plugin that calls [`init_attribute`], or the app dies at build with `resource does not exist: vitality_core::registry::AttributeRegistry` — no test, that one aborts instead of misbehaving.

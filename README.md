@@ -84,7 +84,7 @@ The attribute pipeline (the `EffectsSet` chain) runs on `FixedUpdate`, so a head
 
 The contract, with what each break looks like from inside an app and the test that pins it, is the `vitality` crate-level doc:
 
-- Register attributes with `vitality::init_attribute::<T>()` in `Plugin::build`: `App::update()` never calls `App::finish`, so a registration made in `Plugin::finish` never runs and that attribute silently applies no modifiers and fires no value-changed events.
+- Register attributes with `vitality::init_attribute::<T>()` in `Plugin::build`: `App::update()` never calls `App::finish`, so a registration made in `Plugin::finish` never runs and that attribute fires no value-changed events — a permanent effect on it silently applies no modifiers, an instant one drops its queued write with a warn naming the attribute.
 - `AttributesPlugin` owns the registry the attribute is written into, so it comes before anything that calls `init_attribute`; that one panics at build.
 - The 128-attribute cap is one counter for the whole app, not one per crate, and vitality's own `Stacks` attribute uses a slot, so an app gets 127 game attributes and the 128th is the one refused, by name.
 - `AttrId` is a registration index, so it moves when plugin order moves. Persist the attribute's name, never the id — and keep names unique across crates, because the name is the type's short name and a duplicate panics at build.

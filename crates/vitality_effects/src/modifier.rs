@@ -40,6 +40,7 @@ pub trait Modifier: Send + Sync {
         source: Entity,
         target: Entity,
         effect: Entity,
+        type_bindings: &AttributeBindings,
         commands: &mut Commands,
     );
 }
@@ -219,8 +220,21 @@ where
         source: Entity,
         target: Entity,
         effect: Entity,
+        type_bindings: &AttributeBindings,
         commands: &mut Commands,
     ) {
+        // an unregistered attribute owns no Messages<Self>, so the write would die in bevy's command buffer
+        if type_bindings.dependency(&TypeId::of::<T>()).is_none() {
+            warn_once!(
+                "An instant modifier on {} is dropped: that attribute is not registered by this \
+                 app, so its write has no queue to ride; register it with init_attribute::<{}>() \
+                 in Plugin::build",
+                pretty_type_name::<T>(),
+                pretty_type_name::<T>(),
+            );
+            return;
+        }
+
         commands.write_message(ApplyAttributeModifierMessage::<T> {
             source_entity: source,
             target_entity: target,

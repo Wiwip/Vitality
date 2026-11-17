@@ -334,8 +334,13 @@ pub(crate) fn apply_effect_event_observer(
             return;
         }
         trigger.cleanse(effect, applied, &ctx.effect_tags, &mut commands);
+        let bindings = ctx
+            .type_bindings
+            .internal
+            .read()
+            .unwrap_or_else(|err| err.into_inner());
         for modifier in &effect.modifiers {
-            modifier.apply_delayed(source, target, trigger.entity, &mut commands);
+            modifier.apply_delayed(source, target, trigger.entity, &bindings, &mut commands);
         }
         commands.trigger(EffectApplied {
             entity: target,
