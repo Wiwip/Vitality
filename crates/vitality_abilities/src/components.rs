@@ -124,7 +124,7 @@ impl std::fmt::Display for AbilityError {
             AbilityError::GrantingAbilityToNonActor(entity) => {
                 write!(
                     f,
-                    "{}: Cannot grant ability to entities that are not actors. with TypeId  not present on entity.",
+                    "{}: Cannot grant ability to an entity that is not an actor; grant the ability to an entity built by ActorBuilder.",
                     entity
                 )
             }
