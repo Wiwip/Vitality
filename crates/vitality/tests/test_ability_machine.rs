@@ -19,7 +19,7 @@ use vitality::ability::tasks::{
     AbilityItem, AbilityTask, CasterItem, Complete, NoData, NotifyTaskCompletion, TaskItem,
     TaskParam, TaskStatus, Tasks, task,
 };
-use vitality::ability::{Abilities, AbilityBuilder, TargetData};
+use vitality::ability::{Abilities, AbilityBuilder, AbilityRecovery, TargetData};
 use vitality::actors::ActorDef;
 use vitality::actors::{Actor, ActorBuilder};
 use vitality::context::Vitality;
@@ -237,6 +237,14 @@ fn ability_walks_ready_active_recovery_ready() {
     assert!(
         cooldown_armed(&app, ability),
         "entering Recovery arms the cooldown timer"
+    );
+    let recovery = *app
+        .world()
+        .get::<AbilityRecovery>(ability)
+        .expect("the Ability component requires AbilityRecovery");
+    assert!(
+        format!("{recovery}").starts_with("AbilityRecovery: "),
+        "the hand-written Display must name the attribute like the macro does, got `{recovery}`"
     );
 
     // a headless update lasts microseconds, so each iteration is handed a fixed timestep as a manual

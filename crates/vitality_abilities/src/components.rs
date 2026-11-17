@@ -198,7 +198,7 @@ impl std::fmt::Display for AbilityRecovery {
         write!(
             f,
             "{}: {:.1}",
-            stringify!($StructName),
+            stringify!(AbilityRecovery),
             self.duration.as_secs_f32()
         )
     }
