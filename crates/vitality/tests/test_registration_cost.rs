@@ -15,8 +15,12 @@ const WIDE: usize = 22;
 const STEP: usize = WIDE - NARROW;
 
 const SYSTEMS_PER_ATTR_BASELINE: usize = 0;
-/// one fewer component per attribute now that registration adds a single path
-const COMPONENTS_PER_ATTR_BASELINE: usize = 10;
+/// ten per attribute: the four ids `AttributeRegistry::register` takes (`T`,
+/// `AttributeDependents<T>`, `Clamp<T>`, `ClampBounds<T>`), the `AttributeCalculatorCached<T>` the
+/// `attribute!` macro `#[require]`s, bevy's own `Messages<ApplyAttributeModifierMessage<T>>`, and the
+/// first-use `BaseScanState<T>`/`ApplyState<T>`/`PeriodicState<T>` resources plus the
+/// `AttributeModifier<T>` id the last of those queries registers. Only the first six exist at rest.
+const COMPONENTS_PER_ATTR_BASELINE: usize = 6;
 
 /// a node added at plugin build time is a +1 here, where the slope above still reads 0
 const SYSTEMS_INTERCEPT_BASELINE: usize = 10;
