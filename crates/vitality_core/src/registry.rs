@@ -88,8 +88,7 @@ impl ErasedCalc {
     }
 }
 
-/// The resolve step and the sink it fills with `(actor, limit key, clamped attribute)` triples;
-/// spelled out inside the struct it sits over clippy's complexity limit.
+/// Spelled out inside the struct it sits over clippy's complexity limit.
 type ResolveFn = fn(
     &mut FilteredEntityMut,
     AttrComponents,
