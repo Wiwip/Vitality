@@ -86,14 +86,6 @@ impl<T: Attribute> AttributeCalculator<T> {
         }
     }
 
-    pub fn combine_in_place(&mut self, other: &AttributeCalculator<T>) {
-        self.set = self.set.or(other.set);
-        self.additive += other.additive;
-        self.subtractive += other.subtractive;
-        self.increase += other.increase;
-        self.multiplier *= other.multiplier;
-    }
-
     pub fn from_parts(
         set: Option<T::Property>,
         additive: T::Property,

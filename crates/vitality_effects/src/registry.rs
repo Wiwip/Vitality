@@ -48,21 +48,6 @@ impl EffectRegistry {
 
 use bevy::ecs::system::SystemParam;
 
-pub struct RegistryPlugin;
-
-impl Plugin for RegistryPlugin {
-    fn is_unique(&self) -> bool {
-        false
-    }
-
-    fn build(&self, app: &mut App) {
-        if !vitality_core::first_install::<Self>(app) {
-            return;
-        }
-        app.insert_resource(EffectRegistry::default());
-    }
-}
-
 #[derive(SystemParam)]
 pub struct Registry<'w> {
     pub effect_registry: Res<'w, EffectRegistry>,

@@ -36,7 +36,7 @@ type ConditionRow<'w, 's> = (
     Option<&'w EffectInactive>,
 );
 
-pub fn evaluate_effect_conditions(
+fn evaluate_effect_conditions(
     mut query: Query<ConditionRow<'_, '_>, Without<EffectTicker>>,
     parents: Query<EffectsRef>,
     effects: Res<Assets<EffectDef>>,

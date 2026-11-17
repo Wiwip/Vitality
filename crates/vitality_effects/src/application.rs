@@ -62,29 +62,10 @@ impl EffectApplicationPolicy {
         }
     }
 
-    pub fn is_expired(&self) -> bool {
-        match self {
-            Self::Instant => true,
-            Self::Permanent | Self::Periodic { .. } => false,
-            Self::Temporary { duration } => duration.is_finished(),
-            Self::PeriodicTemporary { duration, .. } => duration.is_finished(),
-        }
-    }
-
     pub fn is_periodic(&self) -> bool {
         match self {
             Self::Instant | Self::Permanent | Self::Temporary { .. } => false,
             Self::Periodic { .. } | Self::PeriodicTemporary { .. } => true,
-        }
-    }
-
-    pub fn should_apply_now(&self) -> bool {
-        match self {
-            Self::Instant => true,                             // Apply once on creation
-            Self::Permanent | Self::Temporary { .. } => false, // Applied through aggregator systems
-            Self::Periodic { interval } | Self::PeriodicTemporary { interval, .. } => {
-                interval.just_finished()
-            }
         }
     }
 
@@ -97,7 +78,7 @@ impl EffectApplicationPolicy {
         }
     }
 
-    pub fn to_bundles(&self) -> (Option<impl Bundle>, Option<impl Bundle>) {
+    fn to_bundles(&self) -> (Option<impl Bundle>, Option<impl Bundle>) {
         let duration = match self {
             EffectApplicationPolicy::Temporary { duration } => Some(EffectDuration::new(duration)),
             EffectApplicationPolicy::PeriodicTemporary { duration, .. } => {

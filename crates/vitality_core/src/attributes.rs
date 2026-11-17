@@ -1,10 +1,8 @@
 use crate::context::{ActorProvider, ActorProviderMut, Caster, Source, Target};
 use crate::math::{AbsDiff, SaturatingAttributes};
-use crate::modifier::{AttributeCalculator, AttributeCalculatorCached};
 use crate::util::pretty_type_name;
 use crate::view::{ActorRead, ActorWrite};
 use bevy::ecs::component::Mutable;
-use bevy::ecs::query::QueryData;
 use bevy::log::error;
 use bevy::prelude::{Component, Entity, Reflect, ReflectComponent, TypePath};
 use bevy::reflect::{GetTypeRegistration, Typed, reflect_trait};
@@ -375,48 +373,6 @@ pub struct ClampBounds<T: Attribute> {
     pub max: ClampExpr<T>,
 }
 
-#[derive(QueryData, Debug)]
-#[query_data(mutable, derive(Debug))]
-pub struct AttributeQueryData<T: Attribute + 'static> {
-    pub entity: Entity,
-    pub attribute: &'static mut T,
-    pub calculator_cache: &'static mut AttributeCalculatorCached<T>,
-    pub clamp: Option<&'static Clamp<T>>,
-}
-
-impl<T: Attribute> AttributeQueryDataItem<'_, '_, T> {
-    pub fn update_attribute(&mut self, calculator: &AttributeCalculator<T>) -> bool {
-        let old_val = self.attribute.current_value();
-        let mut new_val = calculator.eval(self.attribute.base_value());
-        if let Some(clamp) = self.clamp {
-            new_val = clamp.apply(new_val);
-        }
-
-        let has_changed = old_val.are_different(new_val);
-        if has_changed {
-            self.attribute.set_current_value(new_val);
-        }
-        has_changed
-    }
-
-    pub fn update_attribute_from_cache(&mut self) -> bool {
-        let old_val = self.attribute.current_value();
-        let mut new_val = self
-            .calculator_cache
-            .calculator
-            .eval(self.attribute.base_value());
-        if let Some(clamp) = self.clamp {
-            new_val = clamp.apply(new_val);
-        }
-
-        let has_changed = old_val.are_different(new_val);
-        if has_changed {
-            self.attribute.set_current_value(new_val);
-        }
-        has_changed
-    }
-}
-
 #[reflect_trait] // Generates a `ReflectMyTrait` type
 pub trait AccessAttribute {
     fn access_base_value(&self) -> f64;
@@ -459,7 +415,7 @@ fn note_read(key: TypeId) {
 }
 
 /// Dependency key of `T` read through `Role`, as reported by [`Expr::get_dependencies`].
-pub struct DepKey<T, Role>(PhantomData<fn() -> (T, Role)>);
+struct DepKey<T, Role>(PhantomData<fn() -> (T, Role)>);
 
 pub fn dep_key<T: 'static, Role: 'static>() -> TypeId {
     TypeId::of::<DepKey<T, Role>>()

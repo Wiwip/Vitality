@@ -265,10 +265,6 @@ impl AttributeRegistry {
         &self.readers[id.index()]
     }
 
-    pub fn is_cyclic(&self) -> bool {
-        self.cyclic
-    }
-
     /// `reader` is computed from `read` on the same actor. Returns whether the edge is new.
     pub fn add_edge(&mut self, read: AttrId, reader: AttrId) -> bool {
         if read == reader || !self.edges.insert((read, reader)) {
@@ -384,7 +380,7 @@ impl ResolveQueue {
             .push((entity, attr));
     }
 
-    pub fn dirty_batch(&self, batch: &mut Vec<(Entity, AttrId)>) {
+    fn dirty_batch(&self, batch: &mut Vec<(Entity, AttrId)>) {
         if batch.is_empty() {
             return;
         }

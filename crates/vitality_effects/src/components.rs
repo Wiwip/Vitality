@@ -1,7 +1,6 @@
 use crate::definition::EffectDef;
-use crate::{EffectApplicationPolicy, EffectBuilder, EffectTicker, Stacks};
+use crate::{EffectApplicationPolicy, EffectBuilder, Stacks};
 use bevy::asset::Handle;
-use bevy::ecs::query::QueryData;
 use bevy::prelude::{Component, Deref, Entity, Event, Reflect};
 
 pub enum EffectStatus {
@@ -76,18 +75,3 @@ pub struct EffectTarget(pub Entity);
 #[derive(Component, Reflect, Debug)]
 #[relationship_target(relationship = EffectTarget, linked_spawn)]
 pub struct AppliedEffects(Vec<Entity>);
-
-#[derive(QueryData)]
-pub struct EffectStatusParam {
-    inactive: Option<&'static EffectInactive>,
-    periodic: Option<&'static EffectTicker>,
-}
-
-impl EffectStatusParamItem<'_, '_> {
-    pub fn is_inactive(&self) -> bool {
-        self.inactive.is_some()
-    }
-    pub fn is_periodic(&self) -> bool {
-        self.periodic.is_some()
-    }
-}

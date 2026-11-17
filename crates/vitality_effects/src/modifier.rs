@@ -84,7 +84,7 @@ where
         }
     }
 
-    pub fn update_value(&mut self, ctx: &EffectExprContext) {
+    fn update_value(&mut self, ctx: &EffectExprContext) {
         let new_val = self.expr.eval(ctx);
         self.value = new_val;
     }
@@ -304,7 +304,7 @@ pub fn apply_all_modifier_events(world: &mut World, mut applies: Local<Vec<Modif
     }
 }
 
-pub fn apply_modifier<T: Attribute>(
+fn apply_modifier<T: Attribute>(
     trigger: &ApplyAttributeModifierMessage<T>,
     attributes: &mut Query<EffectsMut, Without<IsResource>>,
 ) -> Result<bool, BevyError> {

@@ -19,7 +19,7 @@ use vitality_core::registry::{
 };
 
 /// Passes per tick before leftover cross-actor work waits for the next tick.
-pub const MAX_PASSES: usize = 4;
+const MAX_PASSES: usize = 4;
 
 /// The erased mirror of an `AttributeModifier<T>`, which is all a regather reads.
 #[derive(Component, Clone, Copy, Debug)]
@@ -328,7 +328,7 @@ fn fold(into: &mut EntityHashMap<Mark>, marks: impl IntoIterator<Item = (Entity,
     }
 }
 
-pub(crate) fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
+fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
     let (pending, dirty) = world.resource::<ResolveQueue>().take();
     if pending.is_empty() && dirty.is_empty() {
         return;

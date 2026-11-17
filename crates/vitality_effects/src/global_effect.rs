@@ -32,7 +32,7 @@ impl Plugin for GlobalEffectPlugin {
     }
 }
 
-pub fn spawn_global_actor(mut commands: Commands) {
+fn spawn_global_actor(mut commands: Commands) {
     commands.spawn((
         GlobalActor,
         ManageAttributes,
