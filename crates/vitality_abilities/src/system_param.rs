@@ -35,15 +35,6 @@ pub struct Abilities<'w, 's> {
 }
 
 impl<'w, 's> Abilities<'w, 's> {
-    pub fn grant_ability_by_token(
-        &mut self,
-        entity: Entity,
-        token: &AbilityToken,
-    ) -> Result<Entity, AbilityError> {
-        let handle = self.get_ability_from_token(token);
-        self.grant_ability(&handle, entity)
-    }
-
     pub fn grant_ability(
         &mut self,
         ability: &Handle<AbilityDef>,
@@ -137,10 +128,6 @@ impl<'w, 's> Abilities<'w, 's> {
                     })
             })
             .collect()
-    }
-
-    pub fn has_ability(&self, entity: Entity, token: &AbilityToken) -> bool {
-        self.get_ability_entity(entity, token).is_some()
     }
 
     pub fn try_activate_by_token(

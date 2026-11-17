@@ -17,10 +17,6 @@ pub struct Registry<'w> {
 }
 
 impl Registry<'_> {
-    pub fn ability_definitions(&self) -> &Assets<AbilityDef> {
-        self.abilities.ability_definitions()
-    }
-
     pub fn effect(&self, name: &EffectToken) -> Handle<EffectDef> {
         self.effects.effect(name)
     }

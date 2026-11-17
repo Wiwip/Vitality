@@ -6,7 +6,6 @@ use vitality_core::attributes::Attribute;
 use vitality_core::modifier::{AttributeCalculator, ModOp};
 use vitality_core::tags::{ChangeTag, TagSpec};
 use vitality_effects::definition::EffectDef;
-use vitality_effects::registry::EffectToken;
 use vitality_effects::{Effects, GlobalActor, GlobalEffects};
 
 /// Actors, effects and attributes in one param. Abilities live in [`vitality_abilities::Abilities`].
@@ -25,10 +24,6 @@ pub struct Vitality<'w, 's> {
 impl<'s, 'w> Vitality<'w, 's> {
     pub fn add_effect(&mut self, effect: EffectDef) -> Handle<EffectDef> {
         self.effect_assets.add(effect)
-    }
-
-    pub fn get_effect_from_token(&self, token: &EffectToken) -> Handle<EffectDef> {
-        self.registry.effect(token)
     }
 
     pub fn apply_effect_to_target(
@@ -134,16 +129,5 @@ impl<'s, 'w> Vitality<'w, 's> {
     /// the actor global effects come from; spawned in `PreStartup`, so None only before the first update
     pub fn global_actor(&self) -> Option<Entity> {
         self.global_actor.single().ok()
-    }
-
-    pub fn spawn_global_effects(&mut self, target_actor: Entity) {
-        let Some(global_actor) = self.global_actor() else {
-            warn!("No global actor yet; global effects not applied to {target_actor}.");
-            return;
-        };
-        let effects: Vec<_> = self.global_effects.clone();
-        for handle in effects.iter() {
-            self.effects.apply(global_actor, target_actor, handle);
-        }
     }
 }

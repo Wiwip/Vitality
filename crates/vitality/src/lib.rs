@@ -53,17 +53,16 @@
 //! - [`effect::EffectsPlugin`] adds the apply-path nodes once for the app (`resolve_system`, `apply_all_modifier_events`, `scan_base_writes`, `apply_all_periodic_effects`) and [`effect::init_effect_attribute`] adds no node and no observer (`dag_registration_cost_per_attribute_is_pinned`), so attributes installed without it leave `Effects::apply` doing nothing; `a_fire_due_on_the_expiry_tick_beats_the_expiry` pins the one ordering among them that decides a tick, `apply_all_periodic_effects` ahead of `tick_effect_durations`.
 //!
 //! [`actors`] turns an [`ActorBuilder`](actors::ActorBuilder) into an
-//! [`ActorDef`] that [`context::Vitality`] spawns and reads, [`clamp`] is the
+//! [`ActorDef`] that [`context::Vitality`] spawns and reads, [`attributes::Clamp`] is the
 //! min/max component an actor carries, [`registry`] holds the effect and ability registries, and
 //! [`effect`] and [`ability`] are the runtime crates behind them.
 //! `crates/vitality/examples/` has whole apps.
 
 use crate::actors::{ActorDef, ActorRegistry};
-use crate::clamp::Clamp;
 use bevy::prelude::*;
 use vitality_abilities::AbilityPlugin;
 use vitality_core::CorePlugin;
-use vitality_core::attributes::Attribute;
+use vitality_core::attributes::{Attribute, Clamp};
 use vitality_core::init_core_attribute;
 use vitality_effects::{
     ConditionPlugin, EffectsPlugin, GlobalEffectPlugin, Stacks, init_effect_attribute,
@@ -77,7 +76,6 @@ pub use vitality_core::{
 pub use vitality_effects as effect;
 
 pub mod actors;
-pub mod clamp;
 pub mod registry;
 mod vitality;
 
@@ -103,7 +101,6 @@ pub mod prelude {
 
 #[cfg(feature = "debug-overlay")]
 pub mod inspector {
-    pub use vitality_core::util::{pretty_type_name, pretty_type_name_str};
     pub use vitality_debug::*;
 }
 

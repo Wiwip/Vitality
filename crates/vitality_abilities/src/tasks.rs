@@ -77,12 +77,6 @@ impl WaitTask {
         Self(timer)
     }
 
-    pub fn from_duration(duration: Duration) -> Self {
-        let mut timer = Timer::new(duration, TimerMode::Once);
-        timer.pause();
-        Self(timer)
-    }
-
     pub fn start(&mut self) {
         self.0.reset();
         self.0.unpause();

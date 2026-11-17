@@ -7,7 +7,6 @@ pub mod context;
 pub mod definition;
 pub mod lifecycle;
 pub mod registry;
-pub mod subject;
 mod system_param;
 mod systems;
 pub mod task_states;

@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use vitality_abilities::{Ability, AbilityDef, AbilityOf, GrantedAbilities};
 use vitality_core::AppAttributeBindings;
-use vitality_core::attributes::{Attribute, ClampBounds, ManageAttributes};
+use vitality_core::attributes::{Attribute, Clamp, ClampBounds, ManageAttributes};
 use vitality_core::context::ActorExprSchema;
 use vitality_core::modifier::AttributeCalculatorCached;
 use vitality_core::mutator::EntityActions;
@@ -16,8 +16,6 @@ use vitality_core::registry::AttributeRegistry;
 use vitality_effects::definition::EffectDef;
 use vitality_effects::graph::NodeType;
 use vitality_effects::{ApplyEffectEvent, EffectTargeting};
-
-use crate::clamp::Clamp;
 
 /// Per dependency key read by a clamp: the clamped attributes, so the resolver orders them last.
 type ClampDependents = HashMap<TypeId, Vec<TypeId>>;

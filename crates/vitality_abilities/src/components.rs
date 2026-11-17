@@ -112,13 +112,6 @@ pub struct EndAbility {
     pub source: Entity,
 }
 
-#[derive(EntityEvent)]
-pub struct AbilityCancel {
-    #[event_target]
-    pub ability: Entity,
-    pub source: Entity,
-}
-
 #[derive(Clone, Debug)]
 pub enum AbilityError {
     GrantingAbilityToNonActor(Entity),
