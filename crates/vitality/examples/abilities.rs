@@ -103,7 +103,7 @@ fn setup_actor(mut vitality: Vitality) {
     vitality.add_spawn_actor(actor);
 }
 
-// one tick after the spawn
+// one tick after the spawn, though the spawning system would do as well
 fn apply_effects(mut vitality: Vitality, player: Single<Entity, With<Player>>) {
     let effect = EffectBuilder::permanent()
         .modify::<Health>(10.0, ModOp::Add, EffectSubject::Target)

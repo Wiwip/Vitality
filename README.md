@@ -44,7 +44,7 @@ fn main() {
                 .attribute::<Power>(),
         )
         .add_systems(Startup, spawn_hero)
-        // one tick before the burn
+        // a tick later, though an apply in the spawning system lands too
         .add_systems(Update, apply_burn.run_if(run_once))
         .run();
 }

@@ -17,8 +17,9 @@ pub struct Vitality<'w, 's> {
     actor_assets: ResMut<'w, Assets<ActorDef>>,
     effect_assets: ResMut<'w, Assets<EffectDef>>,
     global_effects: ResMut<'w, GlobalEffects>,
-    pub effects: Effects<'w, 's>,
+    // ahead of `effects`: a SystemParam applies its command buffers in field order, so the spawn lands first
     commands: Commands<'w, 's>,
+    pub effects: Effects<'w, 's>,
 }
 
 impl<'s, 'w> Vitality<'w, 's> {

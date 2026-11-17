@@ -251,7 +251,7 @@ fn setup_actor(mut ctx: Vitality, abilities: Res<AbilityDatabase>) {
     ctx.add_spawn_actor(actor_template);
 }
 
-// one tick after the spawn
+// one tick after the spawn, though the spawning system would do as well
 fn apply_effects(
     mut ctx: Vitality,
     efx: Res<EffectsDatabase>,

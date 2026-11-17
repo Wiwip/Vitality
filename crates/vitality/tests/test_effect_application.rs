@@ -50,7 +50,7 @@ fn prepare_effects(mut registry: RegistryMut) {
 const TEST_EFFECT: EffectToken = EffectToken::new_static("test.test");
 const CONDITION_EFFECT: EffectToken = EffectToken::new_static("test.condition");
 
-// the spawn is a command, so an apply in the same system runs before the entity is an actor
+// both are commands, so an apply in the same system lands behind the spawn it follows
 fn spawn_and_apply_in_one_system(mut ctx: Vitality) {
     let actor = ctx
         .add_spawn_actor(
@@ -93,7 +93,7 @@ fn value(app: &App, actor: Entity) -> u32 {
 }
 
 #[test]
-fn test_apply_in_the_spawn_system_is_dropped() {
+fn test_apply_in_the_spawn_system_is_applied() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
     app.add_plugins(init_attribute::<TestInt>);
@@ -107,10 +107,10 @@ fn test_apply_in_the_spawn_system_is_dropped() {
 
     assert_eq!(
         applied(&app, actor),
-        0,
-        "the apply ran before the actor existed"
+        1,
+        "the apply landed on the actor the same system spawned"
     );
-    assert_eq!(value(&app, actor), 50);
+    assert_eq!(value(&app, actor), 60);
 }
 
 #[test]

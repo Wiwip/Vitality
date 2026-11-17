@@ -57,7 +57,7 @@
 //!     })
 //!     .unwrap();
 //!
-//! // the apply must be a later system: the spawn is a command; no actor exists before the flush
+//! // one tick of separation: the spawn flushed with its system, so an apply there would have landed too
 //! app.update();
 //! let burn = app
 //!     .world_mut()
