@@ -58,9 +58,10 @@ fn health_follows_a_lowered_computed_limit() {
     );
 }
 
-/// a computed limit's edge lands after the walk that read it, so an attribute walked before its limit keeps the stale one
+/// a computed limit's edge is found mid-tick, after the walk had passed the attribute it governs,
+/// so that attribute is walked again and settles on the real limit
 #[test]
-fn mana_stays_stale_until_another_write_when_max_moves_on_its_first_tick() {
+fn a_clamp_edge_found_mid_tick_re_resolves_the_attribute_it_governs() {
     let mut app = app();
     let mut def = Some(
         vitality::actors::ActorBuilder::new()
@@ -91,8 +92,8 @@ fn mana_stays_stale_until_another_write_when_max_moves_on_its_first_tick() {
     ticks(&mut app, 1);
     assert_eq!(
         current::<Mana>(&app, hero),
-        50.0,
-        "the edge installed after that first walk marks nothing, so the next tick changes nothing"
+        30.0,
+        "the edge that was new marks Mana again, so the next walk clamps against half of 60"
     );
 
     with_vitality(&mut app, move |v| v.set_base::<Mana>(hero, 40.0));
@@ -100,7 +101,7 @@ fn mana_stays_stale_until_another_write_when_max_moves_on_its_first_tick() {
     assert_eq!(
         current::<Mana>(&app, hero),
         30.0,
-        "only something that dirties Mana again makes the clamp read MaxHealth a second time"
+        "the limit the edge found keeps clamping every later write"
     );
 }
 

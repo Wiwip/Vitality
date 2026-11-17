@@ -82,7 +82,7 @@ impl EntityCommand for SpawnActorCommand {
                     queue
                 };
 
-                register_clamp_edges(world, actor_def);
+                register_clamp_edges(world, actor_entity, actor_def);
 
                 // a starting effect reads the actor, so its attributes have to be on it already
                 queue.apply(world);
@@ -100,13 +100,14 @@ impl EntityCommand for SpawnActorCommand {
 }
 
 /// Clamped attributes read their limits' attributes, so those resolve first. A limit that reads
-/// several attributes reports the rest of them later, from the resolver's first pass.
-fn register_clamp_edges(world: &mut World, def: &ActorDef) {
+/// several attributes reports the rest of them later, from the resolver's first pass. A spawn marks
+/// every attribute of the actor, so an edge that is new here needs no re-mark.
+fn register_clamp_edges(world: &mut World, actor: Entity, def: &ActorDef) {
     add_clamp_edges(
         world,
         def.clamp_dependents
             .iter()
-            .flat_map(|(key, clamped)| clamped.iter().map(move |clamped| (*key, *clamped))),
+            .flat_map(|(key, clamped)| clamped.iter().map(move |clamped| (actor, *key, *clamped))),
     );
 }
 

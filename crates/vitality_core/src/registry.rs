@@ -88,13 +88,13 @@ impl ErasedCalc {
     }
 }
 
-/// The resolve step and the sink it fills with `(limit key, clamped attribute)` pairs; spelled out
-/// inside the struct it sits over clippy's complexity limit.
+/// The resolve step and the sink it fills with `(actor, limit key, clamped attribute)` triples;
+/// spelled out inside the struct it sits over clippy's complexity limit.
 type ResolveFn = fn(
     &mut FilteredEntityMut,
     AttrComponents,
     &ErasedCalc,
-    &mut Vec<(TypeId, TypeId)>,
+    &mut Vec<(Entity, TypeId, TypeId)>,
 ) -> Option<Resolved>;
 
 /// What the resolver needs to do to one attribute without knowing its type.
@@ -131,7 +131,7 @@ fn resolve<T: Attribute>(
     entity: &mut FilteredEntityMut,
     ids: AttrComponents,
     calc: &ErasedCalc,
-    clamp_reads: &mut Vec<(TypeId, TypeId)>,
+    clamp_reads: &mut Vec<(Entity, TypeId, TypeId)>,
 ) -> Option<Resolved> {
     let mut clamp: Option<Clamp<T>> = None;
     if entity.get_by_id(ids.clamp_bounds).is_some() {
@@ -152,7 +152,11 @@ fn resolve<T: Attribute>(
                 (eval(), Default::default())
             }
         };
-        clamp_reads.extend(reads.into_iter().map(|key| (key, TypeId::of::<T>())));
+        clamp_reads.extend(
+            reads
+                .into_iter()
+                .map(|key| (entity.id(), key, TypeId::of::<T>())),
+        );
         if let Some(untyped) = entity.get_mut_by_id(ids.clamp) {
             let mut stored = unsafe { untyped.with_type::<Clamp<T>>() };
             if !stored.ready || stored.min_limit != limits.0 || stored.max_limit != limits.1 {
@@ -331,12 +335,17 @@ impl AttributeRegistry {
     }
 }
 
-/// Clamped attributes read their limits' attributes, so those resolve first. `reads` pairs a
-/// dependency key with the attribute clamped by it; a key no binding knows is dropped.
-pub fn add_clamp_edges(world: &mut World, reads: impl Iterator<Item = (TypeId, TypeId)>) {
+/// Clamped attributes read their limits' attributes, so those resolve first. `reads` pairs an actor
+/// with a dependency key and the attribute clamped by it; a key no binding knows is dropped. The
+/// attributes walked before an edge that only appeared in this call come back, so they resolve again
+/// against the order the walk never had.
+pub fn add_clamp_edges(
+    world: &mut World,
+    reads: impl Iterator<Item = (Entity, TypeId, TypeId)>,
+) -> Vec<(Entity, AttrId)> {
     let mut reads = reads.peekable();
     if reads.peek().is_none() {
-        return;
+        return Vec::new();
     }
     let bindings = world.resource::<crate::AppAttributeBindings>().clone();
     let bindings = bindings
@@ -344,7 +353,9 @@ pub fn add_clamp_edges(world: &mut World, reads: impl Iterator<Item = (TypeId, T
         .read()
         .unwrap_or_else(|err| err.into_inner());
     let mut registry = world.resource_mut::<AttributeRegistry>();
-    for (key, clamped) in reads {
+    let mut fresh: Vec<(AttrId, AttrId)> = Vec::new();
+    let mut connected = Vec::new();
+    for (actor, key, clamped) in reads {
         let Some(read) = bindings
             .dependency(&key)
             .and_then(|binding| registry.id_of(binding.attribute))
@@ -354,8 +365,14 @@ pub fn add_clamp_edges(world: &mut World, reads: impl Iterator<Item = (TypeId, T
         let Some(reader) = registry.id_of(clamped) else {
             continue;
         };
-        registry.add_edge(read, reader);
+        if registry.add_edge(read, reader) {
+            fresh.push((read, reader));
+        }
+        if fresh.contains(&(read, reader)) {
+            connected.push((actor, reader));
+        }
     }
+    connected
 }
 
 /// Bitset over [`AttrId`]s.

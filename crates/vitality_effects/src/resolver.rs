@@ -101,7 +101,7 @@ struct Output {
     changes: Vec<(Entity, AttrId, f64, f64)>,
     readers: Vec<Entity>,
     /// the limits of a clamp evaluated for the first time, before their edges exist
-    clamp_reads: Vec<(TypeId, TypeId)>,
+    clamp_reads: Vec<(Entity, TypeId, TypeId)>,
 }
 
 /// The per-effect flags the walk needs to know whether an effect folds into a value at all.
@@ -368,8 +368,15 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
         }
     }
 
-    // the walk already read this tick's order, so a limit's edge only takes effect on the next one
-    add_clamp_edges(world, clamp_reads.into_iter());
+    // the walk already read this tick's order, so a limit whose edge is new has to mark the
+    // attribute it governs: that one was walked before the edge existed
+    let connected = add_clamp_edges(world, clamp_reads.into_iter());
+    if !connected.is_empty() {
+        let queue = world.resource::<ResolveQueue>();
+        for (actor, id) in connected {
+            queue.dirty(actor, id);
+        }
+    }
 
     if changes.is_empty() {
         return;
