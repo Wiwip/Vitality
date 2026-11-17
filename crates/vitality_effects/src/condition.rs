@@ -53,7 +53,7 @@ fn evaluate_effect_conditions(
         };
 
         // an empty list is always active and this system is the only writer of EffectInactive, so a row
-        // without a marker has nothing to decide; a stale marker has to fall through to the removal below
+        // without a marker has nothing to decide
         if effect.activate_conditions.is_empty() && status.is_none() {
             continue;
         }

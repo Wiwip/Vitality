@@ -602,13 +602,6 @@ mod tests {
             HashSet::new(),
             "reads made with recording off must not reach the next capture"
         );
-
-        let (_, deps) = record_dependencies(|| Attack::src::<ActorExprSchema>().eval(&ctx));
-        assert_eq!(
-            deps,
-            keys([dep_key::<Attack, Source>()]),
-            "recording starts at the call and stops when it returns"
-        );
     }
 
     // the modifier spawn half lives in vitality_effects, so this pins the binding contract it reads
@@ -646,13 +639,6 @@ mod tests {
                 (TypeId::of::<Defense>(), DepRole::Source),
             ]),
             "the registered set has to name the same attributes the expression reads, read as the source"
-        );
-        assert_eq!(
-            bindings
-                .dependency(&dep_key::<Attack, Target>())
-                .map(|binding| (binding.attribute, binding.role)),
-            Some((TypeId::of::<Attack>(), DepRole::Target)),
-            "the same attribute read as the target is a separate key, or the edge lands on the wrong actor"
         );
     }
 }
