@@ -40,7 +40,10 @@ impl EffectStackingPolicy {
         match self {
             EffectStackingPolicy::Add { count, max_stack } => {
                 let Ok(mut stack_count) = stacks.get_mut(effect_entity) else {
-                    warn!("Effect {effect_entity} has no Stacks.");
+                    warn!(
+                        "Stack add dropped: {effect_entity} is gone or carries no Stacks, so it \
+                         is not an effect this runtime spawned"
+                    );
                     return None;
                 };
                 let old = stack_count.current_value();
@@ -92,7 +95,11 @@ pub(crate) fn read_add_stack_event(
 ) {
     for ev in event_reader.read() {
         let Some(effect_definition) = effect_assets.get(&ev.handle) else {
-            warn!("No effect definition for {:?}", ev.handle);
+            warn!(
+                "Stack event dropped: {:?} holds no EffectDef in Assets<EffectDef>; an effect's \
+                 asset has to stay loaded while the effect runs",
+                ev.handle
+            );
             continue;
         };
         let Some((old, new)) = effect_definition.stacking_policy.apply(

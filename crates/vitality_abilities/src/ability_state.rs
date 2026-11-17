@@ -137,7 +137,10 @@ impl MachineState<AbilityMachine> for ReadyState {
             TargetData::Location(_) => None,
         };
         let Some(def) = ctx.external.registry.ability_assets.get(&ability.handle) else {
-            warn!("[{ability_id}] Ability has no loaded definition.");
+            warn!(
+                "[{ability_id}] not activated: its handle holds no AbilityDef in Assets<AbilityDef>; \
+                 load the asset before triggering the ability"
+            );
             return EventResult::Ignored;
         };
 

@@ -78,7 +78,8 @@ fn apply_periodic_effects_of<T: Attribute>(world: &mut World) {
 
             let Some(effect_def) = assets.get(&effect.0) else {
                 warn!(
-                    "Periodic effect {} has no loaded definition.",
+                    "Periodic effect {} tick skipped: its EffectDef is not in \
+                     Assets<EffectDef>; keep the asset loaded for the effect's whole lifetime",
                     effect_ref.id()
                 );
                 continue;

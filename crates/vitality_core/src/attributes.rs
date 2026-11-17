@@ -146,7 +146,11 @@ where
                 let actor = ActorProviderMut::<Role>::get_actor_mut(ctx);
                 match actor.get_mut::<Self>() {
                     None => {
-                        error!("Error during assignment step. No attribute found.")
+                        error!(
+                            "{} not found on the actor being written: that assignment is \
+                             dropped, put the component on the actor",
+                            pretty_type_name::<Self>()
+                        )
                     }
                     Some(mut attr) => {
                         let base = attr.base();
@@ -179,7 +183,11 @@ where
                 let actor = ActorProviderMut::<Role>::get_actor_mut(ctx);
                 match actor.get_mut::<Self>() {
                     None => {
-                        error!("Error during assignment step. No attribute found.")
+                        error!(
+                            "{} not found on the actor being written: that assignment is \
+                             dropped, put the component on the actor",
+                            pretty_type_name::<Self>()
+                        )
                     }
                     Some(mut attr) => {
                         let base = attr.base();
@@ -212,7 +220,11 @@ where
                 let actor = ActorProviderMut::<Role>::get_actor_mut(ctx);
                 match actor.get_mut::<Self>() {
                     None => {
-                        error!("Error during assignment step. No attribute found.")
+                        error!(
+                            "{} not found on the actor being written: that assignment is \
+                             dropped, put the component on the actor",
+                            pretty_type_name::<Self>()
+                        )
                     }
                     Some(mut attr) => attr.set_base_value(expr_val),
                 }
@@ -228,7 +240,8 @@ where
 #[cold]
 fn missing<T: Attribute, Role>() -> T::Property {
     bevy::log::warn_once!(
-        "{} not found on {}; reading it as zero",
+        "{} not found on {}; reading it as zero: put the component on the actor, or stop \
+         reading it there",
         pretty_type_name::<T>(),
         pretty_type_name::<Role>()
     );

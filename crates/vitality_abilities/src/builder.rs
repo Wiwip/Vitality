@@ -94,7 +94,11 @@ impl AbilityBuilder {
                 .get_mut::<T>()
             {
                 None => {
-                    error!("Error during assignment step. No attribute found.")
+                    error!(
+                        "{} not found on the caster: the cost is not paid, put the component on \
+                         the caster",
+                        pretty_type_name::<T>()
+                    )
                 }
                 Some(mut attr) => attr.set_base_value(val),
             },

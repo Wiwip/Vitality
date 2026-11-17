@@ -122,11 +122,19 @@ impl ApplyEffectEvent {
         actors: &'a ActorQuery,
     ) -> Option<(Option<&'a AppliedEffects>, EffectExprContext<'a, 'a>)> {
         let Ok((_, source)) = actors.get(self.targeting.source()) else {
-            warn!("Failed to get source actor: {}", self.targeting.source());
+            warn!(
+                "Effect not applied: source {} has no actor view, it is despawned or is not an \
+                 actor; fix the EffectTargeting this apply was triggered with",
+                self.targeting.source()
+            );
             return None;
         };
         let Ok((applied, target)) = actors.get(self.targeting.target()) else {
-            warn!("Failed to get target actor: {}", self.targeting.target());
+            warn!(
+                "Effect not applied: target {} has no actor view, it is despawned or is not an \
+                 actor; fix the EffectTargeting this apply was triggered with",
+                self.targeting.target()
+            );
             return None;
         };
         Some((
@@ -294,7 +302,11 @@ pub(crate) fn apply_effect_event_observer(
     mut commands: Commands,
 ) {
     let Some(effect) = ctx.effect_assets.get(&trigger.handle) else {
-        warn!("Effect {:?} has no loaded definition.", trigger.handle);
+        warn!(
+            "Effect {:?} not applied: the handle holds no EffectDef in Assets<EffectDef>; \
+             add the asset before applying it",
+            trigger.handle
+        );
         return;
     };
     let Some((applied, context)) = trigger.context(&actors) else {

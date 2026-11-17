@@ -64,7 +64,9 @@ fn an_app_gets_127_game_attributes_because_the_framework_holds_one_slot() {
 
 /// `catch_unwind` cannot read the payload in this profile, so `should_panic` matches the message
 #[test]
-#[should_panic(expected = "register Attr127: the attribute registry holds at most 128 attributes")]
+#[should_panic(
+    expected = "at most 128 attributes and that cap does not grow; merge two of the attributes you register"
+)]
 fn the_128th_game_attribute_is_the_one_the_app_refuses() {
     let _app = app_with(AttrSet::CAPACITY);
 }

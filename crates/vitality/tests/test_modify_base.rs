@@ -304,5 +304,9 @@ mod missing_attribute {
             "one missing-attribute read across two actors and {} ticks has to warn once, saw {warned}: {logs:?}",
             2 * SETTLE
         );
+        assert!(
+            logs.contains("put the component on the actor"),
+            "the warning has to name the fix, not just the zero: {logs:?}"
+        );
     }
 }

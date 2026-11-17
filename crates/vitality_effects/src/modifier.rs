@@ -192,7 +192,11 @@ where
             }
             has_changed
         } else {
-            warn!("Could not find attribute {}", pretty_type_name::<T>());
+            warn!(
+                "{} not found on the actor this modifier writes: that write is dropped, put the \
+                 component on the actor",
+                pretty_type_name::<T>()
+            );
             false
         }
     }

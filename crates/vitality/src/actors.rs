@@ -50,7 +50,8 @@ impl EntityCommand for SpawnActorCommand {
             world.resource_scope(|world, actor_assets: Mut<Assets<ActorDef>>| {
                 let Some(actor_def) = actor_assets.get(&self.handle) else {
                     warn!(
-                        "Actor {:?} has no loaded definition; {actor_entity} left empty.",
+                        "Actor {:?} has no loaded definition; {actor_entity} left empty. Load the \
+                         ActorDef into Assets<ActorDef> before spawning it",
                         self.handle
                     );
                     return;

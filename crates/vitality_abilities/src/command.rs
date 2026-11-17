@@ -14,7 +14,11 @@ pub fn on_add_ability(
         return;
     };
     let Some(ability_def) = ability_assets.get(&ability.handle) else {
-        warn!("[{}] Ability has no loaded definition.", trigger.entity);
+        warn!(
+            "[{}] Ability not added: its handle holds no AbilityDef in Assets<AbilityDef>; \
+             load the asset before adding the ability",
+            trigger.entity
+        );
         return;
     };
 

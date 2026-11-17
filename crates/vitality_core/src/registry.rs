@@ -211,7 +211,8 @@ impl AttributeRegistry {
         // past the cap there is no index to hand out, so refuse by name before any AttrId exists
         assert!(
             self.infos.len() < AttrSet::CAPACITY,
-            "cannot register {}: the attribute registry holds at most {} attributes",
+            "cannot register {}: the attribute registry holds at most {} attributes and that cap \
+             does not grow; merge two of the attributes you register, or drop one",
             pretty_type_name::<T>(),
             AttrSet::CAPACITY
         );
@@ -301,7 +302,10 @@ impl AttributeRegistry {
                 .filter(|&i| indegree[i] > 0)
                 .map(|i| self.infos[i].name.clone())
                 .collect();
-            panic!("attribute dependency cycle through {names:?}");
+            panic!(
+                "attribute dependency cycle through {names:?}: break it by dropping one of the \
+                 reads between them, attributes have to form a DAG"
+            );
         }
         self.order = order;
     }
@@ -550,7 +554,9 @@ mod tests {
 
     /// A cycle is a startup error, and the message names the attributes in it, not the downstream ones.
     #[test]
-    #[should_panic(expected = r#"attribute dependency cycle through ["Attack", "Power"]"#)]
+    #[should_panic(
+        expected = r#"cycle through ["Attack", "Power"]: break it by dropping one of the reads"#
+    )]
     fn a_cycle_panics_naming_the_attributes_in_it() {
         let mut world = World::new();
         let mut registry = AttributeRegistry::default();
