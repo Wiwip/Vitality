@@ -1,3 +1,4 @@
+use bevy::asset::Assets;
 use bevy::ecs::system::RunSystemOnce;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
@@ -7,6 +8,7 @@ use vitality::ability::AbilityDef;
 use vitality::actors::{Actor, ActorBuilder};
 use vitality::context::Vitality;
 use vitality::effect::conditions::IsAttributeWithinBounds;
+use vitality::effect::definition::EffectDef;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::effect::{Effect, EffectInactive};
 use vitality::prelude::*;
@@ -149,6 +151,86 @@ fn test_attribute_condition() {
         .query::<(Entity, &Effect, &ConditionTag, Option<&EffectInactive>)>();
     let opt_inactive = query.single(app.world()).unwrap().3;
     assert!(opt_inactive.is_none());
+}
+
+/// the same gated buff on an actor that starts outside the range, so the marker lands before anything
+/// else touches the definition
+fn prepare_stale_actor(mut ctx: Vitality, registry: Registry) {
+    let actor_template = ctx.add_actor(
+        ActorBuilder::new()
+            .name("StaleActor")
+            .with::<TestA>(60.0)
+            .with::<TestB>(1.0)
+            .with_effect(&registry.effect(&GATED_BUFF))
+            .build(),
+    );
+    ctx.spawn_actor_from_handle(&actor_template);
+}
+
+/// clearing the conditions of a loaded definition is not enough to reactivate the row it marked: the
+/// fast path only skips an unmarked row, so the marker has to survive to the removal branch
+#[test]
+fn test_dropping_conditions_clears_a_stale_inactive_marker() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        LogPlugin {
+            filter: "error,vitality=debug".into(),
+            level: bevy::log::Level::DEBUG,
+            ..default()
+        },
+        AttributesPlugin,
+    ));
+    app.add_plugins((
+        vitality::init_attribute::<TestA>,
+        vitality::init_attribute::<TestB>,
+    ));
+    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+
+    app.add_systems(Startup, (prepare_gated_effect, prepare_stale_actor).chain());
+
+    app.update();
+    app.update();
+
+    let mut query = app
+        .world_mut()
+        .query::<(Entity, &Effect, Option<&EffectInactive>)>();
+    let opt_inactive = query.single(app.world()).unwrap().2;
+    assert!(
+        opt_inactive.is_some(),
+        "the buff starts inactive, so there is no stale marker to clear"
+    );
+
+    app.world_mut()
+        .run_system_once(
+            |mut defs: ResMut<Assets<EffectDef>>, mut rows: Query<&Effect>| {
+                let handle = rows.single().unwrap().0.clone();
+                defs.get_mut(&handle).unwrap().activate_conditions.clear();
+            },
+        )
+        .unwrap();
+
+    for _ in 0..4 {
+        app.update();
+    }
+
+    let mut query = app
+        .world_mut()
+        .query::<(Entity, &Effect, Option<&EffectInactive>)>();
+    let opt_inactive = query.single(app.world()).unwrap().2;
+    assert!(
+        opt_inactive.is_none(),
+        "the definition has no conditions left but the row still carries the marker"
+    );
+
+    let mut query = app.world_mut().query::<(Entity, &Actor, &TestB)>();
+    let test_b = query.single(app.world()).unwrap().2;
+    assert_eq!(
+        test_b.current_value(),
+        26.0,
+        "the marker is gone but the unconditional buff still does not apply"
+    );
 }
 
 /// flipping an effect off changes the fold without writing any attribute of the target, so only the
