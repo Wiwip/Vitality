@@ -476,3 +476,158 @@ pub struct AttributeDependents<T: Attribute + 'static> {
     sources: Vec<Entity>,
     marker: PhantomData<T>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context::{ActorExprContext, ActorExprSchema};
+    use crate::{AttributeBindings, DepRole};
+    use bevy::prelude::World;
+
+    crate::attribute!(Attack);
+    crate::attribute!(Defense);
+    crate::attribute!(Haste);
+
+    fn world_with(attack: f32, defense: f32, haste: f32) -> (World, Entity) {
+        let mut world = World::new();
+        let actor = world
+            .spawn((
+                Attack::new(attack),
+                Defense::new(defense),
+                Haste::new(haste),
+            ))
+            .id();
+        (world, actor)
+    }
+
+    fn ctx(world: &World, actor: Entity) -> ActorExprContext<'_, '_> {
+        ActorExprContext {
+            actor_context: world.entity(actor).into(),
+        }
+    }
+
+    fn keys(ks: impl IntoIterator<Item = TypeId>) -> HashSet<TypeId> {
+        ks.into_iter().collect()
+    }
+
+    #[test]
+    fn recording_a_composite_expression_reports_every_attribute_it_reads() {
+        let (world, actor) = world_with(3.0, 4.0, 2.0);
+        let ctx = ctx(&world, actor);
+        let expr = (Attack::src::<ActorExprSchema>() + Defense::src::<ActorExprSchema>())
+            * Haste::src::<ActorExprSchema>();
+
+        let (value, deps) = record_dependencies(|| expr.eval(&ctx));
+
+        assert_eq!(value, 14.0, "the recording eval still returns the value");
+        assert_eq!(
+            deps,
+            keys([
+                dep_key::<Attack, Source>(),
+                dep_key::<Defense, Source>(),
+                dep_key::<Haste, Source>(),
+            ]),
+            "a composite reading three attributes has to report one key per (attribute, read role)"
+        );
+
+        let mut forwarded = HashSet::new();
+        expr.get_dependencies(&mut forwarded);
+        assert_eq!(
+            forwarded,
+            HashSet::new(),
+            "express-it's operator nodes still swallow get_dependencies, which is why the capture exists"
+        );
+    }
+
+    #[test]
+    fn a_nested_record_call_drains_the_buffer_and_the_outer_keeps_only_later_reads() {
+        let (world, actor) = world_with(3.0, 4.0, 5.0);
+        let ctx = ctx(&world, actor);
+
+        let (inner, outer) = record_dependencies(|| {
+            Attack::src::<ActorExprSchema>().eval(&ctx);
+            let (_, inner) = record_dependencies(|| Defense::src::<ActorExprSchema>().eval(&ctx));
+            Haste::src::<ActorExprSchema>().eval(&ctx);
+            inner
+        });
+
+        assert_eq!(
+            inner,
+            keys([dep_key::<Attack, Source>(), dep_key::<Defense, Source>()]),
+            "the nested call takes the whole buffer, including the read the outer call made before it"
+        );
+        assert_eq!(
+            outer,
+            keys([dep_key::<Haste, Source>()]),
+            "the outer call is left with only the read made after the nested one returned"
+        );
+    }
+
+    #[test]
+    fn a_plain_eval_outside_the_call_leaks_nothing_into_the_next_capture() {
+        let (world, actor) = world_with(3.0, 4.0, 5.0);
+        let ctx = ctx(&world, actor);
+        let expr = Attack::src::<ActorExprSchema>() + Defense::src::<ActorExprSchema>();
+
+        expr.eval(&ctx);
+        let (_, leaked) = record_dependencies(|| ());
+
+        assert_eq!(
+            leaked,
+            HashSet::new(),
+            "reads made with recording off must not reach the next capture"
+        );
+
+        let (_, deps) = record_dependencies(|| Attack::src::<ActorExprSchema>().eval(&ctx));
+        assert_eq!(
+            deps,
+            keys([dep_key::<Attack, Source>()]),
+            "recording starts at the call and stops when it returns"
+        );
+    }
+
+    // the modifier spawn half lives in vitality_effects, so this pins the binding contract it reads
+    #[test]
+    fn a_registered_expressions_captured_dependencies_all_resolve_in_the_bindings() {
+        let mut bindings = AttributeBindings::default();
+        bindings.add::<Attack>();
+        bindings.add::<Defense>();
+
+        let (world, actor) = world_with(3.0, 4.0, 5.0);
+        let ctx = ctx(&world, actor);
+        let (_, deps) = record_dependencies(|| {
+            (Attack::src::<ActorExprSchema>() + Defense::src::<ActorExprSchema>()).eval(&ctx)
+        });
+
+        let resolved: Vec<(TypeId, DepRole)> = deps
+            .iter()
+            .map(|key| {
+                bindings.dependency(key).unwrap_or_else(|| {
+                    panic!("captured dependency {key:?} is not a registered attribute binding")
+                })
+            })
+            .map(|binding| (binding.attribute, binding.role))
+            .collect();
+
+        assert_eq!(
+            resolved.len(),
+            deps.len(),
+            "a modifier spawns one dependency edge per read, so an unresolved key drops an edge"
+        );
+        assert_eq!(
+            resolved.into_iter().collect::<HashSet<_>>(),
+            HashSet::from([
+                (TypeId::of::<Attack>(), DepRole::Source),
+                (TypeId::of::<Defense>(), DepRole::Source),
+            ]),
+            "the registered set has to name the same attributes the expression reads, read as the source"
+        );
+        assert_eq!(
+            bindings
+                .dependency(&dep_key::<Attack, Target>())
+                .map(|binding| (binding.attribute, binding.role)),
+            Some((TypeId::of::<Attack>(), DepRole::Target)),
+            "the same attribute read as the target is a separate key, or the edge lands on the wrong actor"
+        );
+    }
+}
