@@ -4,7 +4,6 @@ use crate::definition::AbilityDef;
 use crate::lifecycle::{ActivationError, check_activation};
 use crate::registry::{AbilityToken, Registry};
 use crate::tasks::TaskScope;
-use crate::tasks::{Task, Tasks};
 use crate::{Ability, AbilityError, AbilityOf, GrantedAbilities, TargetData};
 use bevy::ecs::resource::IsResource;
 use bevy::ecs::system::SystemParam;
@@ -27,7 +26,6 @@ pub struct Abilities<'w, 's> {
         ),
         Without<IsResource>,
     >,
-    pub tasks: Query<'w, 's, Read<Tasks>, With<Task>>,
     owners: Query<'w, 's, Read<AbilityOf>>,
     pub registry: Registry<'w>,
     pub machines: MachineQuery<'w, 's, AbilityMachine>,
@@ -272,10 +270,6 @@ impl<'w, 's> Abilities<'w, 's> {
     }
 
     pub fn task<'a>(&'a mut self, task_id: Entity) -> TaskScope<'a, 'w, 's> {
-        /*let Ok(tasks) = self.tasks.get(task_id) else {
-            return TaskScope::empty(&mut self.commands);
-        };*/
-
-        TaskScope::new(task_id, /*tasks.iter(),*/ &mut self.commands)
+        TaskScope::new(task_id, &mut self.commands)
     }
 }

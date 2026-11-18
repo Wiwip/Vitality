@@ -488,13 +488,6 @@ impl<'a, 'w, 's> TaskScope<'a, 'w, 's> {
         }
     }
 
-    pub fn empty(commands: &'a mut Commands<'w, 's>) -> Self {
-        Self {
-            task_id: None,
-            commands,
-        }
-    }
-
     pub fn execute(&mut self) {
         let Some(task_id) = self.task_id else {
             return;
