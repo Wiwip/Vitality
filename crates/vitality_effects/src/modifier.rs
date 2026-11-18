@@ -359,7 +359,6 @@ fn apply_modifier<T: Attribute>(
         effect_holder: source,
     };
     let mut modifier = trigger.modifier.clone();
-    // a snapshot rides on the value the apply captured; only a live expression follows the actors
     if modifier.capture == Capture::Live {
         modifier.update_value(&context);
     }

@@ -114,7 +114,6 @@ fn a_snapshot_ignores_later_changes() {
     assert_eq!(current::<Armor>(&app, target), 10.0);
 }
 
-/// A ticking effect re-fires through the deferred write, which must not re-evaluate a snapshot.
 #[test]
 fn a_periodic_snapshot_keeps_firing_its_captured_value() {
     let mut app = app();
