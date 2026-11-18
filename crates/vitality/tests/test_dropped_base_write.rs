@@ -14,6 +14,7 @@ use bevy::log::tracing::subscriber::with_default;
 use bevy::log::tracing_subscriber::{Registry, layer::SubscriberExt};
 use gameplay::*;
 use vitality::actors::ActorBuilder;
+use vitality::prelude::{Attribute, EffectBuilder};
 
 #[test]
 fn a_base_write_on_an_attribute_the_actor_lacks_is_dropped_with_a_warn() {
@@ -48,5 +49,52 @@ fn a_base_write_on_an_attribute_the_actor_lacks_is_dropped_with_a_warn() {
     assert!(
         warns.contains(&mute.to_string()),
         "and name the actor the write was aimed at, got: {logs}"
+    );
+}
+
+/// Its own cell because the `warn_once!` it pins lives in `resolve`, and that flag is per call site
+/// for the whole binary: a second cell here would compete for the same single record.
+#[test]
+fn a_clamp_bound_to_an_attribute_the_actor_lacks_is_dropped_with_a_warn() {
+    let logs = Logs::default();
+    let subscriber = Registry::default().with(logs.layer());
+
+    let bare = with_default(subscriber, || {
+        let mut app = app();
+        // a tag-only effect: applying one is what marks every attribute of the actor, so the
+        // resolve pass reaches the clamp of an attribute the actor never carried
+        let burn = effect(
+            &mut app,
+            EffectBuilder::permanent().with_tag::<Burning>().build(),
+        );
+        let bare = spawn(
+            &mut app,
+            ActorBuilder::new()
+                .name("Bare")
+                .with::<MaxHealth>(100.0)
+                .with_effect(&burn)
+                .clamp::<Health>(0.0, MaxHealth::src()),
+        );
+        ticks(&mut app, 1);
+
+        assert!(
+            !has::<Health>(&app, bare),
+            "the dropped clamp must not conjure the component"
+        );
+        assert_eq!(base::<MaxHealth>(&app, bare), 100.0, "nothing else moves");
+        bare
+    });
+
+    let warns = logs.warns();
+    let logs = logs.all();
+    assert!(
+        warns.contains("Health")
+            && warns.contains(".with::<Health>()")
+            && warns.contains(".clamp::<Health>()"),
+        "the dropped clamp has to warn at WARN level and name both remedies, got: {logs}"
+    );
+    assert!(
+        warns.contains(&bare.to_string()),
+        "and name the actor the clamp was put on, got: {logs}"
     );
 }

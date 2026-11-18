@@ -133,7 +133,8 @@ fn resolve<T: Attribute>(
     clamp_reads: &mut Vec<(Entity, TypeId, TypeId)>,
 ) -> Option<Resolved> {
     let mut clamp: Option<Clamp<T>> = None;
-    if entity.get_by_id(ids.clamp_bounds).is_some() {
+    let bounded = entity.get_by_id(ids.clamp_bounds).is_some();
+    if bounded {
         // a limit only reports the attributes it reads while recording, and one pass per clamp is enough
         let capture = entity
             .get_by_id(ids.clamp)
@@ -167,7 +168,20 @@ fn resolve<T: Attribute>(
         }
     }
 
-    let untyped = entity.get_mut_by_id(ids.component)?;
+    let Some(untyped) = entity.get_mut_by_id(ids.component) else {
+        if bounded {
+            // the limits above were evaluated for nothing and will be again every pass
+            warn_once!(
+                "{} not found on {}: that clamp bounds nothing and re-evaluates its limits every \
+                 pass, build the actor with .with::<{}>(), or drop its .clamp::<{}>()",
+                pretty_type_name::<T>(),
+                entity.id(),
+                pretty_type_name::<T>(),
+                pretty_type_name::<T>(),
+            );
+        }
+        return None;
+    };
     let mut attribute = unsafe { untyped.with_type::<T>() };
     let mut base = attribute.base_value();
     if let Some(clamp) = &clamp {
