@@ -212,22 +212,21 @@ fn list_effects(
             stacks.current_value()
         ));
 
-        let Some(modifiers) = modifiers else {
-            continue;
-        };
-        for modifier in modifiers.iter() {
-            let Ok(modifier_ref) = modifier_query.get(modifier) else {
-                continue;
-            };
+        if let Some(modifiers) = modifiers {
+            for modifier in modifiers.iter() {
+                let Ok(modifier_ref) = modifier_query.get(modifier) else {
+                    continue;
+                };
 
-            let mut modifier_components = get_components_sorted(world_components, modifier_ref);
+                let mut modifier_components = get_components_sorted(world_components, modifier_ref);
 
-            list_modifiers_for_effect(
-                builder,
-                type_registry,
-                modifier_ref,
-                &mut modifier_components,
-            );
+                list_modifiers_for_effect(
+                    builder,
+                    type_registry,
+                    modifier_ref,
+                    &mut modifier_components,
+                );
+            }
         }
         builder.end_child();
     }
@@ -358,7 +357,10 @@ fn list_modifiers_for_effect(
 mod tests {
     use super::*;
     use std::time::Duration;
+    use vitality_abilities::AbilityOf;
     use vitality_abilities::ability_state::{AbilityEvent, AbilityState};
+    use vitality_effects::EffectTarget;
+    use vitality_effects::modifier::ModifierOf;
 
     fn recovering(seconds: f32) -> StateTimer<AbilityMachine> {
         let mut timer = StateTimer::<AbilityMachine>::default();
@@ -379,5 +381,63 @@ mod tests {
     fn a_cooldown_shows_the_time_left() {
         let timer = recovering(0.5);
         assert_eq!(cooldown_column(Some(&timer)), " (0.5s)");
+    }
+
+    #[test]
+    fn a_modifier_less_effect_closes_its_row() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_resource::<AppTypeRegistry>()
+            .add_systems(Update, explore_actors_system);
+
+        let world = app.world_mut();
+        let actor = world.spawn((ManageAttributes, DebugOverlayMarker)).id();
+        let buffed = world
+            .spawn((
+                Effect(Handle::default()),
+                EffectTarget(actor),
+                Name::new("Buffed"),
+            ))
+            .id();
+        world.spawn((ModifierOf(buffed), ModifierMarker));
+        world.spawn((
+            Effect(Handle::default()),
+            EffectTarget(actor),
+            Name::new("Stunned"),
+        ));
+        world.spawn((
+            Ability {
+                handle: Handle::default(),
+            },
+            AbilityOf(actor),
+            Name::new("Fireball"),
+        ));
+        let overlay = world.spawn((Text::default(), DebugOverlayMarker)).id();
+
+        app.update();
+
+        let rendered = app.world().get::<Text>(overlay).unwrap().0.clone();
+
+        assert_eq!(
+            indent(&rendered, "Abilities"),
+            indent(&rendered, "Effects"),
+            "the ability column must sit beside the effect column:\n{rendered}"
+        );
+        assert_eq!(
+            indent(&rendered, "Buffed"),
+            indent(&rendered, "Stunned"),
+            "both effect rows must sit at the same depth:\n{rendered}"
+        );
+    }
+
+    // ptree pads every level to a fixed width, so the offset of the label is the depth
+    fn indent(rendered: &str, needle: &str) -> usize {
+        rendered
+            .lines()
+            .find(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("{needle} is missing from:\n{rendered}"))
+            .chars()
+            .take_while(|c| !c.is_alphanumeric() && *c != '[')
+            .count()
     }
 }
