@@ -1,12 +1,15 @@
 mod gameplay;
 
 use bevy::prelude::*;
+use express_it::plan::Plan;
 use gameplay::*;
 use hfsm_bevy::StateTimer;
 use vitality::ability::ability_state::AbilityMachine;
 use vitality::ability::cooldown_remaining;
 use vitality::ability::tasks::{Tasks, wait_task};
 use vitality::ability::{AbilityBuilder, AbilityDef, TargetData};
+use vitality::actors::ActorBuilder;
+use vitality::context::Target;
 use vitality::effect::conditions::HasComponent;
 use vitality::prelude::*;
 
@@ -484,6 +487,36 @@ fn nested_tasks_run_after_their_parent() {
 
     ticks(&mut app, ticks_for(0.25));
     assert_eq!(recorded::<AbilityEnded>(&app).len(), 1);
+}
+
+attribute!(Rage, u32);
+
+#[test]
+fn a_plan_step_cannot_take_an_integer_base_below_zero() {
+    let mut app = app();
+    app.add_plugins(init_attribute::<Rage>);
+    let berserk = ability(
+        &mut app,
+        AbilityBuilder::new()
+            .on_execute(Plan::new().step(Rage::sub::<Target, _>(40u32)))
+            .build(),
+    );
+    let caster = spawn(
+        &mut app,
+        ActorBuilder::new()
+            .name("Berserker")
+            .with::<Rage>(20u32)
+            .grant_ability(&berserk),
+    );
+
+    activate(&mut app, caster, &berserk);
+    ticks(&mut app, 2);
+
+    assert_eq!(
+        base::<Rage>(&app, caster),
+        0u32,
+        "the step overshoots the base, so the base has to saturate at zero, not wrap"
+    );
 }
 
 #[test]

@@ -157,7 +157,7 @@ where
                     }
                     Some(mut attr) => {
                         let base = attr.base();
-                        attr.set_base_value(base + expr_val)
+                        attr.set_base_value(base.saturating_add(expr_val))
                     }
                 }
             },
@@ -194,7 +194,7 @@ where
                     }
                     Some(mut attr) => {
                         let base = attr.base();
-                        attr.set_base_value(base - expr_val)
+                        attr.set_base_value(base.saturating_sub(expr_val))
                     }
                 }
             },
