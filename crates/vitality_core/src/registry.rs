@@ -173,10 +173,9 @@ fn resolve<T: Attribute>(
             // the limits above were evaluated for nothing and will be again every pass
             warn_once!(
                 "{} not found on {}: that clamp bounds nothing and re-evaluates its limits every \
-                 pass, build the actor with .with::<{}>(), or drop its .clamp::<{}>()",
+                 pass, build the actor with .with::<{}>()",
                 pretty_type_name::<T>(),
                 entity.id(),
-                pretty_type_name::<T>(),
                 pretty_type_name::<T>(),
             );
         }

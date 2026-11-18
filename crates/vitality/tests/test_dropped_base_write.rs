@@ -52,8 +52,6 @@ fn a_base_write_on_an_attribute_the_actor_lacks_is_dropped_with_a_warn() {
     );
 }
 
-/// Its own cell because the `warn_once!` it pins lives in `resolve`, and that flag is per call site
-/// for the whole binary: a second cell here would compete for the same single record.
 #[test]
 fn a_clamp_bound_to_an_attribute_the_actor_lacks_is_dropped_with_a_warn() {
     let logs = Logs::default();
@@ -88,10 +86,8 @@ fn a_clamp_bound_to_an_attribute_the_actor_lacks_is_dropped_with_a_warn() {
     let warns = logs.warns();
     let logs = logs.all();
     assert!(
-        warns.contains("Health")
-            && warns.contains(".with::<Health>()")
-            && warns.contains(".clamp::<Health>()"),
-        "the dropped clamp has to warn at WARN level and name both remedies, got: {logs}"
+        warns.contains("Health") && warns.contains(".with::<Health>()"),
+        "the dropped clamp has to warn at WARN level and name the remedy, got: {logs}"
     );
     assert!(
         warns.contains(&bare.to_string()),
