@@ -169,6 +169,45 @@ fn a_stunned_caster_cannot_activate() {
     assert_eq!(check, Err(ActivationError::Blocked));
 }
 
+#[test]
+fn a_target_that_is_gone_fails_with_a_reason() {
+    let mut app = app();
+    let spark = ability(&mut app, AbilityBuilder::new().build());
+    let caster = caster_with(&mut app, &[&spark]);
+    let victim = caster_with(&mut app, &[]);
+    app.world_mut().despawn(victim);
+    record_all(&mut app);
+    let spark_entity = ability_entity(&mut app, caster, &spark);
+
+    let check = with_abilities(&mut app, move |a| {
+        a.can_activate(spark_entity, TargetData::Target(victim))
+    });
+    assert_eq!(check, Err(ActivationError::NoSuchTarget));
+
+    let handle = spark.clone();
+    let granted = with_abilities(&mut app, move |a| {
+        a.try_activate(caster, &handle, TargetData::Target(victim))
+    });
+    assert!(granted, "a despawned target is still a granted ability");
+    ticks(&mut app, 2);
+    assert_eq!(failures(&app), vec![ActivationError::NoSuchTarget]);
+    assert!(
+        recorded::<AbilityActivated>(&app).is_empty(),
+        "a gone target cannot activate it"
+    );
+
+    let granted = with_abilities(&mut app, move |a| {
+        a.try_activate(caster, &spark, TargetData::SelfCast)
+    });
+    assert!(granted);
+    ticks(&mut app, 2);
+    assert_eq!(
+        recorded::<AbilityActivated>(&app).len(),
+        1,
+        "the same actor still activates on itself"
+    );
+}
+
 // gated on a component: HasComponent is the only condition this schema has, an attribute value cannot gate an ability
 #[test]
 fn an_unmet_activation_condition_fails_with_a_reason() {

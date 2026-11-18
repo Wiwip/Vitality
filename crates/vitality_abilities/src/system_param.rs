@@ -222,7 +222,12 @@ impl<'w, 's> Abilities<'w, 's> {
         }
         let target_ref = match target {
             TargetData::SelfCast => Some(caster_ref),
-            TargetData::Target(target) => self.actors.get(target).ok().map(|(_, r, _)| r),
+            TargetData::Target(target) => Some(
+                self.actors
+                    .get(target)
+                    .map(|(_, r, _)| r)
+                    .map_err(|_| ActivationError::NoSuchTarget)?,
+            ),
             TargetData::Location(_) => None,
         };
         check_activation(def, &caster_ref, &ability_ref, target_ref)

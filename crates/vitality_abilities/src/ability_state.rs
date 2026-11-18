@@ -128,7 +128,12 @@ impl MachineState<AbilityMachine> for ReadyState {
             TargetData::SelfCast => Some(caster_ref),
             TargetData::Target(target) => {
                 let Ok((target_ref, _)) = ctx.external.actors.get(target) else {
-                    return EventResult::Ignored;
+                    ctx.external.commands.trigger(AbilityActivationFailed {
+                        entity: ability_id,
+                        caster: source,
+                        reason: ActivationError::NoSuchTarget,
+                    });
+                    return EventResult::Handled;
                 };
                 Some(target_ref)
             }

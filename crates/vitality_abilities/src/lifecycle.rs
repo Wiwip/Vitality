@@ -19,6 +19,8 @@ pub enum ActivationError {
     Blocked,
     ConditionFailed,
     NotGranted,
+    /// The `TargetData::Target` entity has no actor view anymore.
+    NoSuchTarget,
 }
 
 #[derive(EntityEvent, Clone, Debug)]
