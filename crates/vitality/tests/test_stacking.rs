@@ -117,6 +117,33 @@ fn refresh_policy_restarts_the_duration() {
     assert_eq!(current::<Power>(&app, hero), 10.0);
 }
 
+#[test]
+fn refresh_policy_reapplies_fire_effect_applied() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    let buff = effect(
+        &mut app,
+        EffectBuilder::for_seconds(2.0)
+            .modify::<Power>(5.0, ModOp::Add, EffectSubject::Target)
+            .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
+            .build(),
+    );
+    record::<EffectApplied>(&mut app);
+
+    apply(&mut app, hero, hero, &buff);
+    ticks(&mut app, 1);
+    apply(&mut app, hero, hero, &buff);
+    ticks(&mut app, 1);
+
+    let held = with_effects(&mut app, move |e| e.on(hero));
+    assert_eq!(held.len(), 1, "the refresh reuses the one instance");
+
+    let applied = recorded::<EffectApplied>(&app);
+    assert_eq!(applied.len(), 2, "a refresh is an apply too");
+    assert_eq!(applied[0].effect, Some(held[0]));
+    assert_eq!(applied[1].effect, Some(held[0]));
+}
+
 /// The guard sits below the `Instant` branch, and an instant application spawns no entity of its
 /// own, so the ordering only bites while the target still carries an instance of the handle.
 #[test]
