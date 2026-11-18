@@ -37,6 +37,7 @@ pub trait Modifier: Send + Sync {
         source: Entity,
         target: Entity,
         effect: Entity,
+        ctx: &EffectExprContext,
         type_bindings: &AttributeBindings,
         commands: &mut Commands,
     );
@@ -173,6 +174,7 @@ where
         source: Entity,
         target: Entity,
         effect: Entity,
+        ctx: &EffectExprContext,
         type_bindings: &AttributeBindings,
         commands: &mut Commands,
     ) {
@@ -188,11 +190,17 @@ where
             return;
         }
 
+        // the definition's copy never went through `spawn_persistent_modifier`, so a snapshot captures here
+        let mut modifier = self.clone();
+        if modifier.capture == Capture::Snapshot {
+            modifier.value = modifier.expr.eval(ctx);
+        }
+
         commands.write_message(ApplyAttributeModifierMessage::<T> {
             source_entity: source,
             target_entity: target,
             effect_entity: effect,
-            modifier: self.clone(),
+            modifier,
             stacks: 1,
         });
     }
@@ -351,7 +359,10 @@ fn apply_modifier<T: Attribute>(
         effect_holder: source,
     };
     let mut modifier = trigger.modifier.clone();
-    modifier.update_value(&context);
+    // a snapshot rides on the value the apply captured; only a live expression follows the actors
+    if modifier.capture == Capture::Live {
+        modifier.update_value(&context);
+    }
 
     let calculator = AttributeCalculator::<T>::from_op_stacked(
         modifier.operation,

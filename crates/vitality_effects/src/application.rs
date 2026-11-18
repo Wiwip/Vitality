@@ -340,7 +340,14 @@ pub(crate) fn apply_effect_event_observer(
             .read()
             .unwrap_or_else(|err| err.into_inner());
         for modifier in &effect.modifiers {
-            modifier.apply_delayed(source, target, trigger.entity, &bindings, &mut commands);
+            modifier.apply_delayed(
+                source,
+                target,
+                trigger.entity,
+                &context,
+                &bindings,
+                &mut commands,
+            );
         }
         commands.trigger(EffectApplied {
             entity: target,

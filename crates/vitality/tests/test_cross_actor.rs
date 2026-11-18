@@ -114,6 +114,59 @@ fn a_snapshot_ignores_later_changes() {
     assert_eq!(current::<Armor>(&app, target), 10.0);
 }
 
+/// A ticking effect re-fires through the deferred write, which must not re-evaluate a snapshot.
+#[test]
+fn a_periodic_snapshot_keeps_firing_its_captured_value() {
+    let mut app = app();
+    let caster = spawn(&mut app, hero_def());
+    let target = spawn(&mut app, hero_def());
+    let frozen = effect(
+        &mut app,
+        EffectBuilder::every_second_permanently(0.25)
+            .modify_snapshot::<Armor>(Power::src(), ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+    apply(&mut app, caster, target, &frozen);
+    ticks(&mut app, ticks_for(0.25) + SETTLE);
+    assert_eq!(
+        current::<Armor>(&app, target),
+        10.0,
+        "the first fire pays what the apply captured"
+    );
+
+    set_power(&mut app, caster, 50.0);
+    ticks(&mut app, ticks_for(0.25) + SETTLE);
+    assert_eq!(
+        current::<Armor>(&app, target),
+        20.0,
+        "the second fire still pays the captured 10, not the caster's new 50"
+    );
+}
+
+#[test]
+fn a_periodic_live_modifier_follows_its_caster() {
+    let mut app = app();
+    let caster = spawn(&mut app, hero_def());
+    let target = spawn(&mut app, hero_def());
+    let scaling = effect(
+        &mut app,
+        EffectBuilder::every_second_permanently(0.25)
+            .modify::<Armor>(Power::src(), ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+    apply(&mut app, caster, target, &scaling);
+    ticks(&mut app, ticks_for(0.25) + SETTLE);
+    assert_eq!(current::<Armor>(&app, target), 10.0);
+
+    set_power(&mut app, caster, 50.0);
+    ticks(&mut app, ticks_for(0.25) + SETTLE);
+    assert_eq!(
+        current::<Armor>(&app, target),
+        60.0,
+        "a live expression has to follow the caster on every fire"
+    );
+}
+
 #[test]
 fn a_chain_of_actors_converges() {
     let mut app = app();
