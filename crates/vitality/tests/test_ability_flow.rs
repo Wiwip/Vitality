@@ -520,6 +520,33 @@ fn a_plan_step_cannot_take_an_integer_base_below_zero() {
 }
 
 #[test]
+fn a_granted_ability_carries_its_definition_name() {
+    let mut app = app();
+    let fireball = ability(
+        &mut app,
+        AbilityBuilder::new()
+            .with_name("Fireball".to_string())
+            .build(),
+    );
+    let jab = ability(&mut app, AbilityBuilder::new().build());
+    let caster = caster_with(&mut app, &[&fireball, &jab]);
+
+    let named = ability_entity(&mut app, caster, &fireball);
+    assert_eq!(
+        app.world().get::<Name>(named).map(Name::as_str),
+        Some("Fireball"),
+        "the overlay reads the Name off the ability entity"
+    );
+
+    let unnamed = ability_entity(&mut app, caster, &jab);
+    assert_eq!(
+        app.world().get::<Name>(unnamed).map(Name::as_str),
+        Some("Ability"),
+        "without with_name the row keeps the builder default"
+    );
+}
+
+#[test]
 fn revoke_removes_the_ability() {
     let mut app = app();
     let jab = ability(&mut app, AbilityBuilder::new().build());

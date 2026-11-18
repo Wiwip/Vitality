@@ -23,6 +23,8 @@ pub fn on_add_ability(
     };
 
     let mut ability_entity_commands = commands.entity(trigger.entity);
+    // the overlay reads the row label off the entity, like it does for actors and effects
+    ability_entity_commands.insert(Name::new(ability_def.name.clone()));
     for mutator in &ability_def.mutators {
         mutator.apply(&mut ability_entity_commands);
     }
