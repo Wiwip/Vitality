@@ -18,7 +18,11 @@ pub struct DebugOverlayMarker;
 type ActorQuery<'w, 's> = Query<
     'w,
     's,
-    (EntityRef<'static>, Option<&'static AppliedEffects>),
+    (
+        EntityRef<'static>,
+        Option<&'static AppliedEffects>,
+        Option<&'static Name>,
+    ),
     (With<ManageAttributes>, With<DebugOverlayMarker>),
 >;
 
@@ -96,8 +100,8 @@ pub fn explore_actors_system(
 ) {
     let mut builder = TreeBuilder::new("Actor Tree".into());
 
-    for (actor_ref, actor_effects) in actors.iter() {
-        builder.begin_child(format!("Actor {}", actor_ref.id()));
+    for (actor_ref, actor_effects, actor_name) in actors.iter() {
+        builder.begin_child(actor_row(actor_name.map(Name::as_str), actor_ref.id()));
 
         let mut actor_components = get_components_sorted(world_components, actor_ref);
 
@@ -254,6 +258,13 @@ fn list_tasks(
     }
 }
 
+fn actor_row(name: Option<&str>, entity: Entity) -> String {
+    match name {
+        Some(name) => format!("Actor {name} ({entity})"),
+        None => format!("Actor {entity}"),
+    }
+}
+
 fn cooldown_column(timer: Option<&StateTimer<AbilityMachine>>) -> String {
     match timer.and_then(cooldown_remaining) {
         Some(remaining) => format!(" ({:.1}s)", remaining.as_secs_f32()),
@@ -381,6 +392,20 @@ mod tests {
     fn a_cooldown_shows_the_time_left() {
         let timer = recovering(0.5);
         assert_eq!(cooldown_column(Some(&timer)), " (0.5s)");
+    }
+
+    #[test]
+    fn an_actor_row_names_the_actor_and_keeps_the_entity() {
+        let entity = Entity::from_raw_u32(25).unwrap();
+        let row = actor_row(Some("Hero"), entity);
+        assert!(row.contains("Hero"), "{row}");
+        assert!(row.contains(&entity.to_string()), "{row}");
+    }
+
+    #[test]
+    fn a_nameless_actor_row_is_the_entity_alone() {
+        let entity = Entity::from_raw_u32(25).unwrap();
+        assert_eq!(actor_row(None, entity), format!("Actor {entity}"));
     }
 
     #[test]
