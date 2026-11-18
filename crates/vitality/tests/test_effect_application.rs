@@ -1,4 +1,9 @@
+#[path = "support/logs.rs"]
+mod logs;
+
 use bevy::ecs::system::RunSystemOnce;
+use bevy::log::tracing::subscriber::with_default;
+use bevy::log::tracing_subscriber::layer::SubscriberExt;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use vitality::actors::ActorBuilder;
@@ -141,6 +146,47 @@ fn test_apply_after_the_spawn_system_is_applied() {
 
     assert_eq!(applied(&app, actor), 1);
     assert_eq!(value(&app, actor), 60);
+}
+
+#[test]
+fn test_apply_to_an_entity_that_is_not_an_actor_warns() {
+    let logs = logs::Logs::default();
+    let subscriber = bevy::log::tracing_subscriber::Registry::default().with(logs.layer());
+
+    let bare = with_default(subscriber, || {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+        app.add_plugins(init_attribute::<TestInt>);
+        app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+
+        app.update();
+
+        let bare = app.world_mut().spawn(()).id();
+        app.world_mut()
+            .run_system_once(move |mut ctx: Vitality| {
+                ctx.apply_dynamic_effect_to_self(
+                    bare,
+                    EffectBuilder::permanent()
+                        .modify::<TestInt>(10, ModOp::Add, EffectSubject::Target)
+                        .build(),
+                );
+            })
+            .unwrap();
+
+        app.update();
+
+        bare
+    });
+
+    let warns = logs.warns();
+    let all = logs.all();
+    assert!(
+        warns.contains(&bare.to_string())
+            && warns.contains("ManageAttributes")
+            && warns.contains("ActorBuilder"),
+        "an apply to an entity that is not an actor has to warn at WARN level, name that entity \
+         and say how to make it one, got: {all}"
+    );
 }
 
 #[test]

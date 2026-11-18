@@ -18,6 +18,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use std::cmp::PartialEq;
 use vitality_core::AppAttributeBindings;
+use vitality_core::attributes::ManageAttributes;
 use vitality_core::tags::ChangeTag;
 use vitality_core::view::ActorRead;
 
@@ -112,6 +113,7 @@ type ActorQuery<'w, 's> = Query<
     (
         Option<&'static AppliedEffects>,
         EffectsRef<'static, 'static>,
+        Has<ManageAttributes>,
     ),
     (Without<Effect>, Without<IsResource>),
 >;
@@ -121,7 +123,7 @@ impl ApplyEffectEvent {
         &self,
         actors: &'a ActorQuery,
     ) -> Option<(Option<&'a AppliedEffects>, EffectExprContext<'a, 'a>)> {
-        let Ok((_, source)) = actors.get(self.targeting.source()) else {
+        let Ok((_, source, _)) = actors.get(self.targeting.source()) else {
             warn!(
                 "Effect not applied: source {} has no actor view, it is despawned or is not an \
                  actor; fix the EffectTargeting this apply was triggered with",
@@ -129,7 +131,7 @@ impl ApplyEffectEvent {
             );
             return None;
         };
-        let Ok((applied, target)) = actors.get(self.targeting.target()) else {
+        let Ok((applied, target, is_actor)) = actors.get(self.targeting.target()) else {
             warn!(
                 "Effect not applied: target {} has no actor view, it is despawned or is not an \
                  actor; fix the EffectTargeting this apply was triggered with",
@@ -137,6 +139,17 @@ impl ApplyEffectEvent {
             );
             return None;
         };
+        // the view resolves for any live entity, so an apply aimed at a prop lands here and folds
+        // nothing: the resolver only walks actors
+        if !is_actor {
+            warn_once!(
+                "Effect {} applied to {} moves nothing: that entity carries no ManageAttributes, \
+                 so the resolver never folds it; spawn it from an ActorBuilder, or insert \
+                 ManageAttributes",
+                self.handle.id(),
+                self.targeting.target()
+            );
+        }
         Some((
             applied,
             EffectExprContext {
