@@ -56,7 +56,7 @@ fn main() {
             init_attribute::<ManaPool>,
             init_attribute::<ManaRegen>,
             init_attribute::<AttackPower>,
-            //init_attribute::<Armour>,
+            init_attribute::<Armour>,
             init_attribute::<MagicPower>,
         ))
         //.add_plugins((EguiPlugin::default(), WorldInspectorPlugin::default()))
