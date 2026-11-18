@@ -9,6 +9,7 @@ use express_it::plan::{AssignmentStep, Plan};
 use num_traits::{AsPrimitive, Num};
 use vitality_core::attributes::Attribute;
 use vitality_core::context::ActorExprSchema;
+use vitality_core::math::SaturatingAttributes;
 use vitality_core::modifier::AttributeCalculatorCached;
 use vitality_core::mutator::EntityActions;
 use vitality_core::tags::TagSpec;
@@ -85,11 +86,10 @@ impl AbilityBuilder {
             _marker: Default::default(),
         };
 
-        let get_attr = T::src();
-        let final_expr = get_attr - node_expr;
-
+        // paid from the base the setter writes, never from the current value, which would spend the
+        // modifiers stacked on top of it
         let step = AssignmentStep {
-            setter_fn: |ctx: &mut AbilityExprContextMut, val: T::Property| match ctx
+            setter_fn: |ctx: &mut AbilityExprContextMut, cost: T::Property| match ctx
                 .caster_mut
                 .get_mut::<T>()
             {
@@ -100,9 +100,12 @@ impl AbilityBuilder {
                         pretty_type_name::<T>()
                     )
                 }
-                Some(mut attr) => attr.set_base_value(val),
+                Some(mut attr) => {
+                    let base = attr.base();
+                    attr.set_base_value(base.saturating_sub(cost))
+                }
             },
-            expr: final_expr,
+            expr: node_expr,
             cache_key: None,
             _marker: std::marker::PhantomData,
         };

@@ -114,6 +114,61 @@ fn every_declared_cost_is_paid() {
 }
 
 #[test]
+fn a_cost_is_paid_from_the_base_so_a_modifier_is_never_spent() {
+    let mut app = app();
+    let blessing = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Mana>(10.0, ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+    let bolt = ability(
+        &mut app,
+        AbilityBuilder::new().with_cost::<Mana>(12.0).build(),
+    );
+    let caster = caster_with(&mut app, &[&bolt]);
+    apply(&mut app, caster, caster, &blessing);
+    ticks(&mut app, 1);
+    assert_eq!(current::<Mana>(&app, caster), 60.0, "the +10 is live");
+
+    activate(&mut app, caster, &bolt);
+    ticks(&mut app, 2);
+    assert_eq!(
+        base::<Mana>(&app, caster),
+        38.0,
+        "the cost comes off the base"
+    );
+    assert_eq!(
+        current::<Mana>(&app, caster),
+        48.0,
+        "the modifier is still the same +10 on top"
+    );
+}
+
+#[test]
+fn two_abilities_activated_before_a_resolve_both_pay() {
+    let mut app = app();
+    let slash = ability(
+        &mut app,
+        AbilityBuilder::new().with_cost::<Health>(40.0).build(),
+    );
+    let smash = ability(
+        &mut app,
+        AbilityBuilder::new().with_cost::<Health>(40.0).build(),
+    );
+    let caster = caster_with(&mut app, &[&slash, &smash]);
+
+    activate(&mut app, caster, &slash);
+    activate(&mut app, caster, &smash);
+    ticks(&mut app, 2);
+    assert_eq!(
+        base::<Health>(&app, caster),
+        20.0,
+        "the second cast pays from what the first left"
+    );
+}
+
+#[test]
 fn an_unaffordable_ability_fails_with_a_reason() {
     let mut app = app();
     let nuke = ability(
