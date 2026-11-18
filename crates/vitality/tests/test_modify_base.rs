@@ -1,6 +1,6 @@
 //! `Vitality::modify_base`, the base-write entry point: every op lands on the base, the current
-//! value follows in one fixed tick, and an attribute the actor lacks is silent whether it is read or
-//! written.
+//! value follows in one fixed tick, a read of an attribute the actor lacks is zero, and a write to
+//! one it lacks is dropped with a warn.
 
 mod gameplay;
 

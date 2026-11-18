@@ -5,6 +5,7 @@ use bevy::prelude::*;
 use vitality_core::attributes::Attribute;
 use vitality_core::modifier::{AttributeCalculator, ModOp};
 use vitality_core::tags::{ChangeTag, TagSpec};
+use vitality_core::util::pretty_type_name;
 use vitality_effects::definition::EffectDef;
 use vitality_effects::{Effects, GlobalActor, GlobalEffects};
 
@@ -89,6 +90,15 @@ impl<'s, 'w> Vitality<'w, 's> {
                     let base =
                         AttributeCalculator::<T>::from_op(op, value).eval(attribute.base_value());
                     attribute.set_base_value(base);
+                } else {
+                    warn_once!(
+                        "{} not found on {}: that base write is dropped, build the actor with \
+                         .with::<{}>(), or register the attribute with init_attribute::<{}>()",
+                        pretty_type_name::<T>(),
+                        actor,
+                        pretty_type_name::<T>(),
+                        pretty_type_name::<T>(),
+                    );
                 }
             });
     }
