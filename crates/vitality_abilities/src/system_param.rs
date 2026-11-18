@@ -135,7 +135,10 @@ impl<'w, 's> Abilities<'w, 's> {
         target_data: TargetData,
     ) {
         let Some(ability_entity) = self.get_ability_entity(entity, token) else {
-            warn_once!("Ability does not exist on entity.");
+            warn_once!(
+                "{entity} was never granted {token}: the token is registered, so that activation \
+                 is dropped; grant it with ActorBuilder::grant_ability or Abilities::grant_ability"
+            );
             return;
         };
 
