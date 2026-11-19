@@ -68,23 +68,31 @@ impl ErasedCalc {
         self.mul *= other.mul;
     }
 
-    fn typed<T: Attribute>(&self) -> AttributeCalculator<T> {
+    /// None when the fold holds a value the property cannot hold, which is what `from_f64` answers
+    /// for every integer and for no float, so a float attribute keeps folding NaN.
+    fn typed<T: Attribute>(&self) -> Option<AttributeCalculator<T>> {
         let narrow = |value: f64| {
-            T::Property::from_f64(value).unwrap_or_else(|| {
-                if value.is_sign_negative() {
-                    <T::Property as num_traits::Bounded>::min_value()
-                } else {
-                    <T::Property as num_traits::Bounded>::max_value()
-                }
+            T::Property::from_f64(value).or_else(|| {
+                warn_once!(
+                    "{value} is not a {} value: that fold is refused and the attribute keeps the \
+                     value it has, so an integer attribute needs modifiers that stay inside its \
+                     range",
+                    pretty_type_name::<T>()
+                );
+                None
             })
         };
-        AttributeCalculator::from_parts(
-            self.set.map(narrow),
-            narrow(self.add),
-            narrow(self.sub),
+        let set = match self.set {
+            Some(value) => Some(narrow(value)?),
+            None => None,
+        };
+        Some(AttributeCalculator::from_parts(
+            set,
+            narrow(self.add)?,
+            narrow(self.sub)?,
             self.increase,
             self.mul,
-        )
+        ))
     }
 }
 
@@ -185,6 +193,8 @@ fn resolve<T: Attribute>(
         return None;
     };
     let mut attribute = unsafe { untyped.with_type::<T>() };
+    // a fold the property cannot hold writes nothing at all, not even the clamp on the base
+    let calculator = calc.typed::<T>()?;
     let mut base = attribute.base_value();
     if let Some(clamp) = &clamp {
         let clamped = clamp.apply(base);
@@ -193,7 +203,7 @@ fn resolve<T: Attribute>(
             base = clamped;
         }
     }
-    let mut new = calc.typed::<T>().eval(base);
+    let mut new = calculator.eval(base);
     if let Some(clamp) = &clamp {
         new = clamp.apply(new);
     }
