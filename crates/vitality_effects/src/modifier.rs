@@ -320,8 +320,10 @@ fn apply_modifier<T: Attribute>(
         // an instant effect spawns no entity, so its message carries the target where the effect entity goes
         EffectSubject::Effect if trigger.effect_entity == trigger.target_entity => {
             warn_once!(
-                "Modifier {} names EffectSubject::Effect, which is no actor of this effect, so the \
-                 write is dropped",
+                "Modifier {} names EffectSubject::Effect, but an instant effect spawns no effect \
+                 entity to carry the attribute, so the write is dropped; use \
+                 EffectSubject::Target or EffectSubject::Source, or make the effect persistent or \
+                 periodic",
                 trigger.modifier
             );
             return Ok(false);
