@@ -360,10 +360,14 @@ fn apply_modifier<T: Attribute>(
         .base_value();
 
     let [source, target] = attributes.get_many([trigger.source_entity, trigger.target_entity])?;
+    // the fire of an effect that expired on its due tick lands after its entity is gone
+    let [effect] = attributes
+        .get_many([trigger.effect_entity])
+        .unwrap_or([source]);
     let context = EffectExprContext {
         source_actor: source,
-        target_actor: Some(target), // Needs to be fixed.
-        effect_holder: source,
+        target_actor: Some(target),
+        effect_holder: effect,
     };
     let mut modifier = trigger.modifier.clone();
     if modifier.capture == Capture::Live {

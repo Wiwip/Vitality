@@ -72,10 +72,11 @@ fn recalc<T: Attribute>(world: &mut World, modifier: Entity) -> Option<f64> {
         let actors = state.actors.query_manual(world);
         let source_ref = actors.get(source).ok()?;
         let target_ref = actors.get(target).ok()?;
+        let effect_ref = actors.get(effect).ok()?;
         let context = crate::context::EffectExprContext {
             source_actor: source_ref,
             target_actor: Some(target_ref),
-            effect_holder: source_ref,
+            effect_holder: effect_ref,
         };
         Some(expr.eval(&context))
     })?;

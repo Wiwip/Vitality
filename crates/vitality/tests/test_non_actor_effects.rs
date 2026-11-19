@@ -2,6 +2,7 @@ mod gameplay;
 
 use gameplay::*;
 use vitality::attributes::{Clamp, ManageAttributes};
+use vitality::effect::context::EffectRole;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 
@@ -113,6 +114,60 @@ fn an_effect_subject_modifier_writes_the_effect_entity() {
         base::<Armor>(&app, hero),
         7.0,
         "and nothing was written on the target at all"
+    );
+}
+
+#[test]
+fn a_periodic_effect_subject_modifier_follows_the_effect_entity() {
+    let mut app = app();
+    let caster = spawn(&mut app, hero_def().with::<Armor>(7.0));
+    let scaling = effect(
+        &mut app,
+        EffectBuilder::every_second_permanently(0.5)
+            .modify::<Armor>(
+                Armor::at::<EffectRole, EffectExprSchema>(),
+                ModOp::Add,
+                EffectSubject::Effect,
+            )
+            .build(),
+    );
+
+    apply(&mut app, caster, caster, &scaling);
+    ticks(&mut app, 1);
+
+    let effect_entity = with_effects(&mut app, move |effects| effects.on(caster))[0];
+    with_vitality(&mut app, move |v| {
+        v.set_base::<Armor>(effect_entity, 20.0);
+    });
+    ticks(&mut app, 3);
+
+    assert_eq!(
+        current::<Armor>(&app, effect_entity),
+        20.0,
+        "the effect entity carries the attribute its modifier names, and a ticking effect folds nothing before it fires"
+    );
+
+    ticks(&mut app, ticks_for(0.5));
+    assert_eq!(
+        current::<Armor>(&app, effect_entity),
+        40.0,
+        "the fire pays the effect entity's own 20"
+    );
+
+    with_vitality(&mut app, move |v| {
+        v.set_base::<Armor>(caster, 50.0);
+    });
+    ticks(&mut app, ticks_for(0.5));
+
+    assert_eq!(
+        current::<Armor>(&app, caster),
+        50.0,
+        "control: the caster carries the same attribute and its own value moved"
+    );
+    assert_eq!(
+        current::<Armor>(&app, effect_entity),
+        80.0,
+        "the second fire re-reads the effect entity's own 40, so the caster's new 50 never reaches it"
     );
 }
 
