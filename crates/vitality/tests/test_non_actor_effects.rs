@@ -1,7 +1,7 @@
 mod gameplay;
 
 use gameplay::*;
-use vitality::attributes::ManageAttributes;
+use vitality::attributes::{Clamp, ManageAttributes};
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 
@@ -75,5 +75,41 @@ fn a_base_write_on_a_non_actor_follows_in_one_tick() {
         current::<Health>(&app, hero),
         210.0,
         "control: the actor leg follows the same way it did before"
+    );
+}
+
+#[test]
+fn a_clamp_on_a_non_actor_bounds_the_folded_value() {
+    let mut app = app();
+    let post = app
+        .world_mut()
+        .spawn((
+            Health::new(100.0),
+            Clamp::<Health> {
+                min_limit: 0.0,
+                max_limit: 105.0,
+                ready: true,
+            },
+        ))
+        .id();
+    let overheal = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Health>(10.0, ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+
+    apply(&mut app, post, post, &overheal);
+    ticks(&mut app, 1);
+
+    assert_eq!(
+        current::<Health>(&app, post),
+        105.0,
+        "the carrier's own clamp bounds its fold the way it bounds an actor's"
+    );
+    assert_eq!(
+        base::<Health>(&app, post),
+        100.0,
+        "bounding the fold leaves the base alone"
     );
 }

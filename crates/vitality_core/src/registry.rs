@@ -166,6 +166,9 @@ fn resolve<T: Attribute>(
             }
             clamp = Some(stored.clone());
         }
+    } else if let Some(stored) = entity.get_by_id(ids.clamp) {
+        // a clamp with no limit expressions is the limits it was written with, actor or not
+        clamp = Some(unsafe { stored.deref::<Clamp<T>>().clone() });
     }
 
     let Some(untyped) = entity.get_mut_by_id(ids.component) else {
