@@ -175,6 +175,7 @@ impl<'w, 's> Abilities<'w, 's> {
         true
     }
 
+    /// one call is one activation: the first granted ability with the tag that can activate takes it and the rest are left alone
     pub fn try_activate_by_tag<T: Component + Reflect>(
         &mut self,
         actor_id: Entity,
@@ -183,6 +184,9 @@ impl<'w, 's> Abilities<'w, 's> {
         let abilities = self.get_abilities_by_tag::<T>(actor_id);
 
         for ability_id in abilities {
+            if self.can_activate(ability_id, target_data).is_err() {
+                continue;
+            }
             if let Err(err) = self.machines.dispatch_event(
                 ability_id,
                 AbilityEvent::TryActivate {
@@ -192,6 +196,7 @@ impl<'w, 's> Abilities<'w, 's> {
             ) {
                 error!("[{}] AbilityMachine dispatch failed: {err}", ability_id);
             }
+            return;
         }
     }
 

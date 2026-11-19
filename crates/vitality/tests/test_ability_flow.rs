@@ -469,6 +469,49 @@ fn an_active_ability_blocks_others_by_tag() {
 }
 
 #[test]
+fn try_activate_by_tag_activates_the_first_ability_that_can() {
+    let mut app = app();
+    let opener = ability(
+        &mut app,
+        AbilityBuilder::new()
+            .with_tag::<Magic>()
+            .with_cost::<Mana>(10.0)
+            .set_tasks(|| bsn! { Tasks [ @wait_task(10.0) ] })
+            .build(),
+    );
+    let follow_up = ability(
+        &mut app,
+        AbilityBuilder::new()
+            .with_tag::<Magic>()
+            .with_cost::<Mana>(10.0)
+            .set_tasks(|| bsn! { Tasks [ @wait_task(10.0) ] })
+            .build(),
+    );
+    let caster = caster_with(&mut app, &[&opener, &follow_up]);
+    record_all(&mut app);
+
+    with_abilities(&mut app, move |a| {
+        a.try_activate_by_tag::<Magic>(caster, TargetData::SelfCast)
+    });
+    ticks(&mut app, 2);
+
+    let opener_entity = ability_entity(&mut app, caster, &opener);
+    let follow_up_entity = ability_entity(&mut app, caster, &follow_up);
+    assert_eq!(base::<Mana>(&app, caster), 40.0, "one call pays one cost");
+    let activated = recorded::<AbilityActivated>(&app);
+    assert_eq!(activated.len(), 1, "one call is one activation");
+    assert_eq!(
+        activated[0].entity, opener_entity,
+        "the first granted ability with the tag is the one that activates"
+    );
+    assert!(with_abilities(&mut app, move |a| a.is_active(opener_entity)));
+    assert!(
+        !with_abilities(&mut app, move |a| a.is_active(follow_up_entity)),
+        "the second never leaves Ready"
+    );
+}
+
+#[test]
 fn nested_tasks_run_after_their_parent() {
     let mut app = app();
     let combo = ability(
