@@ -100,6 +100,16 @@ impl AbilityBuilder {
                 }
                 Some(mut attr) => {
                     let base = attr.base();
+                    // the dispatch check read current_value, which stays stale until the next resolve, so
+                    // a same-frame sibling can have drained the pool since: pay in full or not at all
+                    if base < cost {
+                        warn!(
+                            "{} cannot pay its cost: base {base} no longer covers {cost}, the cost \
+                             is not paid",
+                            pretty_type_name::<T>()
+                        );
+                        return;
+                    }
                     attr.set_base_value(base.saturating_sub(cost))
                 }
             },

@@ -1,5 +1,11 @@
 mod gameplay;
 
+#[path = "support/logs.rs"]
+mod logs;
+
+use crate::logs::Logs;
+use bevy::log::tracing::subscriber::with_default;
+use bevy::log::tracing_subscriber::{Registry, layer::SubscriberExt};
 use bevy::prelude::*;
 use express_it::nodes::Node;
 use express_it::plan::Plan;
@@ -171,6 +177,40 @@ fn two_abilities_activated_before_a_resolve_both_pay() {
         20.0,
         "the second cast pays from what the first left"
     );
+}
+
+#[test]
+fn a_second_same_frame_activation_is_refused_when_the_pool_no_longer_pays() {
+    let logs = Logs::default();
+    let subscriber = Registry::default().with(logs.layer());
+
+    with_default(subscriber, || {
+        let mut app = app();
+        let slash = ability(
+            &mut app,
+            AbilityBuilder::new().with_cost::<Health>(60.0).build(),
+        );
+        let smash = ability(
+            &mut app,
+            AbilityBuilder::new().with_cost::<Health>(60.0).build(),
+        );
+        let caster = caster_with(&mut app, &[&slash, &smash]);
+
+        activate(&mut app, caster, &slash);
+        activate(&mut app, caster, &smash);
+        ticks(&mut app, 2);
+
+        assert_eq!(
+            base::<Health>(&app, caster),
+            40.0,
+            "the pool pays the first cast and refuses the second instead of draining to zero"
+        );
+        let warns = logs.warns();
+        assert!(
+            warns.contains("Health") && warns.contains("no longer covers"),
+            "the unpaid cost has to say which pool stopped covering it, got: {warns}"
+        );
+    });
 }
 
 #[test]
