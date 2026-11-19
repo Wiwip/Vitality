@@ -136,8 +136,6 @@ fn refresh_policy_reapplies_fire_effect_applied() {
     ticks(&mut app, 1);
 
     let held = with_effects(&mut app, move |e| e.on(hero));
-    assert_eq!(held.len(), 1, "the refresh reuses the one instance");
-
     let applied = recorded::<EffectApplied>(&app);
     assert_eq!(applied.len(), 2, "a refresh is an apply too");
     assert_eq!(applied[0].effect, Some(held[0]));

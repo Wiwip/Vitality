@@ -179,13 +179,13 @@ fn test_apply_to_an_entity_that_is_not_an_actor_warns() {
     });
 
     let warns = logs.warns();
-    let all = logs.all();
     assert!(
         warns.contains(&bare.to_string())
             && warns.contains("ManageAttributes")
             && warns.contains("ActorBuilder"),
         "an apply to an entity that is not an actor has to warn at WARN level, name that entity \
-         and say how to make it one, got: {all}"
+         and say how to make it one, got: {}",
+        logs.all()
     );
 }
 

@@ -478,8 +478,6 @@ fn two_completion_notifications_enter_recovery_once() {
     assert!(cooldown_armed(&app, ability));
 }
 
-/// A registered token the actor was never granted: the activation dies at the lookup, so the
-/// warning line is the only trace of it.
 #[test]
 fn activating_a_token_the_actor_never_got_warns_with_the_token_and_the_actor() {
     let logs = logs::Logs::default();
@@ -489,7 +487,6 @@ fn activating_a_token_the_actor_never_got_warns_with_the_token_and_the_actor() {
         let mut app = test_app(|| bsn! { Tasks [ @task::<LongTask>(NoData) ] });
         app.update();
         let actor = spawned_actor(&mut app);
-        // no grant() at all: the token is registered, this actor just never received it
         app.world_mut()
             .run_system_once(move |mut abilities: Abilities| {
                 abilities.try_activate_by_token(actor, &TEST_ABILITY, TargetData::SelfCast)
