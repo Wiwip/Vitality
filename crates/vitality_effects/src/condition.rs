@@ -1,6 +1,7 @@
 use crate::EffectsRef;
 use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
+use crate::lifecycle::{EffectRemovalReason, remove_effect};
 use crate::systems::MarkActorDirty;
 use crate::{Effect, EffectInactive, EffectSource, EffectTarget};
 use bevy::asset::Assets;
@@ -8,6 +9,7 @@ use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
 use bevy::prelude::*;
 use vitality_core::schedule::EffectsSet;
+use vitality_core::view::ActorRead;
 
 pub struct ConditionPlugin;
 
@@ -53,6 +55,29 @@ fn evaluate_effect_conditions(
             continue;
         };
 
+        let Ok(target_actor_ref) = parents.get(target.0) else {
+            error!(
+                "Effect {} has no target entity {}.",
+                effect_entity_ref.id(),
+                target.get()
+            );
+            continue;
+        };
+
+        // immunity is a standing promise, not an apply-time gate, so the tag is re-read every tick
+        if effect
+            .blocked_by_tags
+            .iter()
+            .any(|tag| target_actor_ref.has_type(tag.type_id))
+        {
+            remove_effect(
+                &mut commands,
+                effect_entity,
+                EffectRemovalReason::BlockedByTag,
+            );
+            continue;
+        }
+
         // an empty list is always active and this system is the only writer of EffectInactive, so a row
         // without a marker has nothing to decide
         if effect.activate_conditions.is_empty() && status.is_none() {
@@ -64,14 +89,6 @@ fn evaluate_effect_conditions(
                 "Effect {} has no parent entity {}.",
                 effect_entity_ref.id(),
                 source.get()
-            );
-            continue;
-        };
-        let Ok(target_actor_ref) = parents.get(target.0) else {
-            error!(
-                "Effect {} has no target entity {}.",
-                effect_entity_ref.id(),
-                target.get()
             );
             continue;
         };

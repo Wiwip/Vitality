@@ -62,6 +62,52 @@ fn an_immune_target_blocks_the_effect() {
 }
 
 #[test]
+fn immunity_gained_while_the_effect_runs_removes_it() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    let bystander = spawn(&mut app, hero_def());
+    let burn = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .with_tag::<Burning>()
+            .blocked_by_tag::<Immune>()
+            .modify::<Armor>(-2.0, ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+    record::<EffectRemoved>(&mut app);
+
+    apply(&mut app, hero, hero, &burn);
+    apply(&mut app, bystander, bystander, &burn);
+    ticks(&mut app, 1);
+    assert!(has::<Burning>(&app, hero));
+
+    with_vitality(&mut app, move |v| v.grant_tag::<Immune>(hero));
+    ticks(&mut app, 1);
+
+    assert!(
+        with_effects(&mut app, move |e| e.on(hero)).is_empty(),
+        "immunity takes the running effect off"
+    );
+    assert_eq!(current::<Armor>(&app, hero), 0.0);
+    let removed = recorded::<EffectRemoved>(&app);
+    let immunity: Vec<&EffectRemoved> = removed
+        .iter()
+        .filter(|removed| removed.reason == EffectRemovalReason::BlockedByTag)
+        .collect();
+    assert_eq!(
+        immunity.len(),
+        1,
+        "one EffectRemoved carries the immunity reason"
+    );
+    assert_eq!(immunity[0].entity, hero);
+    assert!(
+        has::<Burning>(&app, bystander),
+        "the target that never gained the tag keeps the effect"
+    );
+    assert_eq!(current::<Armor>(&app, bystander), -2.0);
+}
+
+#[test]
 fn a_required_tag_gates_the_effect() {
     let mut app = app();
     let hero = spawn(&mut app, hero_def());
