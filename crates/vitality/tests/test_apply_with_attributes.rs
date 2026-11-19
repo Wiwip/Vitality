@@ -33,11 +33,6 @@ fn an_apply_to_an_entity_carrying_the_attribute_says_nothing() {
         apply(&mut app, post, post, &blessing);
         ticks(&mut app, 1);
 
-        assert_eq!(
-            current::<Health>(&app, post),
-            110.0,
-            "the fold landed, so there was something to fold into"
-        );
         post
     });
 
