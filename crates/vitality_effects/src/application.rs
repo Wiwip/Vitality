@@ -19,6 +19,7 @@ use bevy::prelude::*;
 use std::cmp::PartialEq;
 use vitality_core::AppAttributeBindings;
 use vitality_core::attributes::ManageAttributes;
+use vitality_core::registry::AttributeRegistry;
 use vitality_core::tags::ChangeTag;
 use vitality_core::view::ActorRead;
 
@@ -118,10 +119,18 @@ type ActorQuery<'w, 's> = Query<
     (Without<Effect>, Without<IsResource>),
 >;
 
+fn has_any_attribute(target: &EffectsRef<'_, '_>, registry: &AttributeRegistry) -> bool {
+    registry
+        .infos()
+        .iter()
+        .any(|info| target.has_type(info.type_id))
+}
+
 impl ApplyEffectEvent {
     fn context<'a>(
         &self,
         actors: &'a ActorQuery,
+        registry: &AttributeRegistry,
     ) -> Option<(Option<&'a AppliedEffects>, EffectExprContext<'a, 'a>)> {
         let Ok((_, source, _)) = actors.get(self.targeting.source()) else {
             warn!(
@@ -139,13 +148,12 @@ impl ApplyEffectEvent {
             );
             return None;
         };
-        // the view resolves for any live entity, so an apply aimed at a prop lands here and folds
-        // nothing: the resolver only walks actors
-        if !is_actor {
+        // an actor's ModifierTable holds the fold even when it carries no attribute of its own
+        if !is_actor && !has_any_attribute(&target, registry) {
             warn_once!(
-                "Effect {} applied to {} moves nothing: that entity carries no ManageAttributes, \
-                 so the resolver never folds it; spawn it from an ActorBuilder, or insert \
-                 ManageAttributes",
+                "Effect {} applied to {} folds into nothing: that entity carries no registered \
+                 attribute for the modifiers to land on; an ActorBuilder, or attributes of its \
+                 own, would give it one",
                 self.handle.id(),
                 self.targeting.target()
             );
@@ -303,6 +311,7 @@ pub(crate) struct ApplyContext<'w, 's> {
     effect_tags: Query<'w, 's, &'static EffectTags>,
     effect_assets: Res<'w, Assets<EffectDef>>,
     type_bindings: Res<'w, AppAttributeBindings>,
+    attributes: Res<'w, AttributeRegistry>,
 }
 
 pub(crate) fn apply_effect_event_observer(
@@ -320,7 +329,7 @@ pub(crate) fn apply_effect_event_observer(
         );
         return;
     };
-    let Some((applied, context)) = trigger.context(&actors) else {
+    let Some((applied, context)) = trigger.context(&actors, &ctx.attributes) else {
         return;
     };
     let source = trigger.targeting.source();

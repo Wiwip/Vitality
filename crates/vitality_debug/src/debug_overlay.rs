@@ -23,7 +23,8 @@ type ActorQuery<'w, 's> = Query<
         Option<&'static AppliedEffects>,
         Option<&'static Name>,
     ),
-    (With<ManageAttributes>, With<DebugOverlayMarker>),
+    // the overlay's own text node carries the marker too, and is what OverlayQuery writes
+    (With<DebugOverlayMarker>, Without<Text>),
 >;
 
 type AbilityQuery<'w, 's> = Query<
@@ -452,6 +453,35 @@ mod tests {
             indent(&rendered, "Buffed"),
             indent(&rendered, "Stunned"),
             "both effect rows must sit at the same depth:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn a_marked_entity_that_is_not_an_actor_renders_its_effects() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_resource::<AppTypeRegistry>()
+            .add_systems(Update, explore_actors_system);
+
+        let world = app.world_mut();
+        let post = world.spawn(DebugOverlayMarker).id();
+        world.spawn((
+            Effect(Handle::default()),
+            EffectTarget(post),
+            Name::new("Warded"),
+        ));
+        let overlay = world.spawn((Text::default(), DebugOverlayMarker)).id();
+
+        app.update();
+
+        let rendered = app.world().get::<Text>(overlay).unwrap().0.clone();
+        assert!(
+            rendered.contains(&post.to_string()) && rendered.contains("Warded"),
+            "the marked non-actor must get a row with its effect listed:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains(&overlay.to_string()),
+            "the overlay renders itself, it is not a row of its own:\n{rendered}"
         );
     }
 

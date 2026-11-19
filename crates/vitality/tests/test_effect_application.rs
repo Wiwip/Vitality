@@ -149,7 +149,7 @@ fn test_apply_after_the_spawn_system_is_applied() {
 }
 
 #[test]
-fn test_apply_to_an_entity_that_is_not_an_actor_warns() {
+fn test_apply_to_an_entity_with_no_attribute_warns() {
     let logs = logs::Logs::default();
     let subscriber = bevy::log::tracing_subscriber::Registry::default().with(logs.layer());
 
@@ -180,11 +180,9 @@ fn test_apply_to_an_entity_that_is_not_an_actor_warns() {
 
     let warns = logs.warns();
     assert!(
-        warns.contains(&bare.to_string())
-            && warns.contains("ManageAttributes")
-            && warns.contains("ActorBuilder"),
-        "an apply to an entity that is not an actor has to warn at WARN level, name that entity \
-         and say how to make it one, got: {}",
+        warns.contains(&bare.to_string()) && warns.contains("no registered attribute"),
+        "an apply to an entity with nothing to fold into has to warn at WARN level and name that \
+         entity, got: {}",
         logs.all()
     );
 }
