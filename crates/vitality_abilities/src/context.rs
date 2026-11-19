@@ -31,7 +31,6 @@ pub struct AbilityExprContext<'w, 's> {
     pub caster_ref: AbilityRef<'w, 's>,
     pub target_ref: Option<AbilityRef<'w, 's>>,
     pub ability_ref: AbilityRef<'w, 's>,
-    /// the ground point of a `TargetData::Location`; None for a self or entity target
     pub location: Option<Vec3>,
 }
 
@@ -39,7 +38,6 @@ pub struct AbilityExprContextMut<'w, 's> {
     pub caster_mut: AbilityMut<'w, 's>,
     pub target_mut: Option<AbilityMut<'w, 's>>,
     pub ability_mut: AbilityMut<'w, 's>,
-    /// the ground point of a `TargetData::Location`; None for a self or entity target
     pub location: Option<Vec3>,
 }
 

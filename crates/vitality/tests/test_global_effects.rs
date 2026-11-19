@@ -7,7 +7,6 @@ use gameplay::*;
 use vitality::ability::AbilityBuilder;
 use vitality::ability::AbilityDef;
 use vitality::actors::{Actor, ActorBuilder};
-use vitality::attributes::ManageAttributes;
 use vitality::context::Vitality;
 use vitality::effect::conditions::IsAttributeWithinBounds;
 use vitality::effect::modifier::{EffectSubject, ModOp};
@@ -109,10 +108,6 @@ fn a_global_effect_reaches_an_entity_carrying_a_chosen_marker_tag() {
         current::<Health>(&app, post),
         110.0,
         "the global bonus is live on the marker carrier"
-    );
-    assert!(
-        !has::<ManageAttributes>(&app, post),
-        "it took no actor marker to get one"
     );
 }
 

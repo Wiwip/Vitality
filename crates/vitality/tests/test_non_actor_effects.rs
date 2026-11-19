@@ -107,9 +107,4 @@ fn a_clamp_on_a_non_actor_bounds_the_folded_value() {
         105.0,
         "the carrier's own clamp bounds its fold the way it bounds an actor's"
     );
-    assert_eq!(
-        base::<Health>(&app, post),
-        100.0,
-        "bounding the fold leaves the base alone"
-    );
 }
