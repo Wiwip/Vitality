@@ -8,9 +8,3 @@ pub enum NodeType {
     Actor,
     Effect,
 }
-
-impl std::fmt::Display for NodeType {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}

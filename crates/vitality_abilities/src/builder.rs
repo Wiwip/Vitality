@@ -2,7 +2,7 @@ use crate::context::{AbilityExprContext, AbilityExprContextMut, AbilityExprSchem
 use crate::definition::AbilityDef;
 use bevy::ecs::system::IntoObserverSystem;
 use bevy::prelude::*;
-use express_it::expr::{AsExpression, BoolExpr, StoredExpr};
+use express_it::expr::{AsExpression, StoredExpr};
 use express_it::logic::ExprCmpLe;
 use express_it::nodes::LiteralNode;
 use express_it::plan::{AssignmentStep, Plan};
@@ -24,7 +24,6 @@ pub struct AbilityBuilder {
     cooldown: StoredExpr<f32, AbilityExprSchema>,
     cost_modifiers: Plan<AbilityExprSchema>,
     on_execute: Vec<Plan<AbilityExprSchema>>,
-    recovery_condition: Vec<BoolExpr<ActorExprSchema>>,
     scene: Box<dyn Fn() -> Box<dyn Scene> + Send + Sync>,
     tags: Vec<TagSpec>,
     activation_owned_tags: Vec<TagSpec>,
@@ -51,7 +50,6 @@ impl AbilityBuilder {
             cooldown: Box::new(LiteralNode::<f32> { value: 0.0 }),
             cost_modifiers: Plan::new(),
             on_execute: vec![],
-            recovery_condition: vec![],
             scene: Box::new(|| Box::new(())),
             tags: vec![],
             activation_owned_tags: vec![],
@@ -243,7 +241,6 @@ impl AbilityBuilder {
     pub fn build(self) -> AbilityDef {
         AbilityDef {
             name: self.name,
-            description: "".to_string(),
             mutators: self.mutators,
             observers: self.triggers,
             cost_condition: self.cost_condition,
@@ -252,7 +249,6 @@ impl AbilityBuilder {
 
             cooldown: self.cooldown,
             task_scene: self.scene,
-            recovery_condition: self.recovery_condition,
             on_execute: self.on_execute,
             tags: self.tags,
             activation_owned_tags: self.activation_owned_tags,
