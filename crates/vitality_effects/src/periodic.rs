@@ -1,9 +1,8 @@
 use crate::EffectsRef;
-use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
 use crate::modifier::{ApplyAttributeModifierMessage, AttributeModifier, OwnedModifiers};
 use crate::resolver::ModifierSlot;
-use crate::{Effect, EffectSource, EffectTarget, EffectTicker, Stacks};
+use crate::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker, Stacks};
 use bevy::ecs::resource::IsResource;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
@@ -37,6 +36,7 @@ type PeriodicEffectRow<'w, 's> = (
     &'w OwnedModifiers,
     &'w EffectTarget,
     &'w EffectSource,
+    Option<&'w EffectInactive>,
 );
 
 /// one write a due effect owes, with the verdict behind it already taken
@@ -83,40 +83,29 @@ impl PeriodicPass {
         self.actors.update_archetypes(world);
         self.effects.update_archetypes(world);
         self.slots.update_archetypes(world);
-        for (effect_ref, effect, stacks, timer, owned_modifiers, target, source) in
+        for (effect_ref, effect, stacks, timer, owned_modifiers, target, source, inactive) in
             self.effects.iter(world)
         {
             if !timer.just_finished() {
                 continue;
             }
-
-            let Some(effect_def) = assets.get(&effect.0) else {
+            // the condition pass owns the verdict, so the fire reads the marker instead of rerunning it
+            if inactive.is_some() {
+                continue;
+            }
+            if assets.get(&effect.0).is_none() {
                 warn!(
                     "Periodic effect {} tick skipped: its EffectDef is not in \
                      Assets<EffectDef>; keep the asset loaded for the effect's whole lifetime",
                     effect_ref.id()
                 );
                 continue;
-            };
-            let (Ok(source_actor_ref), Ok(target_actor_ref)) = (
-                self.actors.get_manual(world, source.0),
-                self.actors.get_manual(world, target.0),
-            ) else {
-                continue;
-            };
+            }
 
-            let context = EffectExprContext {
-                target_actor: Some(target_actor_ref),
-                source_actor: source_actor_ref,
-                effect_holder: effect_ref,
-            };
-
-            let should_be_activated = effect_def
-                .activate_conditions
-                .iter()
-                .all(|condition| condition.eval(&context));
-
-            if !should_be_activated {
+            // an actor that is gone has nowhere for the write to land
+            if self.actors.get_manual(world, source.0).is_err()
+                || self.actors.get_manual(world, target.0).is_err()
+            {
                 continue;
             }
 

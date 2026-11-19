@@ -1,6 +1,7 @@
 mod gameplay;
 
 use gameplay::*;
+use vitality::effect::conditions::HasComponent;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 
@@ -335,6 +336,42 @@ fn a_periodic_effect_holds_its_first_fire_until_the_interval_elapses() {
         1.0,
         "the quiet window above is a waiting ticker, not a dead one: the tick its interval elapses on \
          has to fire",
+    );
+}
+
+#[test]
+fn a_gated_off_periodic_effect_pauses_its_duration() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def().with::<Health>(0.0));
+    let dot = effect(
+        &mut app,
+        EffectBuilder::every_second_for_duration(PERIOD, DURATION)
+            .modify::<Health>(1.0, ModOp::Add, EffectSubject::Target)
+            .active_while(HasComponent::<Immune>::target())
+            .build(),
+    );
+
+    apply(&mut app, hero, hero, &dot);
+    ticks(&mut app, ticks_for(DURATION) + ticks_for(PERIOD));
+
+    assert_eq!(
+        base::<Health>(&app, hero),
+        0.0,
+        "a gated-off effect fired something"
+    );
+    assert_eq!(
+        with_effects(&mut app, move |effects| effects.on(hero).len()),
+        1,
+        "the gated-off window outlasted the duration, so the effect expired without firing"
+    );
+
+    with_vitality(&mut app, move |v| v.grant_tag::<Immune>(hero));
+    ticks(&mut app, ticks_for(PERIOD) + 1);
+
+    assert_eq!(
+        base::<Health>(&app, hero),
+        1.0,
+        "the flag is on, so the ticker that waited out the gate owes its fire"
     );
 }
 

@@ -46,6 +46,7 @@ impl EffectBuilder {
         Self::new(EffectApplicationPolicy::Permanent)
     }
 
+    /// an [`Self::active_while`] gate that misses pauses this duration too
     pub fn for_seconds(duration: f32) -> Self {
         Self::new(EffectApplicationPolicy::for_seconds(duration))
     }
@@ -54,6 +55,7 @@ impl EffectBuilder {
         Self::new(EffectApplicationPolicy::every_seconds(interval))
     }
 
+    /// an [`Self::active_while`] gate that misses pauses the interval and this duration too
     pub fn every_second_for_duration(interval: f32, duration: f32) -> Self {
         Self::new(EffectApplicationPolicy::every_seconds_for_duration(
             interval, duration,
@@ -141,6 +143,7 @@ impl EffectBuilder {
         self
     }
 
+    /// while this misses the effect is inactive: it folds nothing, fires nothing, and pauses its duration until it holds again
     pub fn active_while(
         mut self,
         condition: impl Expr<bool, EffectExprSchema> + Send + Sync + 'static,

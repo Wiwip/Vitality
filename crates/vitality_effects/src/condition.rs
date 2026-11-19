@@ -2,7 +2,7 @@ use crate::EffectsRef;
 use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
 use crate::systems::MarkActorDirty;
-use crate::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker};
+use crate::{Effect, EffectInactive, EffectSource, EffectTarget};
 use bevy::asset::Assets;
 use bevy::ecs::relationship::Relationship;
 use bevy::log::error;
@@ -27,7 +27,7 @@ impl Plugin for ConditionPlugin {
     }
 }
 
-/// one non-periodic effect with the actors it reads its conditions from
+/// one effect with the actors it reads its conditions from
 type ConditionRow<'w, 's> = (
     EffectsRef<'w, 's>,
     &'w Effect,
@@ -38,7 +38,7 @@ type ConditionRow<'w, 's> = (
 
 /// the row is read-only so this could parallelise; the split costs more single-threaded than it wins threaded
 fn evaluate_effect_conditions(
-    mut query: Query<ConditionRow<'_, '_>, Without<EffectTicker>>,
+    mut query: Query<ConditionRow<'_, '_>>,
     parents: Query<EffectsRef>,
     effects: Res<Assets<EffectDef>>,
     mut commands: Commands,
