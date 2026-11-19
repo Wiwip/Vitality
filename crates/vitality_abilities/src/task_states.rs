@@ -1,4 +1,4 @@
-use crate::tasks::{ExecuteTask, NotifyTaskCompletion, TaskCompleted, TaskStopped};
+use crate::tasks::{ExecuteTask, NotifyTaskCompletion, TaskCompleted, TaskFailed, TaskStopped};
 use crate::tasks::{Task, Tasks};
 use bevy::ecs::query::QueryData;
 use bevy::ecs::resource::IsResource;
@@ -57,6 +57,7 @@ pub enum TaskEvent {
     Execute,
     Complete,
     Stop,
+    Fail,
     TimeOut,
 }
 
@@ -68,6 +69,7 @@ pub(crate) fn build_machine() -> MachineDefinition<TaskMachine> {
         root.leaf(TaskState::Running, "Running", RunningState)
             .on(TaskEvent::Complete, TaskState::Completed)
             .on(TaskEvent::Stop, TaskState::Stopped)
+            .on(TaskEvent::Fail, TaskState::Failed)
             .on(TaskEvent::TimeOut, TaskState::Stopped);
 
         root.leaf(TaskState::Completed, "Completed", CompleteState)
@@ -154,9 +156,17 @@ impl MachineState<TaskMachine> for StoppedState {
 
 struct FailedState;
 impl MachineState<TaskMachine> for FailedState {
-    fn on_enter(&self, _ctx: &mut Access<TaskMachine>) {}
+    fn on_enter(&self, ctx: &mut Access<TaskMachine>) {
+        debug!("[{}] on_enter: Failed Task", ctx.task_id);
 
-    fn on_exit(&self, _ctx: &mut Access<TaskMachine>) {}
+        ctx.external.commands.trigger(TaskFailed {
+            task_id: ctx.task_id,
+        });
+    }
+
+    fn on_exit(&self, _ctx: &mut Access<TaskMachine>) {
+        debug!("[{}] on_exit: Failed Task", _ctx.task_id);
+    }
 }
 
 #[cfg(test)]

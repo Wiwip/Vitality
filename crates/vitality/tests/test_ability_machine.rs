@@ -21,8 +21,8 @@ use vitality::ability::AbilityDef;
 use vitality::ability::ability_state::{AbilityEvent, AbilityMachine, AbilityState};
 use vitality::ability::task_states::{TaskMachine, TaskState};
 use vitality::ability::tasks::{
-    AbilityItem, AbilityTask, CasterItem, Complete, NoData, NotifyTaskCompletion, TaskItem,
-    TaskParam, TaskStatus, Tasks, task,
+    AbilityItem, AbilityTask, CasterItem, Complete, NoData, NotifyTaskCompletion, TaskFailed,
+    TaskItem, TaskParam, TaskStatus, Tasks, task,
 };
 use vitality::ability::{Abilities, AbilityBuilder, TargetData};
 use vitality::actors::ActorDef;
@@ -56,6 +56,26 @@ impl AbilityTask for InstantTask {
     }
 }
 
+struct FailingTask;
+
+impl AbilityTask for FailingTask {
+    type CasterItem = ();
+    type AbilityItem = ();
+    type TaskItem = ();
+    type SystemParam = ();
+    type Data = NoData;
+
+    fn activate(
+        _task_id: Entity,
+        _caster: CasterItem<Self>,
+        _ability: AbilityItem<Self>,
+        _task: TaskItem<Self>,
+        _param: &mut TaskParam<Self>,
+    ) -> TaskStatus {
+        TaskStatus::Failed
+    }
+}
+
 struct LongTask;
 
 impl AbilityTask for LongTask {
@@ -85,6 +105,9 @@ struct Entered(Vec<StateId>);
 #[derive(Resource, Default)]
 struct EndRequests(usize);
 
+#[derive(Resource, Default)]
+struct Failures(Vec<Entity>);
+
 fn record_entry(trigger: On<StateEntered<AbilityMachine>>, mut entered: ResMut<Entered>) {
     entered.0.push(trigger.state);
 }
@@ -93,6 +116,10 @@ fn record_end(trigger: On<MachineEvent<AbilityMachine>>, mut ends: ResMut<EndReq
     if matches!(trigger.event, AbilityEvent::EndAbility) {
         ends.0 += 1;
     }
+}
+
+fn record_failure(trigger: On<TaskFailed>, mut failures: ResMut<Failures>) {
+    failures.0.push(trigger.task_id);
 }
 
 /// Handed to the `Startup` system in a resource: a system closure may not consume what it captures.
@@ -124,6 +151,8 @@ fn test_app<S: Scene + 'static, F: Fn() -> S + Send + Sync + 'static>(tasks: F) 
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
     app.insert_resource(Entered::default());
     app.insert_resource(EndRequests::default());
+    app.insert_resource(Failures::default());
+    app.add_observer(record_failure);
     app.insert_resource(HeldAbility(Some(ability)));
     app.add_observer(record_entry);
     app.add_observer(record_end);
@@ -312,6 +341,32 @@ fn complete_all_ends_the_ability_on_the_last_task_completion() {
         "the last subtask completion ends the ability"
     );
     assert!(cooldown_armed(&app, ability));
+}
+
+/// a task whose `activate` reports `Failed` leaves `Running` for `TaskState::Failed`, which fires
+/// `TaskFailed` so listeners pick the end/retry/ignore policy
+#[test]
+fn a_failing_task_reaches_failed_and_fires_task_failed() {
+    let mut app = test_app(|| bsn! { Tasks [ @task::<FailingTask>(NoData) ] });
+    app.update();
+
+    let owner = spawned_actor(&mut app);
+    let ability = grant(&mut app);
+    app.update();
+
+    try_activate(&mut app, owner);
+    app.update();
+
+    let task = sub_tasks(&app, ability)[0];
+    assert!(
+        in_state::<TaskMachine>(&mut app, task, TaskState::Failed),
+        "a task that reports Failed must reach TaskState::Failed instead of staying Running"
+    );
+    assert_eq!(
+        vec![task],
+        app.world().resource::<Failures>().0,
+        "entering Failed fires TaskFailed once, targeted at the task"
+    );
 }
 
 #[test]

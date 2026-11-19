@@ -41,6 +41,12 @@ pub struct TaskCompleted {
 }
 
 #[derive(EntityEvent)]
+pub struct TaskFailed {
+    #[event_target]
+    pub task_id: Entity,
+}
+
+#[derive(EntityEvent)]
 #[entity_event(propagate = &'static TaskOwner, auto_propagate)]
 pub struct NotifyTaskCompletion {
     #[event_target]
@@ -207,6 +213,11 @@ fn on_execute_task_observer<T: AbilityTask>(
         commands.trigger(MachineEvent::<TaskMachine>::new(
             trigger.task_id,
             TaskEvent::Complete,
+        ));
+    } else if status == TaskStatus::Failed {
+        commands.trigger(MachineEvent::<TaskMachine>::new(
+            trigger.task_id,
+            TaskEvent::Fail,
         ));
     }
 }
