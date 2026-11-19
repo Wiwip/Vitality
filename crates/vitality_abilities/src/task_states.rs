@@ -163,10 +163,6 @@ impl MachineState<TaskMachine> for FailedState {
             task_id: ctx.task_id,
         });
     }
-
-    fn on_exit(&self, _ctx: &mut Access<TaskMachine>) {
-        debug!("[{}] on_exit: Failed Task", _ctx.task_id);
-    }
 }
 
 #[cfg(test)]

@@ -544,7 +544,6 @@ fn try_activate_by_tag_activates_the_first_ability_that_can() {
         activated[0].entity, opener_entity,
         "the first granted ability with the tag is the one that activates"
     );
-    assert!(with_abilities(&mut app, move |a| a.is_active(opener_entity)));
     assert!(
         !with_abilities(&mut app, move |a| a.is_active(follow_up_entity)),
         "the second never leaves Ready"

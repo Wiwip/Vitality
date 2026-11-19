@@ -1,7 +1,0 @@
-# Immolate: the declarative half of an ability. Costs, task scenes and observers stay Rust.
-# The keys are name, cooldown, tag, activation_owned, activation_requires, activation_blocked_by,
-# blocks and cancels.
-name = Immolate
-cooldown = 6.0
-tag = Fire
-activation_owned = Burning

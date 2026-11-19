@@ -1,7 +1,0 @@
-# Burn: a periodic damage effect. Every line is `key = value`, `#` starts a comment.
-# The keys are name, policy, tag, requires, blocked_by, cleanses and modifier.
-name = Burn
-policy = every 1.0 for 5.0
-tag = Burning
-modifier = Health sub 3 target
-modifier = Armor mul 0.5 target
