@@ -66,6 +66,8 @@ where
     type Property: GameValue;
 
     fn new<T: Num + AsPrimitive<Self::Property> + Copy>(value: T) -> Self;
+    /// the component as an entity that merely carries it starts out: base and current at the property's default
+    fn zeroed() -> Self;
     fn base_value(&self) -> Self::Property;
     fn base(&self) -> Self::Property;
     fn set_base_value(&mut self, value: Self::Property);
@@ -282,6 +284,13 @@ macro_rules! attribute_impl {
                 Self {
                     base_value: value.as_(),
                     current_value: value.as_(),
+                    folded_base: None,
+                }
+            }
+            fn zeroed() -> Self {
+                Self {
+                    base_value: Default::default(),
+                    current_value: Default::default(),
                     folded_base: None,
                 }
             }

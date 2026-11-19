@@ -1,7 +1,9 @@
 //! one exclusive system that folds each dirty entity's modifiers and walks its attributes in dependency order, actors in parallel; cross-actor reads settle in extra passes inside the same tick
 
 use crate::components::{AppliedEffects, Effect, EffectInactive, EffectTarget};
-use crate::modifier::{AttributeModifier, DependencyProxyOf, ModifierOf, OwnedModifiers};
+use crate::modifier::{
+    AttributeModifier, DependencyProxyOf, EffectSubject, ModifierOf, OwnedModifiers,
+};
 use crate::systems::MarkActorDirty;
 use crate::timing::EffectTicker;
 use crate::{EffectSource, EffectsRef, Stacks};
@@ -29,6 +31,7 @@ pub struct ModifierSlot {
     pub attribute: TypeId,
     pub op: ModOp,
     pub value: f64,
+    pub who: EffectSubject,
 }
 
 /// Re-evaluates a live modifier of one attribute type; the effects crate registers one per type.
@@ -204,10 +207,14 @@ impl ResolverState {
             .filter(|id| wanted.contains(*id))
             .map(|id| (id, ErasedCalc::default()))
             .collect();
-        let Ok(applied) = self.applied.get(world, entity) else {
-            return calcs;
-        };
-        for effect in applied.iter() {
+        // an effect entity is the write home of the modifiers that name it, so it folds its own children
+        let own = self.effects.get(world, entity).is_ok();
+        let applied = self.applied.get(world, entity).ok();
+        for effect in applied
+            .into_iter()
+            .flat_map(|applied| applied.iter())
+            .chain(own.then_some(entity))
+        {
             let Ok((modifiers, stacks, inactive, ticking)) = self.effects.get(world, effect) else {
                 continue;
             };
@@ -219,6 +226,10 @@ impl ResolverState {
                 let Ok(slot) = self.slots.get(world, modifier) else {
                     continue;
                 };
+                // an `Effect` modifier folds onto the effect entity, every other one onto the entity carrying the effect
+                if matches!(slot.who, EffectSubject::Effect) != own {
+                    continue;
+                }
                 let Some(id) = registry.id_of(slot.attribute) else {
                     continue;
                 };
@@ -385,7 +396,7 @@ impl ResolverState {
             let Ok((slot, of)) = self.slot_effects.get(world, modifier) else {
                 continue;
             };
-            let (attribute, old, effect) = (slot.attribute, slot.value, of.0);
+            let (attribute, old, who, effect) = (slot.attribute, slot.value, slot.who, of.0);
             let Some(recalc) = recalcs.get(&attribute) else {
                 continue;
             };
@@ -401,11 +412,16 @@ impl ResolverState {
             let Ok(target) = self.targets.get(world, effect) else {
                 continue;
             };
-            let target = target.0;
             let Some(id) = world.resource::<AttributeRegistry>().id_of(attribute) else {
                 continue;
             };
-            let mark = next.entry(target).or_default();
+            // the new value dirties the entity the fold lands on, which is the effect itself for an `Effect` modifier
+            let holder = if matches!(who, EffectSubject::Effect) {
+                effect
+            } else {
+                target.0
+            };
+            let mark = next.entry(holder).or_default();
             mark.dirty.insert(id);
             mark.regather.insert(id);
         }

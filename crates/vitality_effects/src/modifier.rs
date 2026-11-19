@@ -25,6 +25,7 @@ pub trait Modifier: Send + Sync {
     fn spawn_persistent_modifier(
         &self,
         targeting: &EffectTargeting,
+        effect: Entity,
         ctx: &EffectExprContext,
         type_bindings: &AttributeBindings,
         fires_on_a_timer: bool,
@@ -100,6 +101,7 @@ where
     fn spawn_persistent_modifier(
         &self,
         targeting: &EffectTargeting,
+        effect: Entity,
         ctx: &EffectExprContext,
         type_bindings: &AttributeBindings,
         fires_on_a_timer: bool,
@@ -107,8 +109,13 @@ where
     ) {
         let (value, mut deps) = record_dependencies(|| self.expr.eval(ctx));
 
-        // a ticking effect re-fires through the deferred write, which routes by `who`
-        let folds_into_holder = !fires_on_a_timer && !matches!(self.who, EffectSubject::Target);
+        // an Effect write lands on the effect entity, so that entity has to carry the attribute
+        if matches!(self.who, EffectSubject::Effect) {
+            commands.commands().entity(effect).insert(T::zeroed());
+        }
+
+        // a ticking effect re-fires through the deferred write, which routes by `who`; `Effect` folds onto the effect entity itself
+        let folds_into_holder = !fires_on_a_timer && matches!(self.who, EffectSubject::Source);
         let modifier = AttributeModifier::<T> {
             expr: self.expr.clone(),
             value,
@@ -158,6 +165,7 @@ where
             attribute: TypeId::of::<T>(),
             op: modifier.operation,
             value: modifier.value.as_(),
+            who: self.who,
         };
         if folds_into_holder {
             warn_once!(
@@ -309,7 +317,8 @@ fn apply_modifier<T: Attribute>(
     let (writer, other) = match trigger.modifier.who {
         EffectSubject::Target => (trigger.target_entity, trigger.source_entity),
         EffectSubject::Source => (trigger.source_entity, trigger.target_entity),
-        EffectSubject::Effect => {
+        // an instant effect spawns no entity, so its message carries the target where the effect entity goes
+        EffectSubject::Effect if trigger.effect_entity == trigger.target_entity => {
             warn_once!(
                 "Modifier {} names EffectSubject::Effect, which is no actor of this effect, so the \
                  write is dropped",
@@ -317,6 +326,7 @@ fn apply_modifier<T: Attribute>(
             );
             return Ok(false);
         }
+        EffectSubject::Effect => (trigger.effect_entity, trigger.target_entity),
     };
     // the actor the write lands on is the one worth naming first, but a gone bystander drops the
     // write too, because the expression reads it
@@ -326,8 +336,10 @@ fn apply_modifier<T: Attribute>(
     {
         let role = if gone == trigger.source_entity {
             "source"
-        } else {
+        } else if gone == trigger.target_entity {
             "target"
+        } else {
+            "effect"
         };
         return Err(format!(
             "{role} {gone} has no actor view by the time the write lands, and an instant write \
@@ -336,15 +348,9 @@ fn apply_modifier<T: Attribute>(
         )
         .into());
     }
-    let [source, target] = attributes.get_many([trigger.source_entity, trigger.target_entity])?;
-
-    let actor = if writer == trigger.source_entity {
-        source
-    } else {
-        target
-    };
-
-    let base_value = actor
+    // the base rides on the writer, which for an `Effect` write is the effect entity, neither actor
+    let base_value = attributes
+        .get(writer)?
         .get::<T>()
         .ok_or(format!(
             "Could not find attribute {} on entity {}.",
@@ -353,6 +359,7 @@ fn apply_modifier<T: Attribute>(
         ))?
         .base_value();
 
+    let [source, target] = attributes.get_many([trigger.source_entity, trigger.target_entity])?;
     let context = EffectExprContext {
         source_actor: source,
         target_actor: Some(target), // Needs to be fixed.

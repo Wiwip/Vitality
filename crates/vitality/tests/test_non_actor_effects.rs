@@ -79,6 +79,44 @@ fn a_base_write_on_a_non_actor_follows_in_one_tick() {
 }
 
 #[test]
+fn an_effect_subject_modifier_writes_the_effect_entity() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def().with::<Armor>(7.0));
+    let buff = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Armor>(5.0, ModOp::Add, EffectSubject::Effect)
+            .build(),
+    );
+
+    apply(&mut app, hero, hero, &buff);
+    ticks(&mut app, 1);
+
+    let effect_entity = with_effects(&mut app, move |effects| effects.on(hero))[0];
+
+    assert_eq!(
+        current::<Armor>(&app, effect_entity),
+        5.0,
+        "the effect entity carries the attribute the modifier names and folds its +5 into it"
+    );
+    assert_eq!(
+        base::<Armor>(&app, effect_entity),
+        0.0,
+        "a fold writes the current value here too, leaving the base it was given"
+    );
+    assert_eq!(
+        current::<Armor>(&app, hero),
+        7.0,
+        "the target keeps the Armor it came with: an Effect modifier no longer folds onto it"
+    );
+    assert_eq!(
+        base::<Armor>(&app, hero),
+        7.0,
+        "and nothing was written on the target at all"
+    );
+}
+
+#[test]
 fn a_clamp_on_a_non_actor_bounds_the_folded_value() {
     let mut app = app();
     let post = app

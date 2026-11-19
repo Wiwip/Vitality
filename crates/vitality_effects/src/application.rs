@@ -286,6 +286,7 @@ impl ApplyEffectEvent {
             let mut entity_commands = commands.spawn(ModifierOf(effect_entity));
             modifier.spawn_persistent_modifier(
                 &self.targeting,
+                effect_entity,
                 context,
                 &bindings,
                 effect.application_policy.is_periodic(),
