@@ -308,6 +308,7 @@ impl MachineState<AbilityMachine> for RecoveryState {
                 caster_ref,
                 target_ref: None,
                 ability_ref,
+                location: None,
             };
             Some(ability_def.cooldown.eval(&actor_context))
         })();

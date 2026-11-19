@@ -29,6 +29,11 @@ pub(crate) fn activate_ability(
         .get(&ability.handle.clone())
         .ok_or("No ability asset")?;
 
+    let location = match trigger.target {
+        TargetData::Location(point) => Some(point),
+        _ => None,
+    };
+
     let mut context = match trigger.target {
         TargetData::Target(target) => {
             let [caster_mut, target_mut, ability_mut] =
@@ -37,6 +42,7 @@ pub(crate) fn activate_ability(
                 caster_mut,
                 ability_mut,
                 target_mut: Some(target_mut),
+                location: None,
             }
         }
         TargetData::Location(_) | TargetData::SelfCast => {
@@ -46,6 +52,7 @@ pub(crate) fn activate_ability(
                 caster_mut,
                 ability_mut,
                 target_mut: None,
+                location,
             }
         }
     };

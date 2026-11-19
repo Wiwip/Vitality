@@ -1,15 +1,17 @@
 mod gameplay;
 
 use bevy::prelude::*;
+use express_it::nodes::Node;
 use express_it::plan::Plan;
 use gameplay::*;
 use hfsm_bevy::StateTimer;
 use vitality::ability::ability_state::AbilityMachine;
+use vitality::ability::context::AbilityExprContext;
 use vitality::ability::cooldown_remaining;
 use vitality::ability::tasks::{Tasks, wait_task};
 use vitality::ability::{AbilityBuilder, AbilityDef, TargetData};
 use vitality::actors::ActorBuilder;
-use vitality::context::Target;
+use vitality::context::{Caster, Target};
 use vitality::effect::conditions::HasComponent;
 use vitality::prelude::*;
 
@@ -516,6 +518,38 @@ fn a_plan_step_cannot_take_an_integer_base_below_zero() {
         base::<Rage>(&app, caster),
         0u32,
         "the step overshoots the base, so the base has to saturate at zero, not wrap"
+    );
+}
+
+#[test]
+fn a_plan_reads_the_ground_location() {
+    let mut app = app();
+    let drop_x = Node::<f32, AbilityExprSchema, _>::new(|ctx: &AbilityExprContext| {
+        ctx.location.map_or(0.0, |point| point.x)
+    });
+    let step = <Power as Attribute>::set::<Caster, AbilityExprSchema>(drop_x);
+    let meteor = ability(
+        &mut app,
+        AbilityBuilder::new()
+            .on_execute(Plan::new().step(step))
+            .build(),
+    );
+    let caster = caster_with(&mut app, &[&meteor]);
+
+    let handle = meteor.clone();
+    with_abilities(&mut app, move |a| {
+        a.try_activate(
+            caster,
+            &handle,
+            TargetData::Location(Vec3::new(12.5, 3.0, -4.0)),
+        )
+    });
+    ticks(&mut app, 2);
+
+    assert_eq!(
+        base::<Power>(&app, caster),
+        12.5,
+        "the plan reads the same ground point the On<ExecuteAbility> observer gets in trigger.target"
     );
 }
 

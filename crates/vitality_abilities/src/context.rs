@@ -1,4 +1,5 @@
 use crate::{AbilityMut, AbilityRef};
+use bevy::prelude::Vec3;
 use express_it::expr::{Context, ContextMut};
 use vitality_core::context::{ActorProvider, ActorProviderMut, Caster, Source, Target};
 
@@ -21,6 +22,7 @@ impl ContextMut for AbilityExprSchema {
             caster_ref: mut_item.caster_mut.as_readonly(),
             ability_ref: mut_item.ability_mut.as_readonly(),
             target_ref: mut_item.target_mut.as_ref().map(|v| v.as_readonly()),
+            location: mut_item.location,
         }
     }
 }
@@ -29,12 +31,16 @@ pub struct AbilityExprContext<'w, 's> {
     pub caster_ref: AbilityRef<'w, 's>,
     pub target_ref: Option<AbilityRef<'w, 's>>,
     pub ability_ref: AbilityRef<'w, 's>,
+    /// the ground point of a `TargetData::Location`; None for a self or entity target
+    pub location: Option<Vec3>,
 }
 
 pub struct AbilityExprContextMut<'w, 's> {
     pub caster_mut: AbilityMut<'w, 's>,
     pub target_mut: Option<AbilityMut<'w, 's>>,
     pub ability_mut: AbilityMut<'w, 's>,
+    /// the ground point of a `TargetData::Location`; None for a self or entity target
+    pub location: Option<Vec3>,
 }
 
 impl<'w, 's> ActorProvider<'w, 's, Caster> for AbilityExprContext<'w, 's> {

@@ -119,6 +119,7 @@ pub(crate) fn check_activation(
         caster_ref: *caster,
         ability_ref: *ability,
         target_ref: target,
+        location: None,
     };
     if !def.cost_condition.iter().all(|expr| expr.eval(&context)) {
         return Err(ActivationError::CannotAfford);
