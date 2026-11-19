@@ -47,14 +47,15 @@ const DAG_OBSERVERS_BASELINE: usize = 12;
 /// the per-attribute query states the collapsed nodes only install on first use, so an at-rest
 /// counter cannot see them. The periodic applier is the odd one: its per-attribute state appears for
 /// an attribute that has a fire, so a world where nothing ticks carries three resources per
-/// attribute plus the once-per-app `PeriodicPass` the collapsed node installs.
-const DAG_TICK_RESOURCES_BASELINE: usize = 67;
+/// attribute plus the once-per-app `PeriodicPass` the collapsed node installs and the `DefNames`
+/// a def file resolves its attribute and tag names through (vitality_effects/src/def_file.rs).
+const DAG_TICK_RESOURCES_BASELINE: usize = 68;
 const DAG_TICK_RESOURCES_PER_ATTRIBUTE: usize = 3;
 
 /// exact, so a component the DAG branch starts registering per attribute is red here
-const DAG_TICK_COMPONENTS_BASELINE: usize = 142;
+const DAG_TICK_COMPONENTS_BASELINE: usize = 143;
 /// the same world counted without `debug-overlay`, one component lighter
-const DAG_TICK_COMPONENTS_BASELINE_NO_OVERLAY: usize = 141;
+const DAG_TICK_COMPONENTS_BASELINE_NO_OVERLAY: usize = 142;
 const DAG_TICK_COMPONENTS_PER_ATTRIBUTE: usize = 8;
 
 fn spec(attributes: usize) -> WorldSpec {

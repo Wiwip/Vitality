@@ -4,6 +4,7 @@ mod components;
 pub mod condition;
 pub mod conditions;
 pub mod context;
+pub mod def_file;
 pub mod definition;
 mod effects_param;
 mod global_effect;
@@ -38,6 +39,7 @@ pub use application::*;
 pub use builder::EffectBuilder;
 pub use components::*;
 pub use condition::ConditionPlugin;
+pub use def_file::{DefFileError, DefNames, effect_def_from_file, effect_def_from_str};
 pub use effects_param::Effects;
 pub use global_effect::*;
 pub use lifecycle::{
@@ -66,6 +68,7 @@ impl Plugin for EffectsPlugin {
             return;
         }
         app.insert_resource(EffectRegistry::default())
+            .init_resource::<DefNames>()
             .init_asset::<EffectDef>()
             .register_type::<AppliedEffects>()
             .register_type::<EffectTarget>()
@@ -119,6 +122,9 @@ impl Plugin for EffectsPlugin {
 
 /// registers one attribute's effect-side state and adds no system: the collapsed nodes in `EffectsPlugin::build` cover every attribute. pair with `vitality_core::init_core_attribute`
 pub fn init_effect_attribute<T: Attribute>(app: &mut App) {
+    app.world_mut()
+        .get_resource_or_init::<DefNames>()
+        .attribute::<T>();
     app.register_type::<AttributeModifier<T>>();
     app.add_message::<ApplyAttributeModifierMessage<T>>();
 

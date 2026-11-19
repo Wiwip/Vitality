@@ -4,6 +4,7 @@ mod command;
 mod components;
 pub mod condition;
 pub mod context;
+pub mod def_file;
 pub mod definition;
 pub mod lifecycle;
 pub mod registry;
@@ -29,6 +30,7 @@ pub mod prelude {
 
 pub use builder::AbilityBuilder;
 pub use components::*;
+pub use def_file::{DefFileError, DefNames, ability_def_from_file, ability_def_from_str};
 pub use definition::AbilityDef;
 // the cooldown is a StateTimer entry, so callers outside this crate need the name to read it
 pub use hfsm_bevy::StateTimer;
