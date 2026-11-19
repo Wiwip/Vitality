@@ -1,10 +1,11 @@
-//! one exclusive system that folds each dirty actor's modifiers and walks its attributes in dependency order, actors in parallel; cross-actor reads settle in extra passes inside the same tick
+//! one exclusive system that folds each dirty entity's modifiers and walks its attributes in dependency order, actors in parallel; cross-actor reads settle in extra passes inside the same tick
 
 use crate::components::{AppliedEffects, Effect, EffectInactive, EffectTarget};
 use crate::modifier::{AttributeModifier, DependencyProxyOf, ModifierOf, OwnedModifiers};
 use crate::systems::MarkActorDirty;
 use crate::timing::EffectTicker;
 use crate::{EffectSource, EffectsRef, Stacks};
+use bevy::ecs::component::ComponentId;
 use bevy::ecs::entity::{EntityHashMap, EntityHashSet};
 use bevy::ecs::world::FilteredEntityMut;
 use bevy::platform::collections::HashMap;
@@ -15,7 +16,8 @@ use vitality_core::attributes::{Attribute, ManageAttributes};
 use vitality_core::modifier::ModOp;
 use vitality_core::num_traits::AsPrimitive;
 use vitality_core::registry::{
-    AttrId, AttributeRegistry, ErasedCalc, Mark, ModifierTable, ResolveQueue, add_clamp_edges,
+    AttrId, AttrSet, AttributeRegistry, ErasedCalc, Mark, ModifierTable, ResolveQueue,
+    add_clamp_edges,
 };
 
 /// Passes per tick before leftover cross-actor work waits for the next tick.
@@ -96,6 +98,23 @@ type ActorItem = (
 );
 type ActorQuery = QueryState<ActorItem, With<ManageAttributes>>;
 
+/// an entity carrying attributes with no `ManageAttributes`, and so no [`ModifierTable`] to hold a fold
+type CarrierItem = (Entity, FilteredEntityMut<'static, 'static>);
+type CarrierQuery = QueryState<CarrierItem, Without<ManageAttributes>>;
+
+/// one attribute's components, in the order the erased view wants them granted
+type AttrIds = (ComponentId, ComponentId, ComponentId, ComponentId);
+
+/// hands the erased view one access per component of every registered attribute
+fn grant_attributes(builder: &mut QueryBuilder<'_, ()>, ids: &[AttrIds]) {
+    for &(component, dependents, clamp, bounds) in ids {
+        builder.mut_id(component);
+        builder.ref_id(dependents);
+        builder.mut_id(clamp);
+        builder.ref_id(bounds);
+    }
+}
+
 #[derive(Default)]
 struct Output {
     changes: Vec<(Entity, AttrId, f64, f64)>,
@@ -117,6 +136,7 @@ type EffectFlags = QueryState<
 
 pub(crate) struct ResolverState {
     actors: Option<ActorQuery>,
+    carriers: Option<CarrierQuery>,
     built_for: usize,
     applied: QueryState<&'static AppliedEffects>,
     effects: EffectFlags,
@@ -131,6 +151,7 @@ impl FromWorld for ResolverState {
     fn from_world(world: &mut World) -> Self {
         Self {
             actors: None,
+            carriers: None,
             built_for: 0,
             applied: world.query(),
             effects: world.query_filtered(),
@@ -146,8 +167,8 @@ impl FromWorld for ResolverState {
 impl ResolverState {
     fn actor_query(&mut self, world: &mut World) -> &mut ActorQuery {
         let registry = world.resource::<AttributeRegistry>();
-        if self.actors.is_none() || self.built_for != registry.len() {
-            let ids: Vec<_> = registry
+        if self.actors.is_none() || self.carriers.is_none() || self.built_for != registry.len() {
+            let ids: Vec<AttrIds> = registry
                 .infos()
                 .iter()
                 .map(|info| {
@@ -157,19 +178,56 @@ impl ResolverState {
                 .collect();
             let len = registry.len();
             let mut builder = QueryBuilder::<ActorItem, With<ManageAttributes>>::new(world);
-            builder.optional(|builder| {
-                for &(component, dependents, clamp, bounds) in &ids {
-                    builder.mut_id(component);
-                    builder.ref_id(dependents);
-                    builder.mut_id(clamp);
-                    builder.ref_id(bounds);
-                }
-            });
+            builder.optional(|builder| grant_attributes(builder, &ids));
             // clamp expressions read any attribute of the actor
             self.actors = Some(builder.build());
+            let mut builder = QueryBuilder::<CarrierItem, Without<ManageAttributes>>::new(world);
+            builder.optional(|builder| grant_attributes(builder, &ids));
+            self.carriers = Some(builder.build());
             self.built_for = len;
         }
         self.actors.as_mut().expect("built above")
+    }
+
+    /// The fold of every attribute in `wanted` that `entity`'s own effects carry.
+    fn gather(
+        &mut self,
+        world: &World,
+        registry: &AttributeRegistry,
+        entity: Entity,
+        wanted: AttrSet,
+    ) -> Vec<(AttrId, ErasedCalc)> {
+        let mut calcs: Vec<(AttrId, ErasedCalc)> = registry
+            .order()
+            .iter()
+            .copied()
+            .filter(|id| wanted.contains(*id))
+            .map(|id| (id, ErasedCalc::default()))
+            .collect();
+        let Ok(applied) = self.applied.get(world, entity) else {
+            return calcs;
+        };
+        for effect in applied.iter() {
+            let Ok((modifiers, stacks, inactive, ticking)) = self.effects.get(world, effect) else {
+                continue;
+            };
+            if inactive || ticking {
+                continue;
+            }
+            let stacks = stacks.map_or(1, |stacks| stacks.current_value());
+            for modifier in modifiers.iter() {
+                let Ok(slot) = self.slots.get(world, modifier) else {
+                    continue;
+                };
+                let Some(id) = registry.id_of(slot.attribute) else {
+                    continue;
+                };
+                if let Some((_, calc)) = calcs.iter_mut().find(|(a, _)| *a == id) {
+                    calc.combine(&ErasedCalc::from_op(slot.op, slot.value, stacks));
+                }
+            }
+        }
+        calcs
     }
 
     fn regather(&mut self, world: &mut World, marks: &EntityHashMap<Mark>) {
@@ -180,37 +238,7 @@ impl ResolverState {
                 if mark.regather.is_empty() {
                     continue;
                 }
-                let mut calcs: Vec<(AttrId, ErasedCalc)> = Vec::new();
-                for id in registry.order() {
-                    if mark.regather.contains(*id) {
-                        calcs.push((*id, ErasedCalc::default()));
-                    }
-                }
-                if let Ok(applied) = self.applied.get(world, actor) {
-                    for effect in applied.iter() {
-                        let Ok((modifiers, stacks, inactive, ticking)) =
-                            self.effects.get(world, effect)
-                        else {
-                            continue;
-                        };
-                        if inactive || ticking {
-                            continue;
-                        }
-                        let stacks = stacks.map_or(1, |stacks| stacks.current_value());
-                        for modifier in modifiers.iter() {
-                            let Ok(slot) = self.slots.get(world, modifier) else {
-                                continue;
-                            };
-                            let Some(id) = registry.id_of(slot.attribute) else {
-                                continue;
-                            };
-                            if let Some((_, calc)) = calcs.iter_mut().find(|(a, _)| *a == id) {
-                                calc.combine(&ErasedCalc::from_op(slot.op, slot.value, stacks));
-                            }
-                        }
-                    }
-                }
-                folded.push((actor, calcs));
+                folded.push((actor, self.gather(world, registry, actor, mark.regather)));
             }
         }
         let query = self.actor_query(world);
@@ -271,6 +299,70 @@ impl ResolverState {
                 }
             }
         });
+    }
+
+    /// The same queue for an entity that carries attributes but no `ManageAttributes`: with no
+    /// [`ModifierTable`] to hold it, the fold is gathered and written in one step, and an attribute
+    /// the entity does not have resolves to nothing.
+    fn resolve_carriers(&mut self, world: &mut World, marks: &EntityHashMap<Mark>) {
+        let marked: Vec<(Entity, Mark)> = marks
+            .iter()
+            .filter(|(_, mark)| !mark.dirty.is_empty())
+            .map(|(entity, mark)| (*entity, *mark))
+            .filter(|(entity, _)| world.get::<ManageAttributes>(*entity).is_none())
+            .collect();
+        if marked.is_empty() {
+            return;
+        }
+
+        let registry = world.resource::<AttributeRegistry>();
+        let order: Vec<AttrId> = registry.order().to_vec();
+        let readers: Vec<Vec<AttrId>> = (0..registry.len())
+            .map(|i| registry.readers(AttrId(i as u16)).to_vec())
+            .collect();
+        let vtables: Vec<_> = registry
+            .infos()
+            .iter()
+            .map(|info| (info.resolve, info.ids, info.dependents_of))
+            .collect();
+        // every attribute, because a value that moves can pull another one of the same entity into the walk
+        let everything = AttrSet::all(registry.len());
+        let mut folded = Vec::with_capacity(marked.len());
+        for (entity, mark) in marked {
+            let mut calcs = vec![ErasedCalc::default(); registry.len()];
+            for (id, calc) in self.gather(world, registry, entity, everything) {
+                calcs[id.index()] = calc;
+            }
+            folded.push((entity, mark, calcs));
+        }
+
+        let output = &self.output;
+        let query = self.carriers.as_mut().expect("built by actor_query");
+        for (entity, mark, calcs) in folded {
+            let Ok((_, mut view)) = query.get_mut(world, entity) else {
+                continue;
+            };
+            let mut todo = mark.dirty;
+            let mut out = output.borrow_local_mut();
+            for &id in &order {
+                if !todo.contains(id) {
+                    continue;
+                }
+                let (resolve, ids, dependents_of) = vtables[id.index()];
+                let Some(resolved) =
+                    resolve(&mut view, ids, &calcs[id.index()], &mut out.clamp_reads)
+                else {
+                    continue;
+                };
+                if let Some((old, new)) = resolved.moved {
+                    out.changes.push((entity, id, old, new));
+                    dependents_of(&view.as_readonly(), ids, &mut out.readers);
+                    for &reader in &readers[id.index()] {
+                        todo.insert(reader);
+                    }
+                }
+            }
+        }
     }
 
     fn recalc(&mut self, world: &mut World, readers: Vec<Entity>) -> EntityHashMap<Mark> {
@@ -346,6 +438,7 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
         state.actor_query(world);
         state.regather(world, &marks);
         state.resolve(world, &marks);
+        state.resolve_carriers(world, &marks);
 
         let mut readers = Vec::new();
         for out in state.output.iter_mut() {
