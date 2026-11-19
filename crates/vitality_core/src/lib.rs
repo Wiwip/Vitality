@@ -29,10 +29,10 @@ pub use express_it;
 pub use num_traits;
 
 pub mod prelude {
-    pub use crate::attribute;
     pub use crate::attributes::{AccessAttribute, Attribute, ReflectAccessAttribute, Setter};
     pub use crate::context::ActorExprSchema;
     pub use crate::modifier::ModOp;
+    pub use crate::{attribute, attribute_set};
 
     pub use express_it::expr::Expr;
 

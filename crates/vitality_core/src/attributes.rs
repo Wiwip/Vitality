@@ -344,6 +344,32 @@ macro_rules! attribute {
 }
 
 #[macro_export]
+macro_rules! attribute_set {
+    ( $BundleName:ident = { $( $Attr:ident : $Ty:ty ),* $(,)? } ) => {
+        $( $crate::attribute_impl!($Attr, $Ty); )*
+
+        // the fields and `new`'s params keep the caller's case: macro_rules cannot convert it
+        #[allow(non_snake_case)]
+        #[derive(bevy::prelude::Bundle)]
+        pub struct $BundleName {
+            $( pub $Attr: $Attr, )*
+        }
+
+        #[allow(non_snake_case)]
+        impl $BundleName {
+            pub fn new($( $Attr: $Ty ),*) -> Self {
+                Self {
+                    $( $Attr: <$Attr as $crate::attributes::Attribute>::new($Attr), )*
+                }
+            }
+        }
+    };
+    ( $( $Attr:ident : $Ty:ty ),* $(,)? ) => {
+        $crate::attribute_set!(SetBundle = { $($Attr: $Ty),* });
+    };
+}
+
+#[macro_export]
 macro_rules! tag {
     ( $StructName:ident ) => {
         #[derive(
