@@ -125,7 +125,7 @@ impl Plugin for AttributesPlugin {
             AbilityPlugin,
             ConditionPlugin,
             EffectsPlugin,
-            GlobalEffectPlugin,
+            GlobalEffectPlugin::default(),
         ))
         .init_asset::<ActorDef>()
         .add_plugins(init_attribute::<Stacks>);

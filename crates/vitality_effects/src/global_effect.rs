@@ -2,6 +2,7 @@ use crate::definition::EffectDef;
 use crate::graph::NodeType;
 use crate::{ApplyEffectEvent, EffectTargeting};
 use bevy::prelude::*;
+use core::marker::PhantomData;
 use vitality_core::attributes::ManageAttributes;
 
 #[derive(Resource, Deref, DerefMut, Default)]
@@ -13,10 +14,27 @@ pub struct GlobalActor;
 #[derive(Component, Clone, Copy)]
 pub struct GlobalEffect;
 
-/// applies every [`GlobalEffects`] handle to each actor as it spawns
-pub struct GlobalEffectPlugin;
+/// applies every [`GlobalEffects`] handle to each entity as it gains the marker `M`; the default
+/// [`ManageAttributes`] keeps today's actor-only reach
+pub struct GlobalEffectPlugin<M = ManageAttributes>(PhantomData<M>);
 
-impl Plugin for GlobalEffectPlugin {
+impl<M: Component> GlobalEffectPlugin<M> {
+    pub fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+
+// Default on the default marker only, so a bare `GlobalEffectPlugin::default()` is not left to inference
+impl Default for GlobalEffectPlugin<ManageAttributes> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+// one global actor and one handle list serve every marker instance, so they are installed once
+struct SharedInstall;
+
+impl<M: Component> Plugin for GlobalEffectPlugin<M> {
     fn is_unique(&self) -> bool {
         false
     }
@@ -25,10 +43,12 @@ impl Plugin for GlobalEffectPlugin {
         if !vitality_core::first_install::<Self>(app) {
             return;
         }
-        app.add_systems(PreStartup, spawn_global_actor);
-        app.insert_resource(GlobalEffects::default());
+        if vitality_core::first_install::<SharedInstall>(app) {
+            app.add_systems(PreStartup, spawn_global_actor);
+            app.insert_resource(GlobalEffects::default());
+        }
 
-        app.add_observer(observe_spawned_actor);
+        app.add_observer(observe_spawned_marker::<M>);
     }
 }
 
@@ -41,8 +61,8 @@ fn spawn_global_actor(mut commands: Commands) {
     ));
 }
 
-fn observe_spawned_actor(
-    trigger: On<Add<ManageAttributes>>,
+fn observe_spawned_marker<M: Component>(
+    trigger: On<Add<M>>,
     global_actor: Query<Entity, With<GlobalActor>>,
     global_effects: Res<GlobalEffects>,
     mut commands: Commands,

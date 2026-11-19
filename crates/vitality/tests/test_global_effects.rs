@@ -7,10 +7,11 @@ use gameplay::*;
 use vitality::ability::AbilityBuilder;
 use vitality::ability::AbilityDef;
 use vitality::actors::{Actor, ActorBuilder};
+use vitality::attributes::ManageAttributes;
 use vitality::context::Vitality;
 use vitality::effect::conditions::IsAttributeWithinBounds;
 use vitality::effect::modifier::{EffectSubject, ModOp};
-use vitality::effect::{Effect, EffectInactive};
+use vitality::effect::{Effect, EffectInactive, GlobalEffectPlugin};
 use vitality::prelude::*;
 use vitality::registry::ability_registry::AbilityToken;
 use vitality::registry::effect_registry::EffectToken;
@@ -76,6 +77,42 @@ fn a_global_effect_lands_on_actors_spawned_after_it_is_added() {
         0,
         "the global actor's own Add<ManageAttributes> fired in PreStartup, while the registry \
          was still empty, so it gets nothing"
+    );
+}
+
+#[derive(Component, Copy, Clone)]
+struct Prop;
+
+#[test]
+fn a_global_effect_reaches_an_entity_carrying_a_chosen_marker_tag() {
+    let mut app = app();
+    app.add_plugins(GlobalEffectPlugin::<Prop>::new());
+    let blessing = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Health>(10.0, ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+    with_vitality(&mut app, move |vitality| {
+        vitality.add_global_effect(blessing);
+    });
+
+    let post = app.world_mut().spawn((Prop, Health::new(100.0))).id();
+    ticks(&mut app, 2);
+
+    assert_eq!(
+        with_effects(&mut app, move |effects| effects.on(post)).len(),
+        1,
+        "the marker tag is what pulls the global effect onto the entity"
+    );
+    assert_eq!(
+        current::<Health>(&app, post),
+        110.0,
+        "the global bonus is live on the marker carrier"
+    );
+    assert!(
+        !has::<ManageAttributes>(&app, post),
+        "it took no actor marker to get one"
     );
 }
 
