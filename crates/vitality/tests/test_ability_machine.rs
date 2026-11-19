@@ -343,8 +343,7 @@ fn complete_all_ends_the_ability_on_the_last_task_completion() {
     assert!(cooldown_armed(&app, ability));
 }
 
-/// a task whose `activate` reports `Failed` leaves `Running` for `TaskState::Failed`, which fires
-/// `TaskFailed` so listeners pick the end/retry/ignore policy
+/// `TaskFailed` is where listeners pick the end/retry/ignore policy
 #[test]
 fn a_failing_task_reaches_failed_and_fires_task_failed() {
     let mut app = test_app(|| bsn! { Tasks [ @task::<FailingTask>(NoData) ] });

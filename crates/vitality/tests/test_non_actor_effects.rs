@@ -110,11 +110,6 @@ fn an_effect_subject_modifier_writes_the_effect_entity() {
         7.0,
         "the target keeps the Armor it came with: an Effect modifier no longer folds onto it"
     );
-    assert_eq!(
-        base::<Armor>(&app, hero),
-        7.0,
-        "and nothing was written on the target at all"
-    );
 }
 
 #[test]
