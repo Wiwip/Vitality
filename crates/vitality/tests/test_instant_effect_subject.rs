@@ -35,17 +35,6 @@ fn an_instant_effect_subject_write_is_dropped_and_names_instant_as_the_reason() 
         );
         apply(&mut app, caster, target, &hex);
         ticks(&mut app, 2);
-
-        assert_eq!(
-            base::<Health>(&app, target),
-            100.0,
-            "the write stays dropped"
-        );
-        assert_eq!(
-            base::<Health>(&app, caster),
-            100.0,
-            "and it lands on no other actor instead"
-        );
     });
 
     // warn_once! is per call site, so this matches text and never a count

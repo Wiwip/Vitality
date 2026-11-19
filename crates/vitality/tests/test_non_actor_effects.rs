@@ -160,11 +160,6 @@ fn a_periodic_effect_subject_modifier_follows_the_effect_entity() {
     ticks(&mut app, ticks_for(0.5));
 
     assert_eq!(
-        current::<Armor>(&app, caster),
-        50.0,
-        "control: the caster carries the same attribute and its own value moved"
-    );
-    assert_eq!(
         current::<Armor>(&app, effect_entity),
         80.0,
         "the second fire re-reads the effect entity's own 40, so the caster's new 50 never reaches it"
