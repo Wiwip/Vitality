@@ -70,22 +70,6 @@ impl<T: Attribute> AttributeCalculator<T> {
         T::Property::from_f64(clamped_value).unwrap_or_default()
     }
 
-    pub fn combine(self, other: AttributeCalculator<T>) -> AttributeCalculator<T> {
-        let set = self.set.or(other.set);
-        let additive = self.additive + other.additive;
-        let subtractive = self.subtractive + other.subtractive;
-        let increase = self.increase + other.increase;
-        let multiplier = self.multiplier * other.multiplier;
-
-        AttributeCalculator::<T> {
-            set,
-            additive,
-            subtractive,
-            increase,
-            multiplier,
-        }
-    }
-
     pub fn from_parts(
         set: Option<T::Property>,
         additive: T::Property,
