@@ -39,3 +39,41 @@ fn an_effect_folds_into_an_entity_that_is_not_an_actor() {
         "the entity's own attribute takes the +10 the same way an actor's would"
     );
 }
+
+#[test]
+fn a_base_write_on_a_non_actor_follows_in_one_tick() {
+    let mut app = app();
+    let post = app.world_mut().spawn(Health::new(100.0)).id();
+    let hero = spawn(&mut app, hero_def());
+    let blessing = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Health>(10.0, ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+    apply(&mut app, post, post, &blessing);
+    apply(&mut app, hero, hero, &blessing);
+    ticks(&mut app, 1);
+
+    with_vitality(&mut app, move |v| {
+        v.set_base::<Health>(post, 200.0);
+        v.set_base::<Health>(hero, 200.0);
+    });
+    ticks(&mut app, 1);
+
+    assert_eq!(
+        base::<Health>(&app, post),
+        200.0,
+        "the write moved the base"
+    );
+    assert_eq!(
+        current::<Health>(&app, post),
+        210.0,
+        "the carrier's current value follows the new base, so the write is not dropped"
+    );
+    assert_eq!(
+        current::<Health>(&app, hero),
+        210.0,
+        "control: the actor leg follows the same way it did before"
+    );
+}

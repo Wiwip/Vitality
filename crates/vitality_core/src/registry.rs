@@ -107,7 +107,7 @@ pub struct AttrInfo {
     pub resolve: ResolveFn,
     pub dependents_of: fn(&FilteredEntityRef, AttrComponents, &mut Vec<Entity>),
     pub notify: fn(&mut Commands, Entity, f64, f64),
-    /// Actors of this attribute whose base moved since the last scan, for [`scan_base_writes`].
+    /// Entities of this attribute whose base moved since the last scan, for [`scan_base_writes`].
     pub base_write_scan: fn(&mut World, AttrId, &mut Vec<(Entity, AttrId)>),
 }
 
@@ -540,23 +540,22 @@ impl ModifierTable {
     }
 }
 
-type BaseScanQuery<T> =
-    QueryState<(Entity, &'static T), (Changed<T>, With<crate::attributes::ManageAttributes>)>;
+type BaseScanQuery<T> = QueryState<(Entity, &'static T), Changed<T>>;
 
 /// kept as a resource so the collapsed scan pays nothing per attribute beyond building its query once
 #[derive(Resource)]
 struct BaseScanState<T: Attribute> {
-    actors: BaseScanQuery<T>,
+    carriers: BaseScanQuery<T>,
 }
 
-/// marks `T` dirty on actors whose base moved since the last scan; a write that leaves the base where it was, including the resolver's own current-value write, costs a compare
+/// marks `T` dirty on any entity that carries it whose base moved since the last scan, actor or not; a write that leaves the base where it was, including the resolver's own current-value write, costs a compare
 fn base_write_scan<T: Attribute>(world: &mut World, id: AttrId, out: &mut Vec<(Entity, AttrId)>) {
     if !world.contains_resource::<BaseScanState<T>>() {
-        let actors = world.query_filtered();
-        world.insert_resource(BaseScanState::<T> { actors });
+        let carriers = world.query_filtered();
+        world.insert_resource(BaseScanState::<T> { carriers });
     }
     world.resource_scope(|world, mut state: Mut<BaseScanState<T>>| {
-        for (entity, attribute) in state.actors.iter(world) {
+        for (entity, attribute) in state.carriers.iter(world) {
             if attribute.folded_base() != Some(attribute.base_value()) {
                 out.push((entity, id));
             }
