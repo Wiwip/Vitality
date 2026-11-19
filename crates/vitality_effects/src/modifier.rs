@@ -114,7 +114,7 @@ where
             commands.commands().entity(effect).insert(T::zeroed());
         }
 
-        // a ticking effect re-fires through the deferred write, which routes by `who`; `Effect` folds onto the effect entity itself
+        // a ticking effect re-fires through the deferred write, which routes by `who`
         let folds_into_holder = !fires_on_a_timer && matches!(self.who, EffectSubject::Source);
         let modifier = AttributeModifier::<T> {
             expr: self.expr.clone(),
