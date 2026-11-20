@@ -9,8 +9,12 @@ use std::path::PathBuf;
 use std::time::Duration;
 use vitality::ability::ability_state::{AbilityMachine, AbilityState};
 use vitality::ability::{AbilityDef, TargetData, ability_def_from_file};
+use vitality::attributes::ReflectAccessAttribute;
 use vitality::effect::modifier::{AttributeModifier, EffectSubject, ModOp, OwnedModifiers};
-use vitality::effect::{DefNames, EffectApplicationPolicy, effect_def_from_file};
+use vitality::effect::{
+    DefNames, EffectApplicationPolicy, effect_def_from_file, effect_def_from_str,
+};
+use vitality::{attribute, init_attribute};
 
 /// one scratch dir per test, so a parallel run cannot read another test's file
 fn scratch(test: &str) -> PathBuf {
@@ -103,6 +107,45 @@ fn an_effect_file_off_disk_loads_the_def_it_describes() {
         102.0,
         "one tick of the file's own number"
     );
+}
+
+attribute!(Hp, u32);
+
+#[test]
+fn a_file_cannot_write_a_number_the_integer_attribute_it_names_does_not_hold() {
+    let mut names = names();
+    names.attribute::<Hp>();
+
+    let Err(error) = effect_def_from_str("modifier = Hp add 0.5 target", &names) else {
+        panic!("a half narrowed to 0u32 is not the number that line wrote");
+    };
+    let error = error.to_string();
+    assert!(
+        error.contains("line 1") && error.contains("Hp"),
+        "the refusal has to name the line and the attribute it narrowed on, got: {error}"
+    );
+
+    let Err(error) = effect_def_from_str("modifier = Hp add 4294967296 target", &names) else {
+        panic!("one past u32::MAX is refused the way it always was");
+    };
+    let error = error.to_string();
+    assert!(error.contains("line 1") && error.contains("Hp"), "{error}");
+
+    // the whole number on the u32 and the half on the f32 still land where they did
+    let mut app = app();
+    app.add_plugins(init_attribute::<Hp>);
+    let hero = spawn(&mut app, hero_def().with::<Hp>(10u32));
+    let def = effect_def_from_str(
+        "name = Drill\nmodifier = Hp add 2 target\nmodifier = Health add 0.5 target",
+        &names,
+    )
+    .expect("2 is a u32 and 0.5 is an f32");
+    assert_eq!(def.modifiers.len(), 2);
+    let handle = effect(&mut app, def);
+    apply(&mut app, hero, hero, &handle);
+    ticks(&mut app, 1);
+    assert_eq!(current::<Hp>(&app, hero), 12u32);
+    assert_eq!(current::<Health>(&app, hero), 100.5);
 }
 
 #[test]

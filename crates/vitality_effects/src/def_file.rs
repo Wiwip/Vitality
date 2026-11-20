@@ -21,7 +21,7 @@ use express_it::nodes::LiteralNode;
 use smol_str::SmolStr;
 use std::sync::Arc;
 use vitality_core::attributes::Attribute;
-use vitality_core::num_traits::FromPrimitive;
+use vitality_core::num_traits::{AsPrimitive, FromPrimitive};
 use vitality_core::tags::TagSpec;
 use vitality_core::util::pretty_type_name;
 
@@ -304,15 +304,28 @@ fn modifier(names: &DefNames, line: usize, spec: &str) -> Result<Box<dyn Modifie
 }
 
 fn new_modifier<T: Attribute>(
-    value: f64,
+    written: f64,
     op: ModOp,
     who: EffectSubject,
 ) -> Option<Box<dyn Modifier>> {
-    let value = T::Property::from_f64(value)?;
+    let value = T::Property::from_f64(written)?;
+    let exact: f64 = value.as_();
+    // from_f64 truncates, so `Hp add 0.5` built a modifier worth 0u32; a float only sheds mantissa
+    if exact != written && !holds_fractions::<T::Property>() {
+        return None;
+    }
     Some(Box::new(AttributeModifier::<T>::new(
         value,
         op,
         who,
         Arc::new(LiteralNode { value }),
     )))
+}
+
+/// how a file tells an integer property from a float one: an integer narrows 0.5 away, a float keeps it
+fn holds_fractions<P: FromPrimitive + AsPrimitive<f64>>() -> bool {
+    P::from_f64(0.5).is_some_and(|half| {
+        let half: f64 = half.as_();
+        half == 0.5
+    })
 }
