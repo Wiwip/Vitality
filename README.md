@@ -80,6 +80,20 @@ Attributes are components: read them with `Query<&Health>`, react with `Changed<
 
 The attribute pipeline (the `EffectsSet` chain) runs on `FixedUpdate`, so a headless app needs a `TimeUpdateStrategy` that advances time; ability timers stay on the frame clock — `handles_wait_task_timers` runs in `PreUpdate`, and the cooldown is a `StateTimer` entry you read with `cooldown_remaining`.
 
+## Def files
+
+The declarative half of an effect or an ability: `effect_def_from_file` and `ability_def_from_file` read a def off disk, `effect_def_from_str` and `ability_def_from_str` the same text out of a bundle. Every line is `key = value`, `#` starts a comment and runs to the end of its line, and a key may repeat where the def holds a list.
+
+```text
+name = Regeneration
+policy = every 1.0 for 12.0
+modifier = Health add 2 target
+```
+
+An effect file holds `name`, `policy`, `tag`, `requires`, `blocked_by`, `cleanses` and `modifier`, and a file with no `policy` is a permanent effect. `policy` is `instant`, `permanent`, `for <seconds>`, `every <seconds>` or `every <seconds> for <seconds>`; a `modifier` is `<attribute> <op> <value> <who>`, the op and the who spelled as `ModOp` and `EffectSubject` name themselves. An ability file holds `name`, `cooldown`, `tag`, `activation_owned`, `activation_requires`, `activation_blocked_by`, `blocks` and `cancels`.
+
+A file can only name what the app registered. `DefNames` holds the attributes and tags: `init_attribute::<T>()` puts the attribute in it, a tag you put there yourself with `DefNames::tag::<T>()`, and both are spelled as Rust spells them — the short type name — so anything else fails naming its line: ``line 2: no tag `Frost`: a def file only names tags the app put in DefNames``. `crates/vitality/tests/test_def_file_load.rs` pins the loads and those errors. Costs, expressions, clamps, task scenes and observers stay Rust: an ability's cost, a clamp or a `Power::src()` read cannot come out of a file.
+
 ## Wiring your own plugin
 
 The contract, with what each break looks like from inside an app and the test that pins it, is the `vitality` crate-level doc:
