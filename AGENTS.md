@@ -38,7 +38,10 @@ protected = crates/*/Cargo.toml
 protected = scripts/**
 ```
 
-`scripts/gate.sh` runs `cargo test --offline --locked --workspace --lib --tests` and then `--doc` per package in the repo. Cargo.toml and
+`scripts/gate.sh` runs `cargo test --offline --locked --workspace --lib --tests`, then
+`cargo clippy --offline --locked --workspace --all-targets -- -D warnings`, then
+`cargo check --offline --locked -p vitality --examples --features examples`, and then `--doc` per
+package in the repo. Cargo.toml and
 Cargo.lock are read-only in the sandbox, but `--locked` needs no writes, and sccache is shared, so no mirror or
 second `CARGO_HOME` is needed. Never write a wrapper script to get around the read-only mounts: if
 `--locked` fails, the lockfile is out of date; report it and stop.
