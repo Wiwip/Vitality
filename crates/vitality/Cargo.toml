@@ -52,7 +52,3 @@ required-features = ["examples"]
 [[example]]
 name = "abilities"
 required-features = ["examples"]
-
-[[example]]
-name = "plan"
-required-features = ["examples"]
