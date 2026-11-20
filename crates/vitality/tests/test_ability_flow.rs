@@ -270,6 +270,67 @@ fn a_stunned_caster_cannot_activate() {
 }
 
 #[test]
+fn a_second_activation_while_it_runs_reports_already_active() {
+    let mut app = app();
+    let hold = ability(
+        &mut app,
+        AbilityBuilder::new()
+            .with_cost::<Mana>(10.0)
+            .set_tasks(|| bsn! { Tasks [ @wait_task(10.0) ] })
+            .build(),
+    );
+    let caster = caster_with(&mut app, &[&hold]);
+    record_all(&mut app);
+
+    activate(&mut app, caster, &hold);
+    ticks(&mut app, 2);
+    let hold_entity = ability_entity(&mut app, caster, &hold);
+    assert!(with_abilities(&mut app, move |a| a.is_active(hold_entity)));
+
+    activate(&mut app, caster, &hold);
+    ticks(&mut app, 1);
+    assert_eq!(failures(&app), vec![ActivationError::AlreadyActive]);
+    assert_eq!(
+        recorded::<AbilityActivated>(&app).len(),
+        1,
+        "the refused ask never re-enters Active"
+    );
+    assert_eq!(
+        base::<Mana>(&app, caster),
+        40.0,
+        "the running ability paid once"
+    );
+    assert!(
+        with_abilities(&mut app, move |a| a.is_active(hold_entity)),
+        "the refused ask leaves the run alone"
+    );
+
+    let check = with_abilities(&mut app, move |a| {
+        a.can_activate(hold_entity, TargetData::SelfCast)
+    });
+    assert_eq!(check, Err(ActivationError::AlreadyActive));
+}
+
+#[test]
+fn an_ability_the_caster_was_never_granted_is_refused() {
+    let mut app = app();
+    let jab = ability(&mut app, AbilityBuilder::new().build());
+    let caster = caster_with(&mut app, &[]);
+    let never_granted = app.world_mut().spawn_empty().id();
+
+    let held = with_abilities(&mut app, move |a| {
+        let jab = jab.clone();
+        a.get_ability_entity_by_handle(caster, &jab)
+    });
+    assert_eq!(held, None, "the caster holds no entity for that def");
+
+    let check = with_abilities(&mut app, move |a| {
+        a.can_activate(never_granted, TargetData::SelfCast)
+    });
+    assert_eq!(check, Err(ActivationError::NotGranted));
+}
+
+#[test]
 fn a_target_that_is_gone_fails_with_a_reason() {
     let mut app = app();
     let spark = ability(&mut app, AbilityBuilder::new().build());
