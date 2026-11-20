@@ -13,7 +13,7 @@ macro_rules! impl_abs_diff_for_signed_integers {
                     (self - rhs).abs()
                 }
                 fn are_different(self, rhs: $t) -> bool {
-                    self.abs_diff(rhs) >= 1
+                    self != rhs
                 }
             }
         )*
@@ -46,7 +46,7 @@ macro_rules! impl_abs_diff_for_unsigned {
                     self.abs_diff(rhs)
                 }
                 fn are_different(self, rhs: $t) -> bool {
-                    self.abs_diff(rhs) > Self::Output::MIN
+                    self != rhs
                 }
             }
         )*
@@ -114,3 +114,17 @@ macro_rules! impl_saturating_sub_for_unsigned {
 impl_saturating_sub_for_signed_integers!(i8, i16, i32, i64, i128, isize);
 impl_saturating_sub_for_floats!(f32, f64);
 impl_saturating_sub_for_unsigned!(u8, u16, u32, u64, u128, usize);
+
+#[cfg(test)]
+mod tests {
+    use super::AbsDiff;
+
+    #[test]
+    fn are_different_is_equality() {
+        assert!(i8::MIN.are_different(i8::MAX));
+        assert!(i32::MIN.are_different(i32::MAX));
+        assert!(!(7u32).are_different(7u32));
+        assert!((7u32).are_different(8u32));
+        assert!(1.0f32.are_different(f32::NAN));
+    }
+}
