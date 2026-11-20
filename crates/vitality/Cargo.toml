@@ -30,7 +30,7 @@ vitality_effects = { workspace = true }
 
 [dependencies.bevy]
 workspace = true
-features = ["bevy_log", "bevy_asset", "bevy_scene"]
+features = ["bevy_log", "bevy_asset", "bevy_scene", "std"]
 
 [dev-dependencies]
 rand = { workspace = true }
