@@ -14,7 +14,6 @@ use crate::logs::Logs;
 use bevy::log::tracing::subscriber::with_default;
 use bevy::log::tracing_subscriber::{Registry, layer::SubscriberExt};
 use gameplay::*;
-use vitality::actors::ActorBuilder;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::EffectBuilder;
 
