@@ -117,7 +117,7 @@ impl_saturating_sub_for_unsigned!(u8, u16, u32, u64, u128, usize);
 
 #[cfg(test)]
 mod tests {
-    use super::AbsDiff;
+    use super::{AbsDiff, SaturatingAttributes};
 
     #[test]
     fn are_different_is_equality() {
@@ -126,5 +126,33 @@ mod tests {
         assert!(!(7u32).are_different(7u32));
         assert!((7u32).are_different(8u32));
         assert!(1.0f32.are_different(f32::NAN));
+        assert!(!(1.0f32.are_different(1.0f32)));
+        assert!(f32::NAN.are_different(f32::NAN));
+    }
+
+    // UFCS, the inherent saturating_add would win method resolution.
+    #[test]
+    fn saturating_clamps_integers_and_leaves_floats_alone() {
+        assert_eq!(
+            <i8 as SaturatingAttributes>::saturating_add(i8::MAX, 1),
+            i8::MAX
+        );
+        assert_eq!(
+            <i8 as SaturatingAttributes>::saturating_sub(i8::MIN, 1),
+            i8::MIN
+        );
+        assert_eq!(
+            <u8 as SaturatingAttributes>::saturating_add(u8::MAX, 1),
+            u8::MAX
+        );
+        assert_eq!(<u8 as SaturatingAttributes>::saturating_sub(u8::MIN, 1), 0);
+        assert_eq!(
+            <f32 as SaturatingAttributes>::saturating_add(f32::MAX, f32::MAX),
+            f32::INFINITY
+        );
+        assert_eq!(
+            <f32 as SaturatingAttributes>::saturating_sub(-f32::MAX, f32::MAX),
+            f32::NEG_INFINITY
+        );
     }
 }
