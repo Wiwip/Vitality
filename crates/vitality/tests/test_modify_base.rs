@@ -155,8 +155,6 @@ mod integer_fold {
 
     use crate::gameplay::*;
     use crate::logs::Logs;
-    use bevy::log::tracing::subscriber::with_default;
-    use bevy::log::tracing_subscriber::layer::SubscriberExt;
     use bevy::prelude::*;
     use std::any::TypeId;
     use vitality::prelude::*;
@@ -166,11 +164,10 @@ mod integer_fold {
 
     #[test]
     fn a_nan_fold_on_an_integer_attribute_is_refused_and_names_it() {
-        let logs = Logs::default();
-        let subscriber = bevy::log::tracing_subscriber::Registry::default().with(logs.layer());
+        let logs = Logs::scoped();
 
         let mut hero = Entity::PLACEHOLDER;
-        with_default(subscriber, || {
+        logs.run(|| {
             let mut app = app();
             app.add_plugins(init_attribute::<Rage>);
             hero = spawn(&mut app, hero_def().with::<Rage>(20u32));
@@ -327,10 +324,7 @@ mod self_buff_base_write {
 mod missing_attribute {
 
     use crate::gameplay::*;
-    use bevy::log::tracing::subscriber::with_default;
-    use bevy::log::tracing_subscriber::{Registry, fmt, layer::SubscriberExt};
-    use std::io::{self, Write};
-    use std::sync::{Arc, Mutex};
+    use crate::logs::Logs;
     use vitality::actors::ActorBuilder;
     use vitality::effect::modifier::{EffectSubject, ModOp};
     use vitality::prelude::*;
@@ -342,36 +336,13 @@ mod missing_attribute {
         EffectBuilder::permanent().modify::<Health>(Power::src(), ModOp::Sub, EffectSubject::Target)
     }
 
-    #[derive(Clone)]
-    struct Sink(Arc<Mutex<String>>);
-
-    impl Write for Sink {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.0
-                .lock()
-                .unwrap()
-                .push_str(&String::from_utf8_lossy(buf));
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
+    /// the one record this cell counts, from the `warn_once!` no other cell of this binary reaches
+    const WARN: &str = "reading it as zero";
 
     #[test]
     fn reading_an_attribute_the_actor_lacks_is_zero() {
-        let logs = Arc::new(Mutex::new(String::new()));
-        let writer = logs.clone();
-        let subscriber = Registry::default().with(
-            fmt::layer()
-                .with_ansi(false)
-                .without_time()
-                .with_writer(move || Sink(writer.clone())),
-        );
-
-        // thread-local layer: the global one LogPlugin::build installs would race the other tests here
-        with_default(subscriber, || {
+        let logs = Logs::scoped();
+        logs.run(|| {
             let mut app = app();
             let full = spawn(
                 &mut app,
@@ -412,17 +383,18 @@ mod missing_attribute {
             );
         });
 
-        let logs = logs.lock().unwrap();
-        let warned = logs.matches("reading it as zero").count();
+        let warned = logs.warn_count(WARN);
         assert_eq!(
             warned,
             1,
-            "one missing-attribute read across two actors and {} ticks has to warn once, saw {warned}: {logs:?}",
-            2 * SETTLE
+            "one missing-attribute read across two actors and {} ticks has to warn once, saw {warned}: {}",
+            2 * SETTLE,
+            logs.all()
         );
         assert!(
-            logs.contains("put the component on the actor"),
-            "the warning has to name the fix, not just the zero: {logs:?}"
+            logs.warns().contains("put the component on the actor"),
+            "the warning has to name the fix, not just the zero: {}",
+            logs.all()
         );
     }
 }
@@ -434,19 +406,16 @@ mod despawned_actor {
     use crate::gameplay::*;
     use crate::logs::Logs;
     use bevy::ecs::schedule::IntoScheduleConfigs;
-    use bevy::log::tracing::subscriber::with_default;
-    use bevy::log::tracing_subscriber::{Registry, layer::SubscriberExt};
     use bevy::prelude::{Commands, Entity, Local, Update};
     use vitality::effect::modifier::{EffectSubject, ModOp};
     use vitality::prelude::*;
 
     #[test]
     fn an_instant_write_whose_source_died_on_the_apply_tick_is_dropped_with_a_warn() {
-        let logs = Logs::default();
-        let subscriber = Registry::default().with(logs.layer());
+        let logs = Logs::scoped();
 
         let mut projectile = Entity::PLACEHOLDER;
-        with_default(subscriber, || {
+        logs.run(|| {
             let mut app = app();
             let hero = spawn(&mut app, hero_def());
             projectile = app.world_mut().spawn(()).id();

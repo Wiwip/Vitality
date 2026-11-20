@@ -2,8 +2,6 @@
 mod logs;
 
 use bevy::ecs::system::RunSystemOnce;
-use bevy::log::tracing::subscriber::with_default;
-use bevy::log::tracing_subscriber::layer::SubscriberExt;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use vitality::actors::ActorBuilder;
@@ -150,10 +148,9 @@ fn test_apply_after_the_spawn_system_is_applied() {
 
 #[test]
 fn test_apply_to_an_entity_with_no_attribute_warns() {
-    let logs = logs::Logs::default();
-    let subscriber = bevy::log::tracing_subscriber::Registry::default().with(logs.layer());
+    let logs = logs::Logs::scoped();
 
-    let (bare, effect) = with_default(subscriber, || {
+    let (bare, effect) = logs.run(|| {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
         app.add_plugins(init_attribute::<TestInt>);

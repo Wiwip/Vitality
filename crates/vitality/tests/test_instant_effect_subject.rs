@@ -11,18 +11,15 @@ mod gameplay;
 mod logs;
 
 use crate::logs::Logs;
-use bevy::log::tracing::subscriber::with_default;
-use bevy::log::tracing_subscriber::{Registry, layer::SubscriberExt};
 use gameplay::*;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::EffectBuilder;
 
 #[test]
 fn an_instant_effect_subject_write_is_dropped_and_names_instant_as_the_reason() {
-    let logs = Logs::default();
-    let subscriber = Registry::default().with(logs.layer());
+    let logs = Logs::scoped();
 
-    with_default(subscriber, || {
+    logs.run(|| {
         let mut app = app();
         let caster = spawn(&mut app, hero_def());
         let target = spawn(&mut app, hero_def());

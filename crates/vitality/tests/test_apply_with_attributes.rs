@@ -10,18 +10,15 @@ mod gameplay;
 mod logs;
 
 use crate::logs::Logs;
-use bevy::log::tracing::subscriber::with_default;
-use bevy::log::tracing_subscriber::{Registry, layer::SubscriberExt};
 use gameplay::*;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 
 #[test]
 fn an_apply_to_an_entity_carrying_the_attribute_says_nothing() {
-    let logs = Logs::default();
-    let subscriber = Registry::default().with(logs.layer());
+    let logs = Logs::scoped();
 
-    let post = with_default(subscriber, || {
+    let post = logs.run(|| {
         let mut app = app();
         let post = app.world_mut().spawn(Health::new(100.0)).id();
         let blessing = effect(

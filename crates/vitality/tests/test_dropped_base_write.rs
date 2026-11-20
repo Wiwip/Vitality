@@ -10,18 +10,15 @@ mod gameplay;
 mod logs;
 
 use crate::logs::Logs;
-use bevy::log::tracing::subscriber::with_default;
-use bevy::log::tracing_subscriber::{Registry, layer::SubscriberExt};
 use gameplay::*;
 use vitality::actors::ActorBuilder;
 use vitality::prelude::{Attribute, EffectBuilder};
 
 #[test]
 fn a_base_write_on_an_attribute_the_actor_lacks_is_dropped_with_a_warn() {
-    let logs = Logs::default();
-    let subscriber = Registry::default().with(logs.layer());
+    let logs = Logs::scoped();
 
-    let mute = with_default(subscriber, || {
+    let mute = logs.run(|| {
         let mut app = app();
         let mute = spawn(
             &mut app,
@@ -54,10 +51,9 @@ fn a_base_write_on_an_attribute_the_actor_lacks_is_dropped_with_a_warn() {
 
 #[test]
 fn a_clamp_bound_to_an_attribute_the_actor_lacks_is_dropped_with_a_warn() {
-    let logs = Logs::default();
-    let subscriber = Registry::default().with(logs.layer());
+    let logs = Logs::scoped();
 
-    let bare = with_default(subscriber, || {
+    let bare = logs.run(|| {
         let mut app = app();
         // a tag-only effect: applying one is what marks every attribute of the actor, so the
         // resolve pass reaches the clamp of an attribute the actor never carried

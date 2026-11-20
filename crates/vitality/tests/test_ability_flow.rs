@@ -4,8 +4,6 @@ mod gameplay;
 mod logs;
 
 use crate::logs::Logs;
-use bevy::log::tracing::subscriber::with_default;
-use bevy::log::tracing_subscriber::{Registry, layer::SubscriberExt};
 use bevy::prelude::*;
 use express_it::nodes::Node;
 use express_it::plan::Plan;
@@ -181,10 +179,9 @@ fn two_abilities_activated_before_a_resolve_both_pay() {
 
 #[test]
 fn a_second_same_frame_activation_is_refused_when_the_pool_no_longer_pays() {
-    let logs = Logs::default();
-    let subscriber = Registry::default().with(logs.layer());
+    let logs = Logs::scoped();
 
-    with_default(subscriber, || {
+    logs.run(|| {
         let mut app = app();
         let slash = ability(
             &mut app,

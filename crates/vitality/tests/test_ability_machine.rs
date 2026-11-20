@@ -7,8 +7,6 @@ use std::time::Duration;
 mod logs;
 
 use bevy::ecs::system::RunSystemOnce;
-use bevy::log::tracing::subscriber::with_default;
-use bevy::log::tracing_subscriber::layer::SubscriberExt;
 use bevy::prelude::*;
 use bevy::scene::{QueuedScenes, ScenePatch, ScenePlugin};
 use bevy::time::TimeUpdateStrategy;
@@ -534,10 +532,9 @@ fn two_completion_notifications_enter_recovery_once() {
 
 #[test]
 fn activating_a_token_the_actor_never_got_warns_with_the_token_and_the_actor() {
-    let logs = logs::Logs::default();
-    let subscriber = bevy::log::tracing_subscriber::Registry::default().with(logs.layer());
+    let logs = logs::Logs::scoped();
 
-    let actor = with_default(subscriber, || {
+    let actor = logs.run(|| {
         let mut app = test_app(|| bsn! { Tasks [ @task::<LongTask>(NoData) ] });
         app.update();
         let actor = spawned_actor(&mut app);

@@ -189,8 +189,6 @@ mod unregistered_instant {
 
     use crate::gameplay::*;
     use crate::logs::Logs;
-    use bevy::log::tracing::subscriber::with_default;
-    use bevy::log::tracing_subscriber::{Registry, layer::SubscriberExt};
     use vitality::effect::modifier::{EffectSubject, ModOp};
     use vitality::prelude::*;
 
@@ -198,10 +196,9 @@ mod unregistered_instant {
 
     #[test]
     fn an_instant_effect_on_an_unregistered_attribute_is_dropped_with_a_warn() {
-        let logs = Logs::default();
-        let subscriber = Registry::default().with(logs.layer());
+        let logs = Logs::scoped();
 
-        with_default(subscriber, || {
+        logs.run(|| {
             let mut app = app();
             let hero = spawn(&mut app, hero_def().with::<Stray>(4.0));
             let buff = effect(

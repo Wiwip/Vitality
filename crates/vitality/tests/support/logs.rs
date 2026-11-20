@@ -1,42 +1,60 @@
 #![allow(dead_code)]
 //! Log capture for the cells that pin a warning. `fmt::layer()` only prints the level, so a cell
 //! matching message text cannot tell `warn!` from `debug!`: these records keep `meta.level()`.
+//!
+//! A thread-local subscriber alone cannot hold under bevy's `multi_threaded`: the systems that warn
+//! run on task-pool threads that never see it. So [`Scope::run`] keeps the thread-local subscriber
+//! (which keeps a cell's records its own on the thread it runs the app from) and one process-wide
+//! registry catches the records fired on pool threads and copies them to every capture alive.
 
 use bevy::log::tracing::field::{Field, Visit};
-use bevy::log::tracing::subscriber::set_global_default;
+use bevy::log::tracing::subscriber::{set_global_default, with_default};
 use bevy::log::tracing::{Event, Level, Subscriber};
 use bevy::log::tracing_subscriber::layer::{Context, SubscriberExt};
 use bevy::log::tracing_subscriber::{Layer, Registry};
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// one buffer per mode: the thread-local one for a cell that owns its `warn_once!` call site, the
-/// process-wide one for a cell that shares its call site with another cell of the same binary
+/// the cells holding a [`Scope`] right now
+static SCOPED: OnceLock<Mutex<Vec<Logs>>> = OnceLock::new();
+
+static INSTALL: OnceLock<()> = OnceLock::new();
+
+/// every record of the whole test binary: `warn_once!` is per call site, so when two cells of one
+/// binary spawn the same modifier only the first sees the record, and this is what it captured
 static BINARY: OnceLock<Logs> = OnceLock::new();
 
 #[derive(Clone, Default)]
 pub struct Logs(Arc<Mutex<Vec<(Level, String)>>>);
 
 impl Logs {
-    /// every record of the whole test binary: `warn_once!` is per call site, so when two cells of one
-    /// binary spawn the same modifier only the first sees the record, and this is what it captured
+    /// see [`Logs::of_binary`]
     pub fn of_binary() -> Self {
-        BINARY
-            .get_or_init(|| {
-                let logs = Logs::default();
-                // an app that installs bevy's LogPlugin owns the global subscriber already
-                let _ = set_global_default(Registry::default().with(logs.layer()));
-                logs
-            })
-            .clone()
+        install();
+        BINARY.get_or_init(Logs::default).clone()
     }
 
-    pub fn layer(&self) -> impl Layer<Registry> {
-        Recorder(self.0.clone())
+    /// a cell's own buffer, readable as [`Logs`]. Keep it alive for the whole cell, assertions
+    /// included: [`Scope::run`] wraps the cell body and the capture is dropped with the guard.
+    pub fn scoped() -> Scope {
+        install();
+        let logs = Logs::default();
+        scoped().lock().unwrap().push(logs.clone());
+        Scope { logs }
     }
 
     /// every record as `LEVEL message`, which is what the message assertions match
     pub fn all(&self) -> String {
         self.render(|_| true)
+    }
+
+    /// how many WARN records carry `needle`, for the cells that count a `warn_once!`
+    pub fn warn_count(&self, needle: &str) -> usize {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(level, message)| level == &Level::WARN && message.contains(needle))
+            .count()
     }
 
     /// the WARN records only, which is what tells a `warn!` from a `debug!`
@@ -55,17 +73,76 @@ impl Logs {
     }
 }
 
-struct Recorder(Arc<Mutex<Vec<(Level, String)>>>);
+/// one cell's capture; derefs to [`Logs`] for the assertions
+pub struct Scope {
+    logs: Logs,
+}
+
+impl Scope {
+    /// runs the cell body with this capture installed on the calling thread and registered with the
+    /// process-wide registry for the records that arrive on bevy's task-pool threads
+    pub fn run<T>(&self, f: impl FnOnce() -> T) -> T {
+        let subscriber = Registry::default().with(Recorder(self.logs.clone()));
+        with_default(subscriber, f)
+    }
+}
+
+impl Drop for Scope {
+    fn drop(&mut self) {
+        let mut scoped = scoped().lock().unwrap();
+        if let Some(pos) = scoped.iter().position(|l| Arc::ptr_eq(&l.0, &self.logs.0)) {
+            scoped.swap_remove(pos);
+        }
+    }
+}
+
+impl std::ops::Deref for Scope {
+    type Target = Logs;
+
+    fn deref(&self) -> &Logs {
+        &self.logs
+    }
+}
+
+fn scoped() -> &'static Mutex<Vec<Logs>> {
+    SCOPED.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// an app that installs bevy's LogPlugin owns the global subscriber already, so the first install
+/// wins and a lost race only means those records go to that plugin's output
+fn install() {
+    INSTALL.get_or_init(|| {
+        let _ = set_global_default(Registry::default().with(Fanout));
+    });
+}
+
+/// catches what no thread-local subscriber saw: a record fired on a task-pool thread
+struct Fanout;
+
+impl<S: Subscriber> Layer<S> for Fanout {
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        let record = record_of(event);
+        if let Some(logs) = BINARY.get() {
+            logs.0.lock().unwrap().push(record.clone());
+        }
+        for logs in scoped().lock().unwrap().iter() {
+            logs.0.lock().unwrap().push(record.clone());
+        }
+    }
+}
+
+struct Recorder(Logs);
 
 impl<S: Subscriber> Layer<S> for Recorder {
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-        let mut message = Message(String::new());
-        event.record(&mut message);
-        self.0
-            .lock()
-            .unwrap()
-            .push((*event.metadata().level(), message.0));
+        self.0.0.lock().unwrap().push(record_of(event));
     }
+}
+
+fn record_of(event: &Event<'_>) -> (Level, String) {
+    let mut message = Message(String::new());
+    event.record(&mut message);
+    (*event.metadata().level(), message.0)
 }
 
 struct Message(String);
