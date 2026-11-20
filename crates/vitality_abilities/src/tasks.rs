@@ -302,7 +302,6 @@ pub fn on_task_completion_notification(
     mut commands: Commands,
 ) {
     let Ok((tasks, rule)) = query.get(trigger.entity) else {
-        // Has no subtasks, not a problem.
         return;
     };
 

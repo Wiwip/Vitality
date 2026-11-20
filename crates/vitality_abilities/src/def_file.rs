@@ -68,8 +68,6 @@ pub fn ability_def_from_str(source: &str, names: &DefNames) -> Result<AbilityDef
 
     for (line, tag) in &tags {
         let spec = names.tag_spec(*line, tag)?;
-        // what `with_tag` does with a type: the def names the tag and the ability entity carries
-        // it, which is how another ability's blocks and cancels see it
         def.mutators.push(EntityActions::new(move |commands| {
             commands.queue_silenced(move |mut entity: EntityWorldMut| spec.insert_on(&mut entity));
         }));

@@ -222,7 +222,6 @@ fn test_instant_effect_application() {
 
     let mut query = app.world_mut().query::<&TestInt>();
     let test_c = query.single(app.world()).unwrap();
-    // The attribute shouldn't change till we update
     assert_eq!(test_c.current_value(), init_value);
 
     app.update();
@@ -250,7 +249,6 @@ fn test_update_current_values() {
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
     app.add_plugins(init_attribute::<TestU32>);
     app.add_systems(Startup, prepare_zero_actor);
-    // A headless update lasts microseconds, so with the real clock FixedUpdate never runs.
     app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
 
     app.update();

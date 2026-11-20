@@ -154,7 +154,6 @@ fn list_attributes(
     actor_components: &mut [(String, ComponentId, Option<TypeId>, usize)],
 ) {
     builder.begin_child("Attributes".to_string());
-    // List attributes for printing
     for (_, _, type_id, _) in actor_components.iter() {
         let Some(type_id) = type_id else {
             continue;
@@ -325,7 +324,6 @@ fn list_modifiers_for_effect(
     modifier_ref: EntityRef,
     modifier_components: &mut [(String, ComponentId, Option<TypeId>, usize)],
 ) {
-    // List attributes for printing
     for (name, _, type_id, _) in modifier_components.iter() {
         let Some(type_id) = type_id else {
             error!(

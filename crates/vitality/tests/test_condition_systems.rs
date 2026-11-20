@@ -129,7 +129,6 @@ fn test_attribute_condition() {
     let mut query = app.world_mut().query::<(Entity, &Actor, &TestA, &TestB)>();
     let actor_id = query.single(app.world()).unwrap().0;
 
-    // Check that the effect is inactive
     let mut query = app
         .world_mut()
         .query::<(Entity, &Effect, &ConditionTag, Option<&EffectInactive>)>();
@@ -145,7 +144,6 @@ fn test_attribute_condition() {
     app.update();
     app.update();
 
-    // Check that the effect is active
     let mut query = app
         .world_mut()
         .query::<(Entity, &Effect, &ConditionTag, Option<&EffectInactive>)>();

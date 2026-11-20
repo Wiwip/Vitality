@@ -36,7 +36,7 @@ pub mod prelude {
 
     pub use express_it::expr::Expr;
 
-    // Necessary for attribute macro
+    // `attribute!` output names `ReflectComponent` unqualified, so every call site needs it in scope
     pub use bevy::prelude::ReflectComponent;
 }
 
