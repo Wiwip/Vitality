@@ -187,6 +187,57 @@ fn an_ability_file_off_disk_loads_the_def_it_describes() {
 }
 
 #[test]
+fn a_def_file_line_the_loader_cannot_use_fails_naming_its_line() {
+    let names = names();
+    let cases = [
+        // a key the effect file does not hold
+        (
+            "unknown-key.effect",
+            "name = Curio\nduration = 3.0\n",
+            2,
+            "duration",
+        ),
+        // a tag the app never put in DefNames
+        (
+            "unknown-tag.effect",
+            "name = Deep Freeze\ntag = Frost\n",
+            2,
+            "Frost",
+        ),
+        // an attribute the app never registered
+        (
+            "unknown-attribute.effect",
+            "name = Spark\nmodifier = Mana add 1 target\n",
+            2,
+            "Mana",
+        ),
+        (
+            "bad-policy.effect",
+            "name = Stagger\npolicy = every 1.0 soon\n",
+            2,
+            "every 1.0 soon",
+        ),
+        (
+            "bad-modifier.effect",
+            "name = Mend\nmodifier = Health add target\n",
+            2,
+            "Health add target",
+        ),
+    ];
+    for (file, body, line, bad) in cases {
+        let path = def_file("line-error", file, body);
+        let Err(error) = effect_def_from_file(&path, &names) else {
+            panic!("{file} loaded even though line {line} spells `{bad}` wrong");
+        };
+        let error = error.to_string();
+        assert!(
+            error.starts_with(&format!("line {line}:")) && error.contains(bad),
+            "{file} has to name line {line} and the `{bad}` it refused, got: {error}"
+        );
+    }
+}
+
+#[test]
 fn a_def_file_that_is_not_there_fails_naming_its_path() {
     let missing = scratch("missing").join("never-written.effect");
     let names = names();
