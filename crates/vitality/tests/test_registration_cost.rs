@@ -54,8 +54,6 @@ const DAG_TICK_RESOURCES_PER_ATTRIBUTE: usize = 3;
 
 /// exact, so a component the DAG branch starts registering per attribute is red here
 const DAG_TICK_COMPONENTS_BASELINE: usize = 143;
-/// the same world counted without `debug-overlay`, one component lighter
-const DAG_TICK_COMPONENTS_BASELINE_NO_OVERLAY: usize = 142;
 const DAG_TICK_COMPONENTS_PER_ATTRIBUTE: usize = 8;
 
 fn spec(attributes: usize) -> WorldSpec {
@@ -182,16 +180,13 @@ fn dag_registration_cost_per_attribute_is_pinned() {
         Some(DAG_TICK_RESOURCES_BASELINE),
         DAG_TICK_RESOURCES_PER_ATTRIBUTE,
     );
-    // the count holds bevy's `TimeReceiver`, which needs std, and std rides in on the overlay dep
+    // the fixed half holds bevy's `TimeReceiver`, which needs std, and std rides in on the overlay
+    // dep or, in a `--workspace` run, on vitality_debug unifying it into bevy: 143 or 142
     pin_dag_per_attribute(
         "component",
         narrow.components,
         wide.components,
-        Some(if cfg!(feature = "debug-overlay") {
-            DAG_TICK_COMPONENTS_BASELINE
-        } else {
-            DAG_TICK_COMPONENTS_BASELINE_NO_OVERLAY
-        }),
+        cfg!(feature = "debug-overlay").then_some(DAG_TICK_COMPONENTS_BASELINE),
         DAG_TICK_COMPONENTS_PER_ATTRIBUTE,
     );
 }

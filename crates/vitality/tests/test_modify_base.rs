@@ -155,8 +155,6 @@ mod integer_fold {
 
     use crate::gameplay::*;
     use crate::logs::Logs;
-    use bevy::log::tracing::subscriber::with_default;
-    use bevy::log::tracing_subscriber::layer::SubscriberExt;
     use bevy::prelude::*;
     use std::any::TypeId;
     use vitality::prelude::*;
@@ -166,53 +164,51 @@ mod integer_fold {
 
     #[test]
     fn a_nan_fold_on_an_integer_attribute_is_refused_and_names_it() {
-        let logs = Logs::default();
-        let subscriber = bevy::log::tracing_subscriber::Registry::default().with(logs.layer());
+        // the refusal warns inside the resolve pass, which under `multi_threaded` runs on a
+        // task-pool thread that never sees a thread-local subscriber
+        let logs = Logs::of_binary();
 
-        let mut hero = Entity::PLACEHOLDER;
-        with_default(subscriber, || {
-            let mut app = app();
-            app.add_plugins(init_attribute::<Rage>);
-            hero = spawn(&mut app, hero_def().with::<Rage>(20u32));
+        let mut app = app();
+        app.add_plugins(init_attribute::<Rage>);
+        let hero = spawn(&mut app, hero_def().with::<Rage>(20u32));
 
-            let (rage, power) = {
-                let registry = app.world().resource::<AttributeRegistry>();
-                (
-                    registry
-                        .id_of(TypeId::of::<Rage>())
-                        .expect("the test registers Rage"),
-                    registry
-                        .id_of(TypeId::of::<Power>())
-                        .expect("the harness registers Power"),
-                )
-            };
-            let nan = ErasedCalc {
-                add: f64::NAN,
-                ..Default::default()
-            };
-            {
-                let mut table = app
-                    .world_mut()
-                    .get_mut::<ModifierTable>(hero)
-                    .expect("an actor carries the fold table");
-                table.set_calc(rage, nan);
-                table.set_calc(power, nan);
-            }
-            let queue = app.world().resource::<ResolveQueue>();
-            queue.dirty(hero, rage);
-            queue.dirty(hero, power);
-            ticks(&mut app, 1);
+        let (rage, power) = {
+            let registry = app.world().resource::<AttributeRegistry>();
+            (
+                registry
+                    .id_of(TypeId::of::<Rage>())
+                    .expect("the test registers Rage"),
+                registry
+                    .id_of(TypeId::of::<Power>())
+                    .expect("the harness registers Power"),
+            )
+        };
+        let nan = ErasedCalc {
+            add: f64::NAN,
+            ..Default::default()
+        };
+        {
+            let mut table = app
+                .world_mut()
+                .get_mut::<ModifierTable>(hero)
+                .expect("an actor carries the fold table");
+            table.set_calc(rage, nan);
+            table.set_calc(power, nan);
+        }
+        let queue = app.world().resource::<ResolveQueue>();
+        queue.dirty(hero, rage);
+        queue.dirty(hero, power);
+        ticks(&mut app, 1);
 
-            assert_eq!(
-                current::<Rage>(&app, hero),
-                20u32,
-                "the refused fold has to leave the component where it was"
-            );
-            assert!(
-                current::<Power>(&app, hero).is_nan(),
-                "the same fold on a float attribute still lands on NaN"
-            );
-        });
+        assert_eq!(
+            current::<Rage>(&app, hero),
+            20u32,
+            "the refused fold has to leave the component where it was"
+        );
+        assert!(
+            current::<Power>(&app, hero).is_nan(),
+            "the same fold on a float attribute still lands on NaN"
+        );
 
         let warns = logs.warns();
         assert!(

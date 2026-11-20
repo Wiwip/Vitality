@@ -54,34 +54,32 @@ fn a_base_write_on_an_attribute_the_actor_lacks_is_dropped_with_a_warn() {
 
 #[test]
 fn a_clamp_bound_to_an_attribute_the_actor_lacks_is_dropped_with_a_warn() {
-    let logs = Logs::default();
-    let subscriber = Registry::default().with(logs.layer());
+    // the clamp drop warns inside the resolve pass, which under `multi_threaded` runs on a
+    // task-pool thread that never sees a thread-local subscriber
+    let logs = Logs::of_binary();
 
-    let bare = with_default(subscriber, || {
-        let mut app = app();
-        // a tag-only effect: applying one is what marks every attribute of the actor, so the
-        // resolve pass reaches the clamp of an attribute the actor never carried
-        let burn = effect(
-            &mut app,
-            EffectBuilder::permanent().with_tag::<Burning>().build(),
-        );
-        let bare = spawn(
-            &mut app,
-            ActorBuilder::new()
-                .name("Bare")
-                .with::<MaxHealth>(100.0)
-                .with_effect(&burn)
-                .clamp::<Health>(0.0, MaxHealth::src()),
-        );
-        ticks(&mut app, 1);
+    let mut app = app();
+    // a tag-only effect: applying one is what marks every attribute of the actor, so the
+    // resolve pass reaches the clamp of an attribute the actor never carried
+    let burn = effect(
+        &mut app,
+        EffectBuilder::permanent().with_tag::<Burning>().build(),
+    );
+    let bare = spawn(
+        &mut app,
+        ActorBuilder::new()
+            .name("Bare")
+            .with::<MaxHealth>(100.0)
+            .with_effect(&burn)
+            .clamp::<Health>(0.0, MaxHealth::src()),
+    );
+    ticks(&mut app, 1);
 
-        assert!(
-            !has::<Health>(&app, bare),
-            "the dropped clamp must not conjure the component"
-        );
-        assert_eq!(base::<MaxHealth>(&app, bare), 100.0, "nothing else moves");
-        bare
-    });
+    assert!(
+        !has::<Health>(&app, bare),
+        "the dropped clamp must not conjure the component"
+    );
+    assert_eq!(base::<MaxHealth>(&app, bare), 100.0, "nothing else moves");
 
     let warns = logs.warns();
     let logs = logs.all();
