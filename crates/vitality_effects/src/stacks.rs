@@ -3,7 +3,6 @@ use crate::lifecycle::EffectStacksChanged;
 use crate::systems::MarkActorDirty;
 use crate::{Effect, EffectDuration, EffectTarget};
 use bevy::prelude::*;
-use vitality_core::attribute;
 use vitality_core::attribute_impl;
 use vitality_core::attributes::Attribute;
 use vitality_core::attributes::ReflectAccessAttribute;
@@ -13,8 +12,6 @@ pub enum EffectStackingPolicy {
     Add { count: u32, max_stack: u32 },
     RefreshDuration, // The effect overrides previous applications
 }
-attribute!(EffectIntensity, f32);
-
 attribute_impl!(Stacks, u32);
 
 impl Default for Stacks {
