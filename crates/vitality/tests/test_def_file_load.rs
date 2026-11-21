@@ -190,21 +190,18 @@ fn an_ability_file_off_disk_loads_the_def_it_describes() {
 fn a_def_file_line_the_loader_cannot_use_fails_naming_its_line() {
     let names = names();
     let cases = [
-        // a key the effect file does not hold
         (
             "unknown-key.effect",
             "name = Curio\nduration = 3.0\n",
             2,
             "duration",
         ),
-        // a tag the app never put in DefNames
         (
             "unknown-tag.effect",
             "name = Deep Freeze\ntag = Frost\n",
             2,
             "Frost",
         ),
-        // an attribute the app never registered
         (
             "unknown-attribute.effect",
             "name = Spark\nmodifier = Mana add 1 target\n",
