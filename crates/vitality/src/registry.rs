@@ -1,5 +1,5 @@
-use bevy::ecs::system::SystemParam;
-use bevy::prelude::*;
+use bevy_asset::Handle;
+use bevy_ecs::system::SystemParam;
 
 use vitality_abilities::AbilityDef;
 pub use vitality_abilities::registry as ability_registry;

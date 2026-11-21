@@ -6,11 +6,13 @@ edition = "2024"
 [features]
 default = ["debug-overlay"]
 debug-overlay = ["dep:vitality_debug"]
-multi_threaded = ["bevy/multi_threaded", "vitality_effects/multi_threaded"]
-dyn = ["bevy/dynamic_linking"]
+# vitality_effects' feature turns bevy_ecs' and bevy_tasks' on for the whole graph
+multi_threaded = ["vitality_effects/multi_threaded", "bevy?/multi_threaded"]
+dyn = ["dep:bevy", "bevy/dynamic_linking"]
 # windowed examples; ui pulls default_platform and with it multi_threaded
 examples = [
     "debug-overlay",
+    "dep:bevy",
     "bevy/ui",
     "bevy/default_font",
     "bevy/bevy_ui_debug",
@@ -27,9 +29,15 @@ vitality_core = { workspace = true }
 vitality_debug = { workspace = true, optional = true }
 vitality_effects = { workspace = true }
 
-[dependencies.bevy]
-workspace = true
-features = ["bevy_log", "bevy_asset", "bevy_scene", "std"]
+bevy_app = { workspace = true }
+bevy_asset = { workspace = true }
+bevy_derive = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_scene = { workspace = true }
+# the meta-crate is for the windowed examples and the `dyn` bench build only
+bevy = { workspace = true, optional = true, features = ["bevy_log", "bevy_asset", "bevy_scene", "std"] }
 
 [dev-dependencies]
 rand = { workspace = true }
@@ -37,8 +45,9 @@ criterion = { version = "0.8", features = ["html_reports"] }
 
 [dev-dependencies.bevy]
 workspace = true
+# the tests and benches lost the feature union the normal bevy dependency used to give them
 # debug: the bench harness finds Dirty<T> by component name
-features = ["bevy_state", "debug"]
+features = ["std", "bevy_log", "bevy_asset", "bevy_scene", "bevy_state", "debug"]
 
 [[bench]]
 name = "bench_systems"

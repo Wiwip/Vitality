@@ -1,7 +1,9 @@
 use crate::actors::{ActorDef, SpawnActorCommand};
 use crate::registry::Registry;
-use bevy::ecs::system::SystemParam;
-use bevy::prelude::*;
+use bevy_asset::{Assets, Handle};
+use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
+use bevy_log::warn_once;
 use vitality_core::attributes::Attribute;
 use vitality_core::modifier::{Calc, ModOp};
 use vitality_core::tags::{ChangeTag, TagSpec};

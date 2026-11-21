@@ -60,7 +60,8 @@
 //! `crates/vitality/examples/` has whole apps.
 
 use crate::actors::ActorDef;
-use bevy::prelude::*;
+use bevy_app::prelude::*;
+use bevy_asset::AssetApp;
 use vitality_abilities::AbilityPlugin;
 use vitality_core::CorePlugin;
 use vitality_core::attributes::{Attribute, Clamp};
@@ -121,8 +122,8 @@ impl Plugin for AttributesPlugin {
             return;
         }
         // abilities and actor defs still use scenes; DefaultPlugins may have added it already
-        if !app.is_plugin_added::<bevy::scene::ScenePlugin>() {
-            app.add_plugins(bevy::scene::ScenePlugin);
+        if !app.is_plugin_added::<bevy_scene::ScenePlugin>() {
+            app.add_plugins(bevy_scene::ScenePlugin);
         }
         app.add_plugins((
             CorePlugin,
