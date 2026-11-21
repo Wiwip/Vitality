@@ -5,10 +5,13 @@ use crate::lifecycle::{ActivationError, check_activation};
 use crate::registry::{AbilityToken, Registry};
 use crate::tasks::TaskScope;
 use crate::{Ability, AbilityError, AbilityOf, GrantedAbilities, TargetData};
-use bevy::ecs::resource::IsResource;
-use bevy::ecs::system::SystemParam;
-use bevy::ecs::system::lifetimeless::Read;
-use bevy::prelude::*;
+use bevy_asset::Handle;
+use bevy_ecs::prelude::*;
+use bevy_ecs::resource::IsResource;
+use bevy_ecs::system::SystemParam;
+use bevy_ecs::system::lifetimeless::Read;
+use bevy_log::{error, warn, warn_once};
+use bevy_reflect::Reflect;
 use hfsm_bevy::MachineQuery;
 use vitality_core::attributes::ManageAttributes;
 

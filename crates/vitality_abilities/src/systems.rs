@@ -2,9 +2,10 @@ use crate::AbilityMut;
 use crate::context::AbilityExprContextMut;
 use crate::definition::AbilityDef;
 use crate::{Ability, TargetData};
-use bevy::asset::Assets;
-use bevy::ecs::resource::IsResource;
-use bevy::prelude::*;
+use bevy_asset::Assets;
+use bevy_ecs::prelude::*;
+use bevy_ecs::resource::IsResource;
+use bevy_log::debug;
 
 #[derive(EntityEvent)]
 pub struct ActivateAbility {

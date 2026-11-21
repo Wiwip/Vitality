@@ -1,5 +1,5 @@
 use crate::{AbilityMut, AbilityRef};
-use bevy::prelude::Vec3;
+use bevy_math::Vec3;
 use express_it::expr::{Context, ContextMut};
 use vitality_core::context::{ActorProvider, ActorProviderMut, Caster, Source, Target};
 

@@ -1,8 +1,10 @@
 use crate::definition::AbilityDef;
-use bevy::asset::Handle;
-use bevy::ecs::system::SystemParam;
-use bevy::platform::collections::HashMap;
-use bevy::prelude::*;
+use bevy_asset::Assets;
+use bevy_asset::Handle;
+use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
+use bevy_platform::collections::HashMap;
+use bevy_reflect::prelude::Reflect;
 use smol_str::SmolStr;
 
 #[derive(Clone, PartialEq, Eq, Hash, Reflect, Default)]

@@ -6,7 +6,7 @@
 
 use crate::builder::AbilityBuilder;
 use crate::definition::AbilityDef;
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
 use std::path::Path;
 use vitality_core::mutator::EntityActions;
 use vitality_effects::def_file::def_fields;

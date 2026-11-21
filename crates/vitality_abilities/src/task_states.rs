@@ -1,10 +1,11 @@
 use crate::tasks::{ExecuteTask, NotifyTaskCompletion, TaskCompleted, TaskFailed, TaskStopped};
 use crate::tasks::{Task, Tasks};
-use bevy::ecs::query::QueryData;
-use bevy::ecs::resource::IsResource;
-use bevy::ecs::system::SystemParam;
-use bevy::ecs::system::lifetimeless::Read;
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_ecs::query::QueryData;
+use bevy_ecs::resource::IsResource;
+use bevy_ecs::system::SystemParam;
+use bevy_ecs::system::lifetimeless::Read;
+use bevy_log::debug;
 use hfsm_bevy::{Access, MachineDefinition, MachineEvent, MachineState};
 use hfsm_bevy::{ExternalContext, LocalContext, Machine, StateId};
 

@@ -1,8 +1,9 @@
 use crate::Ability;
 use crate::context::{AbilityExprContext, AbilityExprSchema};
 use crate::definition::AbilityDef;
-use bevy::asset::AssetId;
-use bevy::prelude::{Component, Reflect};
+use bevy_asset::AssetId;
+use bevy_ecs::prelude::Component;
+use bevy_reflect::Reflect;
 use express_it::expr::Expr;
 use std::any::TypeId;
 use std::collections::HashSet;

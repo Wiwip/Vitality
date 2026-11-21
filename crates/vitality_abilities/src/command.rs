@@ -1,7 +1,9 @@
 use crate::definition::AbilityDef;
 use crate::{Ability, AbilityOf};
-use bevy::asset::Assets;
-use bevy::prelude::*;
+use bevy_asset::Assets;
+use bevy_ecs::prelude::*;
+use bevy_log::warn;
+use bevy_scene::EntityCommandsSceneExt;
 
 pub fn on_add_ability(
     trigger: On<Add<Ability>>,

@@ -11,6 +11,12 @@ smol_str = { workspace = true }
 vitality_core = { workspace = true }
 vitality_effects = { workspace = true }
 
-[dependencies.bevy]
-workspace = true
-features = ["bevy_log", "bevy_asset", "bevy_scene"]
+bevy_app = { workspace = true }
+bevy_asset = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+bevy_math = { workspace = true }
+bevy_platform = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_scene = { workspace = true }
+bevy_time = { workspace = true }

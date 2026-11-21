@@ -8,7 +8,11 @@ bevy_app = { version = "0.20", default-features = false, features = ["std", "bev
 bevy_platform = { version = "0.20", default-features = false }
 bevy_utils = { version = "0.20", default-features = false }
 bevy_tasks = { version = "0.20", default-features = false }
+bevy_asset = { version = "0.20", default-features = false }
 bevy_derive = { version = "0.20" }
+bevy_log = { version = "0.20", default-features = false }
+bevy_math = { version = "0.20", default-features = false, features = ["std", "bevy_reflect"] }
+bevy_scene = { version = "0.20", default-features = false }
 bevy_ecs = { version = "0.20", default-features = false, features = ["std", "bevy_reflect"] }
 bevy_time = { version = "0.20", default-features = false, features = ["std", "bevy_reflect"] }
 tracing = { version = "0.1", default-features = false }

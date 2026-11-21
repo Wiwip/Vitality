@@ -1,7 +1,9 @@
 use crate::context::{AbilityExprContext, AbilityExprContextMut, AbilityExprSchema};
 use crate::definition::AbilityDef;
-use bevy::ecs::system::IntoObserverSystem;
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_ecs::system::IntoObserverSystem;
+use bevy_log::{error, warn};
+use bevy_scene::Scene;
 use express_it::expr::{AsExpression, StoredExpr};
 use express_it::logic::ExprCmpLe;
 use express_it::nodes::LiteralNode;

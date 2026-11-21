@@ -19,8 +19,10 @@ use crate::systems::activate_ability;
 use crate::task_states::TaskMachine;
 use crate::tasks::{Tasks, WaitTask};
 use crate::tasks::{handles_wait_task_timers, on_task_completion_notification};
-use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
-use bevy::prelude::*;
+use bevy_app::prelude::*;
+use bevy_asset::AssetApp;
+use bevy_ecs::prelude::*;
+use bevy_ecs::world::{EntityMutExcept, EntityRefExcept};
 use hfsm_bevy::MachineInstance;
 use hfsm_bevy::StateMachineAppExt;
 
