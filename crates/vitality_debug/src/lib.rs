@@ -1,7 +1,7 @@
 pub mod debug_overlay;
 
 use crate::debug_overlay::{explore_actors_system, setup_debug_overlay};
-use bevy::prelude::*;
+use bevy_app::prelude::*;
 
 pub struct ActorInspectorPlugin;
 

@@ -13,6 +13,8 @@ bevy_derive = { version = "0.20" }
 bevy_log = { version = "0.20", default-features = false }
 bevy_math = { version = "0.20", default-features = false, features = ["std", "bevy_reflect"] }
 bevy_scene = { version = "0.20", default-features = false }
+bevy_text = { version = "0.20", default-features = false }
+bevy_ui = { version = "0.20", default-features = false }
 bevy_ecs = { version = "0.20", default-features = false, features = ["std", "bevy_reflect"] }
 bevy_time = { version = "0.20", default-features = false, features = ["std", "bevy_reflect"] }
 tracing = { version = "0.1", default-features = false }
