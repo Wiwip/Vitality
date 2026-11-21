@@ -33,8 +33,6 @@ protected = .cargo/**
 protected = rust-toolchain.toml
 protected = .agent-sandbox
 protected = .idea/**
-protected = Cargo.toml
-protected = crates/*/Cargo.toml
 protected = scripts/**
 ```
 
