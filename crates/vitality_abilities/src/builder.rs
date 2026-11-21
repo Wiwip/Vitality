@@ -6,14 +6,12 @@ use express_it::expr::{AsExpression, StoredExpr};
 use express_it::logic::ExprCmpLe;
 use express_it::nodes::LiteralNode;
 use express_it::plan::{AssignmentStep, Plan};
-use num_traits::{AsPrimitive, Num};
 use vitality_core::attributes::Attribute;
 use vitality_core::context::ActorExprSchema;
-use vitality_core::math::SaturatingAttributes;
-use vitality_core::modifier::AttributeCalculatorCached;
 use vitality_core::mutator::EntityActions;
 use vitality_core::tags::TagSpec;
 use vitality_core::util::pretty_type_name;
+use vitality_core::value::AttributeValue;
 
 pub struct AbilityBuilder {
     name: String,
@@ -60,13 +58,10 @@ impl AbilityBuilder {
         }
     }
 
-    pub fn with<T: Attribute>(
-        mut self,
-        value: impl Num + AsPrimitive<T::Property> + Send + Sync + 'static,
-    ) -> AbilityBuilder {
+    pub fn with<T: Attribute>(mut self, value: T::Property) -> AbilityBuilder {
         self.mutators.push(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
-                entity_commands.insert((T::new(value), AttributeCalculatorCached::<T>::default()));
+                entity_commands.insert(T::new(value));
             },
         ));
         self
@@ -110,7 +105,7 @@ impl AbilityBuilder {
                         );
                         return;
                     }
-                    attr.set_base_value(base.saturating_sub(cost))
+                    attr.set_base_value(<T::Property as AttributeValue>::sub(base, cost))
                 }
             },
             expr: node_expr,

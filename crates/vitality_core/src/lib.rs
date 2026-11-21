@@ -1,47 +1,65 @@
 use crate::attributes::{Attribute, AttributeDependency, ReflectAccessAttribute, dep_key};
 use crate::context::{Caster, Source, Target};
-use crate::modifier::AttributeCalculatorCached;
 use crate::schedule::EffectsSet;
 use crate::util::pretty_type_name;
-use bevy::platform::collections::HashMap;
-use bevy::platform::collections::hash_map::Entry;
-use bevy::prelude::*;
-use bevy::scene::ScenePlugin;
+use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_platform::collections::HashMap;
+use bevy_platform::collections::hash_map::Entry;
 use smol_str::SmolStr;
 use std::any::TypeId;
 use std::error::Error;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
+use tracing::{debug, trace};
+
+/// `warn!` once per call site: a system that runs every tick says a thing a single time.
+#[macro_export]
+macro_rules! warn_once {
+    ($($arg:tt)+) => {{
+        static ONCE: ::std::sync::Once = ::std::sync::Once::new();
+        ONCE.call_once(|| $crate::tracing::warn!($($arg)+));
+    }};
+}
+
+pub use bevy_app;
+pub use bevy_derive;
+pub use bevy_ecs;
+pub use bevy_reflect;
+// a host without the facade still needs the clock the effect timers read
+pub use bevy_time;
+pub use tracing;
 
 pub mod attributes;
 pub mod context;
-pub mod math;
 pub mod modifier;
 pub mod mutator;
 pub mod registry;
 pub mod schedule;
+pub mod store;
 pub mod tags;
 pub mod util;
+pub mod value;
 pub mod view;
 
 pub use express_it;
-pub use num_traits;
 
 pub mod prelude {
     pub use crate::attributes::{AccessAttribute, Attribute, ReflectAccessAttribute, Setter};
     pub use crate::context::ActorExprSchema;
     pub use crate::modifier::ModOp;
-    pub use crate::{attribute, attribute_set};
+    pub use crate::value::AttributeValue;
+    pub use crate::{attribute, attribute_set, property_number};
 
     pub use express_it::expr::Expr;
 
     // `attribute!` output names `ReflectComponent` unqualified, so every call site needs it in scope
-    pub use bevy::prelude::ReflectComponent;
+    pub use bevy_ecs::prelude::ReflectComponent;
 }
 
 #[derive(Resource, Default)]
-struct InstalledPlugins(bevy::platform::collections::HashSet<TypeId>);
+struct InstalledPlugins(bevy_platform::collections::HashSet<TypeId>);
 
 /// true the first time it is called for `P`, so a plugin added twice or after one that already brings it is a no-op instead of a panic
 pub fn first_install<P: 'static>(app: &mut App) -> bool {
@@ -68,11 +86,6 @@ impl Plugin for CorePlugin {
             .init_resource::<registry::ResolveQueue>()
             .init_schedule(PreUpdate)
             .init_schedule(PostUpdate);
-
-        // ScenePlugin is unique and DefaultPlugins already adds it, so adding it again would panic.
-        if !app.is_plugin_added::<ScenePlugin>() {
-            app.add_plugins(ScenePlugin);
-        }
 
         app.configure_sets(
             FixedUpdate,
@@ -173,7 +186,6 @@ impl AttributeBindings {
 /// Registers the reflection data and expression bindings of an attribute.
 pub fn init_core_attribute<T: Attribute>(app: &mut App) {
     app.register_type::<T>();
-    app.register_type::<AttributeCalculatorCached<T>>();
     app.register_type_data::<T, ReflectAccessAttribute>();
 
     app.world_mut()

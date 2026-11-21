@@ -15,15 +15,15 @@
 use crate::builder::EffectBuilder;
 use crate::definition::EffectDef;
 use crate::modifier::{AttributeModifier, EffectSubject, ModOp, Modifier};
-use bevy::platform::collections::HashMap;
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_platform::collections::HashMap;
 use express_it::nodes::LiteralNode;
 use smol_str::SmolStr;
 use std::sync::Arc;
 use vitality_core::attributes::Attribute;
-use vitality_core::num_traits::{AsPrimitive, FromPrimitive};
 use vitality_core::tags::TagSpec;
 use vitality_core::util::pretty_type_name;
+use vitality_core::value::AttributeValue;
 
 /// A file names an attribute and a literal, so one fn pointer builds that attribute's modifiers
 /// without the file ever knowing the type.
@@ -308,10 +308,9 @@ fn new_modifier<T: Attribute>(
     op: ModOp,
     who: EffectSubject,
 ) -> Option<Box<dyn Modifier>> {
-    let value = T::Property::from_f64(written)?;
-    let exact: f64 = value.as_();
+    let value = T::Property::from_f64(written);
     // from_f64 truncates, so `Hp add 0.5` built a modifier worth 0u32; a float only sheds mantissa
-    if exact != written && !holds_fractions::<T::Property>() {
+    if value.to_f64() != written && !holds_fractions::<T::Property>() {
         return None;
     }
     Some(Box::new(AttributeModifier::<T>::new(
@@ -323,9 +322,6 @@ fn new_modifier<T: Attribute>(
 }
 
 /// how a file tells an integer property from a float one: an integer narrows 0.5 away, a float keeps it
-fn holds_fractions<P: FromPrimitive + AsPrimitive<f64>>() -> bool {
-    P::from_f64(0.5).is_some_and(|half| {
-        let half: f64 = half.as_();
-        half == 0.5
-    })
+fn holds_fractions<P: AttributeValue>() -> bool {
+    P::from_f64(0.5).to_f64() == 0.5
 }

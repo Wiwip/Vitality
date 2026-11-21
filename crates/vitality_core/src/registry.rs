@@ -3,14 +3,16 @@
 use crate::CurrentValueChanged;
 use crate::attributes::{Attribute, AttributeDependents, Clamp, ClampBounds, record_dependencies};
 use crate::context::ActorExprContext;
-use crate::modifier::{AttributeCalculator, ModOp};
+use crate::modifier::Calc;
 use crate::util::pretty_type_name;
-use bevy::ecs::component::ComponentId;
-use bevy::ecs::world::{FilteredEntityMut, FilteredEntityRef};
-use bevy::platform::collections::{HashMap, HashSet};
-use bevy::prelude::*;
-use num_traits::{AsPrimitive, FromPrimitive};
-use std::any::TypeId;
+use crate::value::AttributeValue;
+use bevy_ecs::component::ComponentId;
+use bevy_ecs::prelude::*;
+use bevy_ecs::world::{FilteredEntityMut, FilteredEntityRef, World};
+use bevy_platform::collections::{HashMap, HashSet};
+use bevy_reflect::prelude::*;
+use std::any::{Any, TypeId};
+use std::fmt;
 use std::sync::Mutex;
 
 /// Dense index of a registered attribute.
@@ -23,100 +25,155 @@ impl AttrId {
     }
 }
 
-/// An [`AttributeCalculator`] with every value widened to f64, so one table can hold any attribute.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ErasedCalc {
-    pub set: Option<f64>,
-    pub add: f64,
-    pub sub: f64,
-    pub increase: f64,
-    pub mul: f64,
+/// Index of a distinct property type; picks the typed buffer an attribute's values live in.
+pub type Kind = usize;
+
+/// Where a changed value's old/new pair sits in a [`ValueBuf`].
+#[derive(Clone, Copy, Debug)]
+pub struct Change {
+    pub kind: Kind,
+    pub pair: u32,
 }
 
-impl Default for ErasedCalc {
-    fn default() -> Self {
-        Self {
-            set: None,
-            add: 0.0,
-            sub: 0.0,
-            increase: 0.0,
-            mul: 1.0,
-        }
+type Slots = Vec<Option<Box<dyn Any + Send + Sync>>>;
+
+/// One typed buffer per [`Kind`]; only the generic fns behind [`AttrInfo`] know the type, so a
+/// wrong downcast is an internal bug and panics.
+#[derive(Default)]
+pub struct ValueBuf {
+    /// `Vec<Calc<P>>` per kind, dense by [`AttrId`]
+    calcs: Slots,
+    /// `Vec<(P, P)>` per kind, in walk order
+    pairs: Slots,
+}
+
+impl fmt::Debug for ValueBuf {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ValueBuf({} kind(s) of calcs, {} kind(s) of pairs)",
+            self.calcs.len(),
+            self.pairs.len()
+        )
     }
 }
 
-impl ErasedCalc {
-    /// Same stacking rules as [`AttributeCalculator::from_op_stacked`].
-    pub fn from_op(op: ModOp, value: f64, stacks: u32) -> Self {
-        let stacks = stacks.max(1) as f64;
-        let mut calc = Self::default();
-        match op {
-            ModOp::Set => calc.set = Some(value),
-            ModOp::Add => calc.add = value * stacks,
-            ModOp::Sub => calc.sub = value * stacks,
-            ModOp::Increase => calc.increase = value * stacks,
-            ModOp::Mul => calc.mul = value.powf(stacks),
-        }
-        calc
+impl ValueBuf {
+    pub fn calc<P: AttributeValue>(&self, kind: Kind, id: AttrId) -> Option<Calc<P>> {
+        self.calcs
+            .get(kind)?
+            .as_ref()?
+            .downcast_ref::<Vec<Calc<P>>>()?
+            .get(id.index())
+            .copied()
     }
 
-    pub fn combine(&mut self, other: &ErasedCalc) {
-        self.set = self.set.or(other.set);
-        self.add += other.add;
-        self.sub += other.sub;
-        self.increase += other.increase;
-        self.mul *= other.mul;
+    pub fn calcs_of<P: AttributeValue>(&self, kind: Kind) -> Option<&[Calc<P>]> {
+        self.calcs
+            .get(kind)?
+            .as_ref()?
+            .downcast_ref::<Vec<Calc<P>>>()
+            .map(Vec::as_slice)
     }
 
-    /// None when the fold holds a value the property cannot hold, which is what `from_f64` answers
-    /// for every integer and for no float, so a float attribute keeps folding NaN.
-    fn typed<T: Attribute>(&self) -> Option<AttributeCalculator<T>> {
-        let narrow = |value: f64| {
-            T::Property::from_f64(value).or_else(|| {
-                warn_once!(
-                    "{value} is not a {} value: that fold is refused and the attribute keeps the \
-                     value it has, so an integer attribute needs modifiers that stay inside its \
-                     range",
-                    pretty_type_name::<T>()
-                );
-                None
+    pub fn calcs_slot<P: AttributeValue>(&mut self, kind: Kind) -> &mut Vec<Calc<P>> {
+        typed_slot::<Vec<Calc<P>>>(&mut self.calcs, kind)
+    }
+
+    pub fn calc_mut<P: AttributeValue>(&mut self, kind: Kind, id: AttrId) -> &mut Calc<P> {
+        let rows = typed_slot::<Vec<Calc<P>>>(&mut self.calcs, kind);
+        reserve(rows, id);
+        &mut rows[id.index()]
+    }
+
+    /// answers the pair's index for [`ValueBuf::pair`]
+    pub fn push_change<P: AttributeValue>(&mut self, kind: Kind, old: P, new: P) -> u32 {
+        let rows = typed_slot::<Vec<(P, P)>>(&mut self.pairs, kind);
+        rows.push((old, new));
+        (rows.len() - 1) as u32
+    }
+
+    pub fn pair<P: AttributeValue>(&self, kind: Kind, pair: u32) -> (P, P) {
+        let rows = self.pairs[kind]
+            .as_ref()
+            .and_then(|cell| cell.downcast_ref::<Vec<(P, P)>>())
+            .expect("a change names a kind whose pairs were written");
+        rows[pair as usize]
+    }
+
+    /// answers the offset to shift `other`'s pair indices by
+    pub fn append_pairs<P: AttributeValue>(&mut self, other: &mut Self, kind: Kind) -> u32 {
+        let rows = typed_slot::<Vec<(P, P)>>(&mut self.pairs, kind);
+        let offset = rows.len() as u32;
+        // append, not take, so the thread's buffer keeps its capacity
+        if let Some(moved) = other
+            .pairs
+            .get_mut(kind)
+            .and_then(|cell| cell.as_mut())
+            .map(|cell| {
+                cell.downcast_mut::<Vec<(P, P)>>()
+                    .expect("a kind holds the property type registered for it")
             })
-        };
-        let set = match self.set {
-            Some(value) => Some(narrow(value)?),
-            None => None,
-        };
-        Some(AttributeCalculator::from_parts(
-            set,
-            narrow(self.add)?,
-            narrow(self.sub)?,
-            self.increase,
-            self.mul,
-        ))
+        {
+            rows.append(moved);
+        }
+        offset
     }
 }
+
+fn reserve<P: AttributeValue>(rows: &mut Vec<Calc<P>>, id: AttrId) {
+    if rows.len() <= id.index() {
+        rows.resize(id.index() + 1, Calc::default());
+    }
+}
+
+fn typed_slot<T: Any + Send + Sync + Default>(slots: &mut Slots, kind: Kind) -> &mut T {
+    if slots.len() <= kind {
+        slots.resize_with(kind + 1, || None);
+    }
+    let cell = slots[kind].get_or_insert_with(|| Box::new(T::default()));
+    cell.downcast_mut::<T>()
+        .expect("a kind holds the property type registered for it")
+}
+
+pub type AppendPairs = fn(&mut ValueBuf, &mut ValueBuf, Kind) -> u32;
+
+pub type DependentsOf = fn(&FilteredEntityRef, AttrComponents, &mut Vec<Entity>);
+
+/// clears the scratch so a removed modifier stops counting
+pub type ResetCalcs = fn(&mut ValueBuf, Kind, AttrSet);
+
+pub type WriteCalcs = fn(&mut ModifierTable, Kind, AttrSet, &ValueBuf);
+
+/// set by the effects crate, which owns the modifier components
+pub type FoldModifier = fn(&mut ValueBuf, Kind, AttrId, &World, Entity, u32);
 
 /// Spelled out inside the struct it sits over clippy's complexity limit.
-type ResolveFn = fn(
+pub type ResolveFn = fn(
     &mut FilteredEntityMut,
     AttrComponents,
-    &ErasedCalc,
+    Kind,
+    AttrId,
+    &ValueBuf,
+    &mut ValueBuf,
     &mut Vec<(Entity, TypeId, TypeId)>,
-) -> Option<Resolved>;
+) -> Option<Change>;
 
 /// What the resolver needs to do to one attribute without knowing its type.
 pub struct AttrInfo {
     pub id: AttrId,
     pub name: String,
     pub type_id: TypeId,
+    pub kind: Kind,
     pub ids: AttrComponents,
     /// recomputes current from base, the folded modifiers and the clamp, writing only on change; None when the actor doesn't have the attribute
     /// the sink collects the limits a first clamp pass read, see [`add_clamp_edges`]
     pub resolve: ResolveFn,
-    pub dependents_of: fn(&FilteredEntityRef, AttrComponents, &mut Vec<Entity>),
-    pub notify: fn(&mut Commands, Entity, f64, f64),
+    pub dependents_of: DependentsOf,
+    pub notify: fn(&mut Commands, Entity, Change, &ValueBuf),
     /// Entities of this attribute whose base moved since the last scan, for [`scan_base_writes`].
     pub base_write_scan: fn(&mut World, AttrId, &mut Vec<(Entity, AttrId)>),
+    pub fold_modifier: FoldModifier,
 }
 
 /// Component ids of an attribute and the components that ride along with it, resolved once.
@@ -128,18 +185,24 @@ pub struct AttrComponents {
     pub clamp_bounds: ComponentId,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct Resolved {
-    pub moved: Option<(f64, f64)>,
+#[derive(Clone, Debug)]
+pub struct KindInfo {
+    pub append_pairs: AppendPairs,
+    pub members: AttrSet,
+    pub reset_calcs: ResetCalcs,
+    pub write_calcs: WriteCalcs,
 }
 
 // SAFETY (all three below): every id in `ids` was registered for exactly the type it is read as.
 fn resolve<T: Attribute>(
     entity: &mut FilteredEntityMut,
     ids: AttrComponents,
-    calc: &ErasedCalc,
+    kind: Kind,
+    id: AttrId,
+    folded: &ValueBuf,
+    changes: &mut ValueBuf,
     clamp_reads: &mut Vec<(Entity, TypeId, TypeId)>,
-) -> Option<Resolved> {
+) -> Option<Change> {
     let mut clamp: Option<Clamp<T>> = None;
     let bounded = entity.get_by_id(ids.clamp_bounds).is_some();
     if bounded {
@@ -193,8 +256,7 @@ fn resolve<T: Attribute>(
         return None;
     };
     let mut attribute = unsafe { untyped.with_type::<T>() };
-    // a fold the property cannot hold writes nothing at all, not even the clamp on the base
-    let calculator = calc.typed::<T>()?;
+    let calc = folded.calc::<T::Property>(kind, id).unwrap_or_default();
     let mut base = attribute.base_value();
     if let Some(clamp) = &clamp {
         let clamped = clamp.apply(base);
@@ -203,7 +265,7 @@ fn resolve<T: Attribute>(
             base = clamped;
         }
     }
-    let mut new = calculator.eval(base);
+    let mut new = calc.eval(base);
     if let Some(clamp) = &clamp {
         new = clamp.apply(new);
     }
@@ -212,12 +274,12 @@ fn resolve<T: Attribute>(
         None
     } else {
         attribute.set_current_value(new);
-        Some((old.as_(), new.as_()))
+        Some(changes.push_change(kind, old, new))
     };
     if attribute.folded_base() != Some(base) {
         attribute.set_folded_base(base);
     }
-    Some(Resolved { moved })
+    moved.map(|pair| Change { kind, pair })
 }
 
 fn dependents_of<T: Attribute>(
@@ -231,20 +293,59 @@ fn dependents_of<T: Attribute>(
     }
 }
 
-fn notify<T: Attribute>(commands: &mut Commands, entity: Entity, old: f64, new: f64) {
-    let narrow = |value: f64| T::Property::from_f64(value).unwrap_or_default();
+fn notify<T: Attribute>(
+    commands: &mut Commands,
+    entity: Entity,
+    change: Change,
+    values: &ValueBuf,
+) {
+    let (old, new) = values.pair::<T::Property>(change.kind, change.pair);
     commands.trigger(CurrentValueChanged::<T> {
         entity,
         phantom_data: Default::default(),
-        old: narrow(old),
-        new: narrow(new),
+        old,
+        new,
     });
+}
+
+fn reset_calcs<P: AttributeValue>(values: &mut ValueBuf, kind: Kind, ids: AttrSet) {
+    let rows = values.calcs_slot::<P>(kind);
+    for id in ids.iter() {
+        reserve(rows, id);
+        rows[id.index()] = Calc::default();
+    }
+}
+
+fn write_calcs<P: AttributeValue>(
+    table: &mut ModifierTable,
+    kind: Kind,
+    ids: AttrSet,
+    scratch: &ValueBuf,
+) {
+    let Some(from) = scratch.calcs_of::<P>(kind) else {
+        return;
+    };
+    let rows = table.values.calcs_slot::<P>(kind);
+    for id in ids.iter() {
+        if let Some(calc) = from.get(id.index()) {
+            reserve(rows, id);
+            rows[id.index()] = *calc;
+        }
+    }
+}
+
+fn fold_nothing(_: &mut ValueBuf, _: Kind, _: AttrId, _: &World, _: Entity, _: u32) {}
+
+fn append_pairs_of<P: AttributeValue>(to: &mut ValueBuf, from: &mut ValueBuf, kind: Kind) -> u32 {
+    to.append_pairs::<P>(from, kind)
 }
 
 #[derive(Resource, Default)]
 pub struct AttributeRegistry {
     infos: Vec<AttrInfo>,
     by_type: HashMap<TypeId, AttrId>,
+    by_property: HashMap<TypeId, Kind>,
+    kinds: Vec<KindInfo>,
     edges: HashSet<(AttrId, AttrId)>,
     /// Attributes in dependency order; an edge `a -> b` puts `a` first.
     order: Vec<AttrId>,
@@ -265,11 +366,13 @@ impl AttributeRegistry {
             pretty_type_name::<T>(),
             AttrSet::CAPACITY
         );
+        let kind = self.kind_of::<T::Property>();
         let id = AttrId(self.infos.len() as u16);
         self.infos.push(AttrInfo {
             id,
             name: pretty_type_name::<T>(),
             type_id: TypeId::of::<T>(),
+            kind,
             ids: AttrComponents {
                 component: world.register_component::<T>(),
                 dependents: world.register_component::<AttributeDependents<T>>(),
@@ -280,8 +383,10 @@ impl AttributeRegistry {
             dependents_of: dependents_of::<T>,
             notify: notify::<T>,
             base_write_scan: base_write_scan::<T>,
+            fold_modifier: fold_nothing,
         });
         self.by_type.insert(TypeId::of::<T>(), id);
+        self.kinds[kind].members.insert(id);
         self.readers.push(Vec::new());
         self.rebuild_order();
         id
@@ -313,6 +418,37 @@ impl AttributeRegistry {
 
     pub fn readers(&self, id: AttrId) -> &[AttrId] {
         &self.readers[id.index()]
+    }
+
+    pub fn kinds(&self) -> &[KindInfo] {
+        &self.kinds
+    }
+
+    pub fn kind_of_attr(&self, id: AttrId) -> Kind {
+        self.infos[id.index()].kind
+    }
+
+    pub fn set_fold_modifier<T: Attribute>(&mut self, fold: FoldModifier) {
+        let attribute = TypeId::of::<T>();
+        if let Some(info) = self.infos.iter_mut().find(|info| info.type_id == attribute) {
+            info.fold_modifier = fold;
+        }
+    }
+
+    fn kind_of<P: AttributeValue>(&mut self) -> Kind {
+        let property = TypeId::of::<P>();
+        if let Some(kind) = self.by_property.get(&property) {
+            return *kind;
+        }
+        let kind = self.kinds.len();
+        self.kinds.push(KindInfo {
+            append_pairs: append_pairs_of::<P>,
+            members: AttrSet::default(),
+            reset_calcs: reset_calcs::<P>,
+            write_calcs: write_calcs::<P>,
+        });
+        self.by_property.insert(property, kind);
+        kind
     }
 
     /// `reader` is computed from `read` on the same actor. Returns whether the edge is new.
@@ -351,7 +487,8 @@ impl AttributeRegistry {
         for &(_, reader) in &self.edges {
             indegree[reader.index()] += 1;
         }
-        let mut ready: Vec<AttrId> = (0..n)
+        // a heap, so the order depends on the edges and not on insertion order
+        let mut ready: std::collections::BinaryHeap<AttrId> = (0..n)
             .filter(|&i| indegree[i] == 0)
             .map(|i| AttrId(i as u16))
             .collect();
@@ -446,6 +583,24 @@ impl AttrSet {
         !was
     }
 
+    /// lowest first
+    pub fn iter(&self) -> impl Iterator<Item = AttrId> + '_ {
+        (0..self.0.len()).flat_map(move |word| {
+            let mut bits = self.0[word];
+            std::iter::from_fn(move || {
+                (bits != 0).then(|| {
+                    let bit = bits.trailing_zeros();
+                    bits &= !(1 << bit);
+                    AttrId((word * 64 + bit as usize) as u16)
+                })
+            })
+        })
+    }
+
+    pub fn intersection(&self, other: &AttrSet) -> AttrSet {
+        AttrSet([self.0[0] & other.0[0], self.0[1] & other.0[1]])
+    }
+
     pub fn contains(&self, id: AttrId) -> bool {
         let (word, bit) = (id.index() / 64, id.index() % 64);
         self.0[word] & (1 << bit) != 0
@@ -535,22 +690,9 @@ impl ResolveQueue {
     }
 }
 
-#[derive(Component, Default, Debug, Clone)]
+#[derive(Component, Default, Debug)]
 pub struct ModifierTable {
-    pub calcs: Vec<ErasedCalc>,
-}
-
-impl ModifierTable {
-    pub fn calc(&self, id: AttrId) -> ErasedCalc {
-        self.calcs.get(id.index()).copied().unwrap_or_default()
-    }
-
-    pub fn set_calc(&mut self, id: AttrId, calc: ErasedCalc) {
-        if self.calcs.len() <= id.index() {
-            self.calcs.resize(id.index() + 1, ErasedCalc::default());
-        }
-        self.calcs[id.index()] = calc;
-    }
+    pub values: ValueBuf,
 }
 
 type BaseScanQuery<T> = QueryState<(Entity, &'static T), Changed<T>>;
@@ -594,8 +736,9 @@ pub fn scan_base_writes(world: &mut World, mut batch: Local<Vec<(Entity, AttrId)
 mod tests {
     use super::*;
     use crate::attributes::Attribute;
+    use crate::modifier::ModOp;
     use crate::prelude::{ReflectAccessAttribute, ReflectComponent};
-    use bevy::prelude::World;
+    use bevy_ecs::prelude::World;
 
     fn register_one<T: Attribute>(registry: &mut AttributeRegistry, world: &mut World) {
         registry.register::<T>(world);
@@ -673,5 +816,38 @@ mod tests {
         // add_edge takes (read, reader), so these two are Attack and Power reading each other.
         registry.add_edge(attack, power);
         registry.add_edge(power, attack);
+    }
+
+    crate::attribute!(Frost, i32);
+    crate::attribute!(Ember, f64);
+
+    #[test]
+    fn one_kind_per_property_type() {
+        let mut world = World::new();
+        let mut registry = AttributeRegistry::default();
+        let attack = registry.register::<Attack>(&mut world);
+        let power = registry.register::<Power>(&mut world);
+        let frost = registry.register::<Frost>(&mut world);
+        let ember = registry.register::<Ember>(&mut world);
+
+        assert_eq!(registry.kinds().len(), 3);
+        assert_eq!(registry.kind_of_attr(attack), registry.kind_of_attr(power));
+        assert_ne!(registry.kind_of_attr(frost), registry.kind_of_attr(ember));
+
+        let mut values = ValueBuf::default();
+        let kind = registry.kind_of_attr(attack);
+        *values.calc_mut(kind, attack) = Calc::from_op(ModOp::Add, 3.0f32);
+        *values.calc_mut(kind, power) = Calc::from_op(ModOp::Mul, 2.0f32);
+        assert_eq!(values.calc::<f32>(kind, attack).unwrap().eval(10.0), 13.0);
+        assert_eq!(values.calc::<f32>(kind, power).unwrap().eval(10.0), 20.0);
+
+        values.push_change(kind, 0.0f32, 0.5f32);
+        let mut thread = ValueBuf::default();
+        let first = thread.push_change(kind, 1.0f32, 2.0f32);
+        let second = thread.push_change(kind, 3.0f32, 4.0f32);
+        let offset = values.append_pairs::<f32>(&mut thread, kind);
+        assert_eq!(offset, 1);
+        assert_eq!(values.pair::<f32>(kind, first + offset), (1.0, 2.0));
+        assert_eq!(values.pair::<f32>(kind, second + offset), (3.0, 4.0));
     }
 }

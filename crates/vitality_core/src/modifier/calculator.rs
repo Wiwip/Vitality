@@ -1,7 +1,6 @@
-use crate::attributes::Attribute;
-use crate::math::SaturatingAttributes;
-use bevy::prelude::*;
-use num_traits::{AsPrimitive, Bounded, FromPrimitive, Zero};
+use crate::value::AttributeValue;
+use bevy_reflect::prelude::*;
+use bevy_utils::default;
 use serde::Serialize;
 use std::fmt::{Debug, Display, Formatter};
 
@@ -26,123 +25,96 @@ impl Display for ModOp {
     }
 }
 
-#[derive(Component, Clone, Copy, Reflect, Debug)]
-pub struct AttributeCalculatorCached<T: Attribute> {
-    #[reflect(ignore)]
-    pub calculator: AttributeCalculator<T>,
+/// One attribute's folded modifiers: `(base + Σadd − Σsub) × (1 + Σincrease) × Πmul`, or `set`.
+#[derive(Clone, Copy, Debug)]
+pub struct Calc<P: AttributeValue> {
+    pub set: Option<P>,
+    pub add: P,
+    pub sub: P,
+    pub increase: P,
+    pub mul: P,
 }
 
-impl<T: Attribute> Default for AttributeCalculatorCached<T> {
+impl<P: AttributeValue> Default for Calc<P> {
     fn default() -> Self {
         Self {
-            calculator: AttributeCalculator::default(),
+            set: None,
+            add: P::zero(),
+            sub: P::zero(),
+            increase: P::zero(),
+            mul: P::one(),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, Reflect)]
-pub struct AttributeCalculator<T: Attribute> {
-    pub(crate) set: Option<T::Property>,
-    pub(crate) additive: T::Property,
-    pub(crate) subtractive: T::Property,
-    pub(crate) increase: f64,
-    pub(crate) multiplier: f64,
-}
-
-impl<T: Attribute> AttributeCalculator<T> {
-    pub fn eval(&self, base_value: T::Property) -> T::Property {
-        if let Some(set) = self.set {
-            return set;
-        }
-
-        let addition_result: T::Property = base_value.saturating_add(self.additive);
-        let subtraction_result: f64 = addition_result.saturating_sub(self.subtractive).as_();
-        let add_multi_result = subtraction_result * (1.0 + self.increase);
-        let result = add_multi_result * self.multiplier;
-
-        let min = T::Property::min_value();
-        let max = T::Property::max_value();
-
-        let min_f: f64 = min.as_();
-        let max_f: f64 = max.as_();
-
-        let clamped_value = result.clamp(min_f, max_f);
-        T::Property::from_f64(clamped_value).unwrap_or_default()
-    }
-
-    pub fn from_parts(
-        set: Option<T::Property>,
-        additive: T::Property,
-        subtractive: T::Property,
-        increase: f64,
-        multiplier: f64,
-    ) -> Self {
-        Self {
-            set,
-            additive,
-            subtractive,
-            increase,
-            multiplier,
-        }
-    }
-
-    /// One modifier applied `stacks` times: additive ops scale, `Mul` compounds, `Set` ignores it.
-    pub fn from_op_stacked(operation: ModOp, value: T::Property, stacks: u32) -> Self {
-        if stacks <= 1 {
-            return Self::from_op(operation, value);
-        }
-        match operation {
-            ModOp::Set => Self::from_op(operation, value),
-            ModOp::Mul => Self {
-                multiplier: value.as_().powi(stacks as i32),
-                ..default()
-            },
-            ModOp::Increase => Self {
-                increase: value.as_() * stacks as f64,
-                ..default()
-            },
-            ModOp::Add | ModOp::Sub => {
-                let scaled = T::Property::from_f64(value.as_() * stacks as f64)
-                    .unwrap_or_else(T::Property::max_value);
-                Self::from_op(operation, scaled)
-            }
-        }
-    }
-
-    pub fn from_op(operation: ModOp, value: T::Property) -> Self {
+impl<P: AttributeValue> Calc<P> {
+    pub fn from_op(operation: ModOp, value: P) -> Self {
         match operation {
             ModOp::Set => Self {
                 set: Some(value),
                 ..default()
             },
             ModOp::Add => Self {
-                additive: value,
+                add: value,
                 ..default()
             },
             ModOp::Sub => Self {
-                subtractive: value,
+                sub: value,
                 ..default()
             },
             ModOp::Increase => Self {
-                increase: value.as_(),
+                increase: value,
                 ..default()
             },
             ModOp::Mul => Self {
-                multiplier: value.as_(),
+                mul: value,
                 ..default()
             },
         }
     }
-}
 
-impl<T: Attribute> Default for AttributeCalculator<T> {
-    fn default() -> Self {
-        Self {
-            set: None,
-            additive: T::Property::zero(),
-            subtractive: T::Property::zero(),
-            increase: 0.0,
-            multiplier: 1.0,
+    /// sums scale by `stacks`, `Mul` compounds, `Set` ignores it
+    pub fn from_op_stacked(operation: ModOp, value: P, stacks: u32) -> Self {
+        let stacks = stacks.max(1);
+        if stacks == 1 {
+            return Self::from_op(operation, value);
+        }
+        match operation {
+            ModOp::Set => Self::from_op(operation, value),
+            ModOp::Mul => Self {
+                mul: value.powi(stacks),
+                ..default()
+            },
+            ModOp::Increase => Self {
+                increase: scale(value, stacks),
+                ..default()
+            },
+            ModOp::Add | ModOp::Sub => {
+                let scaled = scale(value, stacks);
+                Self::from_op(operation, scaled)
+            }
         }
     }
+
+    /// the first `set` in walk order wins
+    pub fn combine(&mut self, other: &Self) {
+        self.set = self.set.or(other.set);
+        self.add = P::add(self.add, other.add);
+        self.sub = P::add(self.sub, other.sub);
+        self.increase = P::add(self.increase, other.increase);
+        self.mul = P::mul(self.mul, other.mul);
+    }
+
+    pub fn eval(&self, base_value: P) -> P {
+        if let Some(set) = self.set {
+            return set;
+        }
+        let sum = P::sub(P::add(base_value, self.add), self.sub);
+        let grown = P::mul(sum, P::add(P::one(), self.increase));
+        P::mul(grown, self.mul)
+    }
+}
+
+fn scale<P: AttributeValue>(value: P, count: u32) -> P {
+    P::mul(value, P::from_f64(count as f64))
 }

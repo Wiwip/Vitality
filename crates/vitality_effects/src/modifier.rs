@@ -1,23 +1,25 @@
 use crate::EffectTargeting;
 use crate::EffectsMut;
+use crate::conditions::ConditionRng;
 use crate::context::{EffectExprContext, EffectExprSchema};
 use crate::prelude::*;
 use crate::resolver::ModifierSlot;
-use bevy::ecs::message::MessageCursor;
-use bevy::ecs::resource::IsResource;
-use bevy::prelude::*;
-use bevy::prelude::{Component, Entity, EntityCommands, Reflect, reflect_trait};
+use bevy_ecs::message::MessageCursor;
+use bevy_ecs::prelude::*;
+use bevy_ecs::prelude::{Component, Entity, EntityCommands};
+use bevy_ecs::resource::IsResource;
+use bevy_reflect::{Reflect, reflect_trait};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::any::TypeId;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
+use tracing::{error, warn};
 use vitality_core::attributes::record_dependencies;
-use vitality_core::math::AbsDiff;
-use vitality_core::modifier::AttributeCalculator;
+use vitality_core::modifier::Calc;
 pub use vitality_core::modifier::ModOp;
-use vitality_core::num_traits::AsPrimitive;
 use vitality_core::util::pretty_type_name;
+use vitality_core::warn_once;
 use vitality_core::{AttributeBindings, DepRole};
 
 pub trait Modifier: Send + Sync {
@@ -127,7 +129,16 @@ where
         let shown = modifier.to_string();
 
         if self.capture == Capture::Live {
-            self.expr.get_dependencies(&mut deps);
+            // express-it reports into a HashSet; sort so the proxy choice is the same every run
+            let mut reported = std::collections::HashSet::new();
+            self.expr.get_dependencies(&mut reported);
+            let mut reported: Vec<TypeId> = reported.into_iter().collect();
+            reported.sort();
+            for key in reported {
+                if !deps.contains(&key) {
+                    deps.push(key);
+                }
+            }
             let mut seen: Vec<(TypeId, Entity)> = Vec::new();
             for dep in deps {
                 let Some(binding) = type_bindings.dependency(&dep) else {
@@ -164,7 +175,6 @@ where
         let slot = ModifierSlot {
             attribute: TypeId::of::<T>(),
             op: modifier.operation,
-            value: modifier.value.as_(),
             who: self.who,
         };
         if folds_into_holder {
@@ -283,14 +293,16 @@ fn apply_queued_modifiers_of<T: Attribute>(world: &mut World) {
     // the messages ride out of the world so the actor query can hold it at the same time
     world.resource_scope(
         |world, messages: Mut<Messages<ApplyAttributeModifierMessage<T>>>| {
-            world.resource_scope(|world, mut state: Mut<ApplyState<T>>| {
-                let state = &mut *state;
-                let mut actors = state.actors.query_mut(world);
-                for ev in state.cursor.read(&messages) {
-                    if let Err(err) = apply_modifier(ev, &mut actors) {
-                        warn!("Deferred modifier {} is dropped: {}", ev.modifier, err);
+            world.resource_scope(|world, rng: Mut<ConditionRng>| {
+                world.resource_scope(|world, mut state: Mut<ApplyState<T>>| {
+                    let state = &mut *state;
+                    let mut actors = state.actors.query_mut(world);
+                    for ev in state.cursor.read(&messages) {
+                        if let Err(err) = apply_modifier(ev, &mut actors, &rng) {
+                            warn!("Deferred modifier {} is dropped: {}", ev.modifier, err);
+                        }
                     }
-                }
+                });
             });
         },
     );
@@ -312,6 +324,7 @@ pub fn apply_all_modifier_events(world: &mut World, mut applies: Local<Vec<Modif
 fn apply_modifier<T: Attribute>(
     trigger: &ApplyAttributeModifierMessage<T>,
     attributes: &mut Query<EffectsMut, Without<IsResource>>,
+    rng: &ConditionRng,
 ) -> Result<bool, BevyError> {
     // the write follows `who`; the expression below still reads both actors
     let (writer, other) = match trigger.modifier.who {
@@ -370,20 +383,19 @@ fn apply_modifier<T: Attribute>(
         source_actor: source,
         target_actor: Some(target),
         effect_holder: effect,
+        rng,
     };
     let mut modifier = trigger.modifier.clone();
     if modifier.capture == Capture::Live {
         modifier.update_value(&context);
     }
 
-    let calculator = AttributeCalculator::<T>::from_op_stacked(
-        modifier.operation,
-        modifier.value,
-        trigger.stacks,
-    );
+    let calculator =
+        Calc::<T::Property>::from_op_stacked(modifier.operation, modifier.value, trigger.stacks);
     let new_base_value = calculator.eval(base_value);
 
-    let has_changed = new_base_value.are_different(base_value);
+    // no epsilon, so a NaN always reads as changed
+    let has_changed = new_base_value != base_value;
     if has_changed {
         let mut attributes_mut = attributes.get_mut(writer)?;
 

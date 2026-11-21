@@ -1,6 +1,6 @@
 use crate::util::pretty_type_name;
-use bevy::platform::collections::HashMap;
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_platform::collections::HashMap;
 use std::any::TypeId;
 
 /// A tag component erased so effect and ability definitions can store it.

@@ -2,12 +2,12 @@ use crate::context::EffectExprSchema;
 use crate::modifier::Modifier;
 use crate::modifier::ModifierFn;
 use crate::{EffectApplicationPolicy, EffectStackingPolicy};
-use bevy::prelude::*;
+use bevy_reflect::prelude::*;
 use express_it::expr::StoredExpr;
 use vitality_core::mutator::EntityActions;
 use vitality_core::tags::TagSpec;
 
-#[derive(Asset, TypePath)]
+#[derive(TypePath)]
 pub struct EffectDef {
     pub application_policy: EffectApplicationPolicy,
     pub stacking_policy: EffectStackingPolicy,

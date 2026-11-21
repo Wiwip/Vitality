@@ -1,9 +1,12 @@
 use crate::definition::EffectDef;
 use crate::graph::NodeType;
 use crate::{ApplyEffectEvent, EffectTargeting};
-use bevy::prelude::*;
+use bevy_app::prelude::*;
+use bevy_derive::{Deref, DerefMut};
+use bevy_ecs::prelude::*;
 use core::marker::PhantomData;
 use vitality_core::attributes::ManageAttributes;
+use vitality_core::store::Handle;
 
 #[derive(Resource, Deref, DerefMut, Default)]
 pub struct GlobalEffects(Vec<Handle<EffectDef>>);
@@ -74,7 +77,7 @@ fn observe_spawned_marker<M: Component>(
         commands.trigger(ApplyEffectEvent {
             entity: trigger.entity,
             targeting: EffectTargeting::new(source, trigger.entity),
-            handle: handle.clone(),
+            handle: *handle,
         });
     }
 }

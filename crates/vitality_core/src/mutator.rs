@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
 
 pub type EntityMutatorFn = dyn Fn(&mut EntityCommands) + Send + Sync;
 

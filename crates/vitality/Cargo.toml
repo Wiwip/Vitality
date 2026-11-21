@@ -6,7 +6,7 @@ edition = "2024"
 [features]
 default = ["debug-overlay"]
 debug-overlay = ["dep:vitality_debug"]
-multi_threaded = ["bevy/multi_threaded"]
+multi_threaded = ["bevy/multi_threaded", "vitality_effects/multi_threaded"]
 dyn = ["bevy/dynamic_linking"]
 # windowed examples; ui pulls default_platform and with it multi_threaded
 examples = [
@@ -21,7 +21,6 @@ examples = [
 [dependencies]
 express-it = { workspace = true }
 hfsm_bevy = { workspace = true }
-num-traits = { workspace = true }
 smol_str = { workspace = true }
 vitality_abilities = { workspace = true }
 vitality_core = { workspace = true }

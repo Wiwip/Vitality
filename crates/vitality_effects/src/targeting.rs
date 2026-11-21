@@ -1,4 +1,4 @@
-use bevy::prelude::Entity;
+use bevy_ecs::prelude::Entity;
 
 #[derive(Debug)]
 pub enum EffectTargeting {

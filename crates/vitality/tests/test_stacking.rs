@@ -1,11 +1,11 @@
 mod gameplay;
 
-use bevy::prelude::Assets;
 use gameplay::*;
 use vitality::effect::EffectStackingPolicy;
 use vitality::effect::definition::EffectDef;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
+use vitality::store::Assets;
 
 fn power_buff(policy: EffectStackingPolicy) -> vitality::effect::definition::EffectDef {
     EffectBuilder::permanent()

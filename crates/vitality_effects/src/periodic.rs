@@ -3,11 +3,13 @@ use crate::definition::EffectDef;
 use crate::modifier::{ApplyAttributeModifierMessage, AttributeModifier, OwnedModifiers};
 use crate::resolver::ModifierSlot;
 use crate::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker, Stacks};
-use bevy::ecs::resource::IsResource;
-use bevy::platform::collections::HashMap;
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_ecs::resource::IsResource;
+use bevy_platform::collections::HashMap;
 use std::any::TypeId;
+use tracing::warn;
 use vitality_core::attributes::Attribute;
+use vitality_core::store::Assets;
 
 /// fires one attribute's due writes; [`PeriodicApplies`] holds one per registered attribute so periodic application costs a single `FixedUpdate` node
 type PeriodicApply = fn(&mut World, &[DueModifier]);

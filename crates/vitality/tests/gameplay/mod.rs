@@ -8,6 +8,7 @@ use std::time::Duration;
 use vitality::actors::ActorBuilder;
 use vitality::effect::definition::EffectDef;
 use vitality::prelude::*;
+use vitality::store::{Assets, Handle};
 use vitality::{attribute, tag};
 
 attribute!(Health, f32);
@@ -104,7 +105,7 @@ pub fn with_abilities<R: Send + 'static>(
 }
 
 pub fn apply(app: &mut App, source: Entity, target: Entity, handle: &Handle<EffectDef>) {
-    let handle = handle.clone();
+    let handle = *handle;
     with_effects(app, move |effects| effects.apply(source, target, &handle));
 }
 

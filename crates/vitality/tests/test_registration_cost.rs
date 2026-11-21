@@ -15,12 +15,12 @@ const WIDE: usize = 22;
 const STEP: usize = WIDE - NARROW;
 
 const SYSTEMS_PER_ATTR_BASELINE: usize = 0;
-/// ten per attribute: the four ids `AttributeRegistry::register` takes (`T`,
-/// `AttributeDependents<T>`, `Clamp<T>`, `ClampBounds<T>`), the `AttributeCalculatorCached<T>` the
-/// `attribute!` macro `#[require]`s, bevy's own `Messages<ApplyAttributeModifierMessage<T>>`, and the
-/// first-use `BaseScanState<T>`/`ApplyState<T>`/`PeriodicState<T>` resources plus the
-/// `AttributeModifier<T>` id the last of those queries registers. Only the first six exist at rest.
-const COMPONENTS_PER_ATTR_BASELINE: usize = 6;
+/// nine per attribute: the four ids `AttributeRegistry::register` takes (`T`,
+/// `AttributeDependents<T>`, `Clamp<T>`, `ClampBounds<T>`), bevy's own
+/// `Messages<ApplyAttributeModifierMessage<T>>`, and the first-use
+/// `BaseScanState<T>`/`ApplyState<T>`/`PeriodicState<T>` resources plus the `AttributeModifier<T>`
+/// id the last of those queries registers. Only the first five exist at rest.
+const COMPONENTS_PER_ATTR_BASELINE: usize = 5;
 
 /// a node added at plugin build time is a +1 here, where the slope above still reads 0
 const SYSTEMS_INTERCEPT_BASELINE: usize = 10;
@@ -39,7 +39,7 @@ fn dag_app(attributes: usize) -> App {
 }
 
 /// exact, both directions: a fourth once-per-app node `EffectsPlugin` would add is a +1 here
-const DAG_SYSTEMS_BASELINE: usize = 45;
+const DAG_SYSTEMS_BASELINE: usize = 43;
 
 /// an observer is not a schedule node, so only this counter can see one
 const DAG_OBSERVERS_BASELINE: usize = 12;
@@ -49,12 +49,12 @@ const DAG_OBSERVERS_BASELINE: usize = 12;
 /// an attribute that has a fire, so a world where nothing ticks carries three resources per
 /// attribute plus the once-per-app `PeriodicPass` the collapsed node installs and the `DefNames`
 /// a def file resolves its attribute and tag names through (vitality_effects/src/def_file.rs).
-const DAG_TICK_RESOURCES_BASELINE: usize = 68;
+const DAG_TICK_RESOURCES_BASELINE: usize = 67;
 const DAG_TICK_RESOURCES_PER_ATTRIBUTE: usize = 3;
 
 /// exact, so a component the DAG branch starts registering per attribute is red here
-const DAG_TICK_COMPONENTS_BASELINE: usize = 143;
-const DAG_TICK_COMPONENTS_PER_ATTRIBUTE: usize = 8;
+const DAG_TICK_COMPONENTS_BASELINE: usize = 138;
+const DAG_TICK_COMPONENTS_PER_ATTRIBUTE: usize = 7;
 
 fn spec(attributes: usize) -> WorldSpec {
     WorldSpec {

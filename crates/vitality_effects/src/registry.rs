@@ -1,8 +1,10 @@
 use crate::definition::EffectDef;
-use bevy::asset::Handle;
-use bevy::platform::collections::HashMap;
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_platform::collections::HashMap;
+use bevy_reflect::prelude::*;
 use smol_str::SmolStr;
+use vitality_core::store::Assets;
+use vitality_core::store::Handle;
 
 #[derive(Clone, PartialEq, Eq, Hash, Reflect)]
 pub struct EffectToken(SmolStr);
@@ -46,7 +48,7 @@ impl EffectRegistry {
     }
 }
 
-use bevy::ecs::system::SystemParam;
+use bevy_ecs::system::SystemParam;
 
 #[derive(SystemParam)]
 pub struct Registry<'w> {
@@ -55,7 +57,7 @@ pub struct Registry<'w> {
 
 impl Registry<'_> {
     pub fn effect(&self, name: &EffectToken) -> Handle<EffectDef> {
-        self.effect_registry.get(name).clone()
+        *self.effect_registry.get(name)
     }
 }
 
@@ -72,6 +74,6 @@ impl RegistryMut<'_> {
     }
 
     pub fn effect(&self, name: &EffectToken) -> Handle<EffectDef> {
-        self.effect_registry.get(name).clone()
+        *self.effect_registry.get(name)
     }
 }

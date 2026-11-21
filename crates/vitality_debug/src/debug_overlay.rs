@@ -418,14 +418,14 @@ mod tests {
         let actor = world.spawn((ManageAttributes, DebugOverlayMarker)).id();
         let buffed = world
             .spawn((
-                Effect(Handle::default()),
+                Effect(vitality_core::store::Handle::default()),
                 EffectTarget(actor),
                 Name::new("Buffed"),
             ))
             .id();
         world.spawn((ModifierOf(buffed), ModifierMarker));
         world.spawn((
-            Effect(Handle::default()),
+            Effect(vitality_core::store::Handle::default()),
             EffectTarget(actor),
             Name::new("Stunned"),
         ));
@@ -464,7 +464,7 @@ mod tests {
         let world = app.world_mut();
         let post = world.spawn(DebugOverlayMarker).id();
         world.spawn((
-            Effect(Handle::default()),
+            Effect(vitality_core::store::Handle::default()),
             EffectTarget(post),
             Name::new("Warded"),
         ));

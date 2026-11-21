@@ -94,6 +94,10 @@ An effect file holds `name`, `policy`, `tag`, `requires`, `blocked_by`, `cleanse
 
 A file can only name what the app registered. `DefNames` holds the attributes and tags: `init_attribute::<T>()` puts the attribute in it, a tag you put there yourself with `DefNames::tag::<T>()`, and both are spelled as Rust spells them — the short type name — so anything else fails naming its line: ``line 2: no tag `Frost`: a def file only names tags the app put in DefNames``. `crates/vitality/tests/test_def_file_load.rs` pins the loads and those errors. Costs, expressions, clamps, task scenes and observers stay Rust: an ability's cost, a clamp or a `Power::src()` read cannot come out of a file.
 
+## Your own number type
+
+An attribute folds in its own property type: `(base + Σadd − Σsub) × (1 + Σincrease) × Πmul`, one operation at a time, a stacked `Mul` as `powi(stacks)`, so a type that rounds differently from `f64` or runs past it gets its own arithmetic back. Any primitive number works as is. A host type implements `AttributeValue` (`zero`, `one`, `add`, `sub`, `mul`, `powi`, `from_f64`, `to_f64`), derives `Reflect`, and calls `property_number!(MyType)` so its values can be expression literals; then `attribute!(Gold, MyType)` and `EffectBuilder::modify::<Gold>(MyType::..., ..)` take it directly. Literals, attribute reads and clamps stay in the type. Expression arithmetic (`A::src() + B::src()`) comes from express-it and needs `num_traits::Num`, and def files and the debug overlay read through `to_f64`, so those are lossy past `f64`. `crates/vitality/tests/test_property_types.rs` is a worked example.
+
 ## Wiring your own plugin
 
 The contract, with what each break looks like from inside an app and the test that pins it, is the `vitality` crate-level doc:

@@ -16,6 +16,7 @@ use vitality::effect::EffectBuilder;
 use vitality::effect::definition::EffectDef;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
+use vitality::store::Handle;
 use vitality::{AttributesPlugin, init_attribute};
 
 pub const SEED: u64 = 7;

@@ -1,5 +1,5 @@
 use crate::view::{ActorRead, ActorWrite};
-use bevy::ecs::world::{FilteredEntityMut, FilteredEntityRef};
+use bevy_ecs::world::{FilteredEntityMut, FilteredEntityRef};
 use express_it::expr::{Context, ContextMut};
 
 pub struct Source;

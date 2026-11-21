@@ -1,4 +1,3 @@
-use bevy::asset::Assets;
 use bevy::ecs::system::RunSystemOnce;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
@@ -15,6 +14,7 @@ use vitality::prelude::*;
 use vitality::registry::ability_registry::AbilityToken;
 use vitality::registry::effect_registry::EffectToken;
 use vitality::registry::{Registry, RegistryMut};
+use vitality::store::Assets;
 use vitality::{AttributesPlugin, attribute};
 
 attribute!(TestA, f32);
@@ -203,7 +203,7 @@ fn test_dropping_conditions_clears_a_stale_inactive_marker() {
     app.world_mut()
         .run_system_once(
             |mut defs: ResMut<Assets<EffectDef>>, rows: Query<&Effect>| {
-                let handle = rows.single().unwrap().0.clone();
+                let handle = rows.single().unwrap().0;
                 defs.get_mut(&handle).unwrap().activate_conditions.clear();
             },
         )

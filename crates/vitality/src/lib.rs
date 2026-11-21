@@ -72,8 +72,7 @@ use vitality_effects::{
 pub use vitality_abilities as ability;
 pub use vitality_core::{
     AppAttributeBindings, AttributeBindings, AttributeError, BaseValueChanged, CurrentValueChanged,
-    attribute, attribute_impl, attribute_set, attributes, express_it, math, mutator, num_traits,
-    tag, tags,
+    attribute, attribute_impl, attribute_set, attributes, express_it, mutator, store, tag, tags,
 };
 pub use vitality_effects as effect;
 
@@ -120,6 +119,10 @@ impl Plugin for AttributesPlugin {
     fn build(&self, app: &mut App) {
         if !vitality_core::first_install::<Self>(app) {
             return;
+        }
+        // abilities and actor defs still use scenes; DefaultPlugins may have added it already
+        if !app.is_plugin_added::<bevy::scene::ScenePlugin>() {
+            app.add_plugins(bevy::scene::ScenePlugin);
         }
         app.add_plugins((
             CorePlugin,

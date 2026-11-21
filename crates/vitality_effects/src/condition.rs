@@ -1,14 +1,17 @@
 use crate::EffectsRef;
+use crate::conditions::ConditionRng;
 use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
 use crate::lifecycle::{EffectRemovalReason, remove_effect};
 use crate::systems::MarkActorDirty;
 use crate::{Effect, EffectInactive, EffectSource, EffectTarget};
-use bevy::asset::Assets;
-use bevy::ecs::relationship::Relationship;
-use bevy::log::error;
-use bevy::prelude::*;
+use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_ecs::relationship::Relationship;
+use tracing::debug;
+use tracing::error;
 use vitality_core::schedule::EffectsSet;
+use vitality_core::store::Assets;
 use vitality_core::view::ActorRead;
 
 pub struct ConditionPlugin;
@@ -22,7 +25,7 @@ impl Plugin for ConditionPlugin {
         if !vitality_core::first_install::<Self>(app) {
             return;
         }
-        app.add_systems(
+        app.init_resource::<ConditionRng>().add_systems(
             FixedUpdate,
             evaluate_effect_conditions.in_set(EffectsSet::Prepare),
         );
@@ -38,82 +41,171 @@ type ConditionRow<'w, 's> = (
     Option<&'w EffectInactive>,
 );
 
-/// the row is read-only so this could parallelise; the split costs more single-threaded than it wins threaded
+/// decisions run in parallel only with `multi_threaded`: on one thread the hand-off costs more than it saves
 fn evaluate_effect_conditions(
-    mut query: Query<ConditionRow<'_, '_>>,
+    query: Query<ConditionRow<'_, '_>>,
     parents: Query<EffectsRef>,
     effects: Res<Assets<EffectDef>>,
+    rng: Res<ConditionRng>,
     mut commands: Commands,
 ) {
-    for (effect_entity_ref, effect, source, target, status) in query.iter_mut() {
-        let effect_entity = effect_entity_ref.id();
-        let Some(effect) = effects.get(&effect.0) else {
-            error!(
-                "Effect {} has no effect definition.",
-                effect_entity_ref.id()
-            );
-            continue;
-        };
+    // one draw a tick, forked per row so rolls don't depend on thread count
+    let base = rng.next_u64();
+    #[cfg(feature = "multi_threaded")]
+    let decisions = decide_in_parallel(&query, &parents, &effects, base);
+    #[cfg(not(feature = "multi_threaded"))]
+    let decisions = decide_serially(&query, &parents, &effects, base);
 
-        let Ok(target_actor_ref) = parents.get(target.0) else {
-            error!(
-                "Effect {} has no target entity {}.",
-                effect_entity_ref.id(),
-                target.get()
-            );
-            continue;
-        };
+    for decision in decisions {
+        apply(&mut commands, decision);
+    }
+}
 
-        // immunity is a standing promise, not an apply-time gate, so the tag is re-read every tick
-        if effect
-            .blocked_by_tags
-            .iter()
-            .any(|tag| target_actor_ref.has_type(tag.type_id))
-        {
-            remove_effect(
-                &mut commands,
-                effect_entity,
-                EffectRemovalReason::BlockedByTag,
-            );
-            continue;
-        }
+struct Decision {
+    effect: Entity,
+    target: Entity,
+    verdict: Verdict,
+}
 
-        // an empty list is always active and this system is the only writer of EffectInactive, so a row
-        // without a marker has nothing to decide
-        if effect.activate_conditions.is_empty() && status.is_none() {
-            continue;
-        }
+enum Verdict {
+    Blocked,
+    BecameActive,
+    BecameInactive,
+}
 
-        let Ok(source_actor_ref) = parents.get(source.get()) else {
-            error!(
-                "Effect {} has no parent entity {}.",
-                effect_entity_ref.id(),
-                source.get()
-            );
-            continue;
-        };
-
-        let context = EffectExprContext {
-            target_actor: Some(target_actor_ref),
-            source_actor: source_actor_ref,
-            effect_holder: effect_entity_ref,
-        };
-
-        let should_be_active = effect
-            .activate_conditions
-            .iter()
-            .all(|condition| condition.eval(&context));
-
-        let is_inactive = status.is_some();
-        if should_be_active && is_inactive {
-            debug!("Effect {effect_entity} is now active.");
-            commands.entity(effect_entity).remove::<EffectInactive>();
+fn apply(commands: &mut Commands, decision: Decision) {
+    let Decision {
+        effect,
+        target,
+        verdict,
+    } = decision;
+    match verdict {
+        Verdict::Blocked => remove_effect(commands, effect, EffectRemovalReason::BlockedByTag),
+        Verdict::BecameActive => {
+            debug!("Effect {effect} is now active.");
+            commands.entity(effect).remove::<EffectInactive>();
             // nothing else dirties the target: no attribute of its own changed and no leftover mark carries the fold into the next tick
-            commands.trigger(MarkActorDirty { entity: target.0 });
-        } else if !should_be_active && !is_inactive {
-            debug!("Effect {effect_entity} is now inactive.");
-            commands.entity(effect_entity).insert(EffectInactive);
-            commands.trigger(MarkActorDirty { entity: target.0 });
+            commands.trigger(MarkActorDirty { entity: target });
+        }
+        Verdict::BecameInactive => {
+            debug!("Effect {effect} is now inactive.");
+            commands.entity(effect).insert(EffectInactive);
+            commands.trigger(MarkActorDirty { entity: target });
         }
     }
+}
+
+fn decide(
+    row: &ConditionRow<'_, '_>,
+    parents: &Query<EffectsRef>,
+    effects: &Assets<EffectDef>,
+    rng: &ConditionRng,
+) -> Option<Decision> {
+    let (effect_entity_ref, effect, source, target, status) = *row;
+    let effect_entity = effect_entity_ref.id();
+    let Some(effect) = effects.get(&effect.0) else {
+        error!("Effect {effect_entity} has no effect definition.");
+        return None;
+    };
+
+    let Ok(target_actor_ref) = parents.get(target.0) else {
+        error!(
+            "Effect {} has no target entity {}.",
+            effect_entity, target.0
+        );
+        return None;
+    };
+
+    // immunity is a standing promise, not an apply-time gate, so the tag is re-read every tick
+    if effect
+        .blocked_by_tags
+        .iter()
+        .any(|tag| target_actor_ref.has_type(tag.type_id))
+    {
+        return Some(Decision {
+            effect: effect_entity,
+            target: target.0,
+            verdict: Verdict::Blocked,
+        });
+    }
+
+    // this system is the only writer of EffectInactive, so no conditions and no marker means no-op
+    if effect.activate_conditions.is_empty() && status.is_none() {
+        return None;
+    }
+
+    let Ok(source_actor_ref) = parents.get(source.get()) else {
+        error!(
+            "Effect {} has no parent entity {}.",
+            effect_entity,
+            source.get()
+        );
+        return None;
+    };
+
+    let context = EffectExprContext {
+        target_actor: Some(target_actor_ref),
+        source_actor: source_actor_ref,
+        effect_holder: effect_entity_ref,
+        rng,
+    };
+
+    let should_be_active = effect
+        .activate_conditions
+        .iter()
+        .all(|condition| condition.eval(&context));
+
+    let verdict = match (should_be_active, status.is_some()) {
+        (true, true) => Verdict::BecameActive,
+        (false, false) => Verdict::BecameInactive,
+        _ => return None,
+    };
+    Some(Decision {
+        effect: effect_entity,
+        target: target.0,
+        verdict,
+    })
+}
+
+#[cfg(not(feature = "multi_threaded"))]
+fn decide_serially(
+    query: &Query<ConditionRow<'_, '_>>,
+    parents: &Query<EffectsRef>,
+    effects: &Assets<EffectDef>,
+    base: u64,
+) -> Vec<Decision> {
+    query
+        .iter()
+        .enumerate()
+        .filter_map(|(i, row)| decide(&row, parents, effects, &ConditionRng::fork(base, i as u64)))
+        .collect()
+}
+
+/// chunked so verdicts come back in row order, which the event interleaving is pinned on
+#[cfg(feature = "multi_threaded")]
+fn decide_in_parallel(
+    query: &Query<ConditionRow<'_, '_>>,
+    parents: &Query<EffectsRef>,
+    effects: &Assets<EffectDef>,
+    base: u64,
+) -> Vec<Decision> {
+    use bevy_tasks::ComputeTaskPool;
+
+    let rows = query.iter().enumerate().collect::<Vec<_>>();
+    let pool = ComputeTaskPool::get();
+    let chunk = rows.len().div_ceil(pool.thread_num().max(1)).max(1);
+    pool.scope(|scope| {
+        for rows in rows.chunks(chunk) {
+            scope.spawn(async move {
+                rows.iter()
+                    .filter_map(|(i, row)| {
+                        decide(row, parents, effects, &ConditionRng::fork(base, *i as u64))
+                    })
+                    .collect::<Vec<_>>()
+            });
+        }
+    })
+    .into_iter()
+    .flatten()
+    .collect()
 }

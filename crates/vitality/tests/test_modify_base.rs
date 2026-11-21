@@ -148,74 +148,40 @@ fn a_nan_base_write_lands_and_reaches_the_attributes_that_read_it() {
     );
 }
 
-/// A fold total the attribute's property cannot hold is refused instead of narrowed onto that
-/// type's maximum: the integer keeps the value it had and the warn names it, while the float
-/// attribute above keeps its NaN untouched.
-mod integer_fold {
+/// an integer fold saturates in its own type and a float fold still reaches NaN
+mod typed_fold {
 
     use crate::gameplay::*;
-    use crate::logs::Logs;
     use bevy::prelude::*;
     use std::any::TypeId;
     use vitality::prelude::*;
-    use vitality_core::registry::{AttributeRegistry, ErasedCalc, ModifierTable, ResolveQueue};
+    use vitality_core::modifier::Calc;
+    use vitality_core::registry::{AttributeRegistry, ModifierTable, ResolveQueue};
 
     attribute!(Rage, u32);
 
     #[test]
-    fn a_nan_fold_on_an_integer_attribute_is_refused_and_names_it() {
-        let logs = Logs::scoped();
+    fn each_attribute_folds_in_its_own_number_type() {
+        let mut app = app();
+        app.add_plugins(init_attribute::<Rage>);
+        let hero = spawn(&mut app, hero_def().with::<Rage>(20u32));
 
-        let mut hero = Entity::PLACEHOLDER;
-        logs.run(|| {
-            let mut app = app();
-            app.add_plugins(init_attribute::<Rage>);
-            hero = spawn(&mut app, hero_def().with::<Rage>(20u32));
+        let registry = app.world().resource::<AttributeRegistry>();
+        let rage = registry.id_of(TypeId::of::<Rage>()).unwrap();
+        let power = registry.id_of(TypeId::of::<Power>()).unwrap();
+        let (rage_kind, power_kind) = (registry.kind_of_attr(rage), registry.kind_of_attr(power));
+        let mut table = app.world_mut().get_mut::<ModifierTable>(hero).unwrap();
+        *table.values.calc_mut(rage_kind, rage) = Calc::from_op(ModOp::Add, u32::MAX);
+        *table.values.calc_mut(power_kind, power) = Calc::from_op(ModOp::Add, f32::NAN);
+        let queue = app.world().resource::<ResolveQueue>();
+        queue.dirty(hero, rage);
+        queue.dirty(hero, power);
+        ticks(&mut app, 1);
 
-            let (rage, power) = {
-                let registry = app.world().resource::<AttributeRegistry>();
-                (
-                    registry
-                        .id_of(TypeId::of::<Rage>())
-                        .expect("the test registers Rage"),
-                    registry
-                        .id_of(TypeId::of::<Power>())
-                        .expect("the harness registers Power"),
-                )
-            };
-            let nan = ErasedCalc {
-                add: f64::NAN,
-                ..Default::default()
-            };
-            {
-                let mut table = app
-                    .world_mut()
-                    .get_mut::<ModifierTable>(hero)
-                    .expect("an actor carries the fold table");
-                table.set_calc(rage, nan);
-                table.set_calc(power, nan);
-            }
-            let queue = app.world().resource::<ResolveQueue>();
-            queue.dirty(hero, rage);
-            queue.dirty(hero, power);
-            ticks(&mut app, 1);
-
-            assert_eq!(
-                current::<Rage>(&app, hero),
-                20u32,
-                "the refused fold has to leave the component where it was"
-            );
-            assert!(
-                current::<Power>(&app, hero).is_nan(),
-                "the same fold on a float attribute still lands on NaN"
-            );
-        });
-
-        let warns = logs.warns();
+        assert_eq!(current::<Rage>(&app, hero), u32::MAX);
         assert!(
-            warns.contains("Rage"),
-            "the refused fold has to name the attribute it refused at WARN level, got: {}",
-            logs.all()
+            current::<Power>(&app, hero).is_nan(),
+            "a fold in the attribute's own float type reaches its NaN"
         );
     }
 }
@@ -232,6 +198,7 @@ mod self_buff_base_write {
     use vitality::effect::definition::EffectDef;
     use vitality::effect::modifier::{AttributeModifier, EffectSubject, ModOp, OwnedModifiers};
     use vitality::effect::{AppliedEffects, ApplyEffectEvent, EffectBuilder, EffectTargeting};
+    use vitality::store::Assets;
 
     const WRITE: f64 = 100.0;
 

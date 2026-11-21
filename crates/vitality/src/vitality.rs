@@ -3,7 +3,7 @@ use crate::registry::Registry;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use vitality_core::attributes::Attribute;
-use vitality_core::modifier::{AttributeCalculator, ModOp};
+use vitality_core::modifier::{Calc, ModOp};
 use vitality_core::tags::{ChangeTag, TagSpec};
 use vitality_core::util::pretty_type_name;
 use vitality_effects::definition::EffectDef;
@@ -15,7 +15,7 @@ pub struct Vitality<'w, 's> {
     global_actor: Query<'w, 's, Entity, With<GlobalActor>>,
     pub registry: Registry<'w>,
     actor_assets: ResMut<'w, Assets<ActorDef>>,
-    effect_assets: ResMut<'w, Assets<EffectDef>>,
+    effect_assets: ResMut<'w, vitality_core::store::Assets<EffectDef>>,
     global_effects: ResMut<'w, GlobalEffects>,
     // ahead of `effects`: a SystemParam applies its command buffers in field order, so the spawn lands first
     commands: Commands<'w, 's>,
@@ -23,7 +23,7 @@ pub struct Vitality<'w, 's> {
 }
 
 impl<'s, 'w> Vitality<'w, 's> {
-    pub fn add_effect(&mut self, effect: EffectDef) -> Handle<EffectDef> {
+    pub fn add_effect(&mut self, effect: EffectDef) -> vitality_core::store::Handle<EffectDef> {
         self.effect_assets.add(effect)
     }
 
@@ -31,12 +31,16 @@ impl<'s, 'w> Vitality<'w, 's> {
         &mut self,
         target: Entity,
         source: Entity,
-        handle: &Handle<EffectDef>,
+        handle: &vitality_core::store::Handle<EffectDef>,
     ) {
         self.effects.apply(source, target, handle);
     }
 
-    pub fn apply_effect_to_self(&mut self, source: Entity, handle: &Handle<EffectDef>) {
+    pub fn apply_effect_to_self(
+        &mut self,
+        source: Entity,
+        handle: &vitality_core::store::Handle<EffectDef>,
+    ) {
         self.effects.apply_to_self(source, handle);
     }
 
@@ -45,7 +49,7 @@ impl<'s, 'w> Vitality<'w, 's> {
         target: Entity,
         source: Entity,
         effect: EffectDef,
-    ) -> Handle<EffectDef> {
+    ) -> vitality_core::store::Handle<EffectDef> {
         let handle = self.effect_assets.add(effect);
         self.effects.apply(source, target, &handle);
         handle
@@ -55,7 +59,7 @@ impl<'s, 'w> Vitality<'w, 's> {
         &mut self,
         source: Entity,
         effect: EffectDef,
-    ) -> Handle<EffectDef> {
+    ) -> vitality_core::store::Handle<EffectDef> {
         self.apply_dynamic_effect_to_target(source, source, effect)
     }
 
@@ -87,8 +91,7 @@ impl<'s, 'w> Vitality<'w, 's> {
             .entity(actor)
             .queue_silenced(move |mut entity: EntityWorldMut| {
                 if let Some(mut attribute) = entity.get_mut::<T>() {
-                    let base =
-                        AttributeCalculator::<T>::from_op(op, value).eval(attribute.base_value());
+                    let base = Calc::<T::Property>::from_op(op, value).eval(attribute.base_value());
                     attribute.set_base_value(base);
                 } else {
                     warn_once!(
@@ -116,7 +119,7 @@ impl<'s, 'w> Vitality<'w, 's> {
             .queue_silenced(ChangeTag::revoke(TagSpec::of::<T>()));
     }
 
-    pub fn add_global_effect(&mut self, handle: Handle<EffectDef>) {
+    pub fn add_global_effect(&mut self, handle: vitality_core::store::Handle<EffectDef>) {
         self.global_effects.push(handle);
     }
 

@@ -15,7 +15,7 @@ pub struct Registry<'w> {
 }
 
 impl Registry<'_> {
-    pub fn effect(&self, name: &EffectToken) -> Handle<EffectDef> {
+    pub fn effect(&self, name: &EffectToken) -> vitality_core::store::Handle<EffectDef> {
         self.effects.effect(name)
     }
 
@@ -35,7 +35,7 @@ impl RegistryMut<'_> {
         self.effects.add_effect(name, effect);
     }
 
-    pub fn effect(&self, name: &EffectToken) -> Handle<EffectDef> {
+    pub fn effect(&self, name: &EffectToken) -> vitality_core::store::Handle<EffectDef> {
         self.effects.effect(name)
     }
 

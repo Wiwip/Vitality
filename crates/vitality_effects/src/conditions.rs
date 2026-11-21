@@ -1,8 +1,9 @@
 use crate::context::{EffectExprContext, EffectExprSchema};
 use crate::modifier::EffectSubject;
 use crate::prelude::ActorExprSchema;
-use bevy::prelude::{Component, TypePath};
-use bevy::reflect::Reflect;
+use bevy_ecs::prelude::{Component, Resource};
+use bevy_reflect::Reflect;
+use bevy_reflect::TypePath;
 use express_it::expr::Expr;
 use serde::Serialize;
 use std::any::TypeId;
@@ -10,6 +11,7 @@ use std::collections::HashSet;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
+use std::sync::atomic::{AtomicU64, Ordering};
 use vitality_core::attributes::{Attribute, dep_key};
 use vitality_core::context::ActorExprContext;
 use vitality_core::context::{Source, Target};
@@ -107,8 +109,55 @@ impl<T: Attribute> std::fmt::Display for IsAttributeWithinBounds<T> {
 pub struct ChanceCondition(pub f32);
 
 impl Expr<bool, EffectExprSchema> for ChanceCondition {
-    fn eval(&self, _: &EffectExprContext) -> bool {
-        rand::random::<f32>() < self.0
+    fn eval(&self, ctx: &EffectExprContext) -> bool {
+        ctx.rng.next_f32() < self.0
+    }
+}
+
+/// splitmix64 stream for [`ChanceCondition`], so a run replays from its seed
+#[derive(Resource, Debug)]
+pub struct ConditionRng {
+    state: AtomicU64,
+}
+
+impl ConditionRng {
+    pub const DEFAULT_SEED: u64 = 0x5EED_0FC0_FFEE;
+    const GAMMA: u64 = 0x9E37_79B9_7F4A_7C15;
+
+    pub fn new(seed: u64) -> Self {
+        Self {
+            state: AtomicU64::new(seed),
+        }
+    }
+
+    /// per-row stream, so a draw doesn't depend on which thread ran the row
+    pub fn fork(base: u64, index: u64) -> Self {
+        Self::new(Self::mix(base ^ Self::mix(index.wrapping_add(Self::GAMMA))))
+    }
+
+    pub fn next_u64(&self) -> u64 {
+        let state = self
+            .state
+            .fetch_add(Self::GAMMA, Ordering::Relaxed)
+            .wrapping_add(Self::GAMMA);
+        Self::mix(state)
+    }
+
+    /// uniform in [0, 1), from the top 24 bits
+    pub fn next_f32(&self) -> f32 {
+        (self.next_u64() >> 40) as f32 / (1u64 << 24) as f32
+    }
+
+    fn mix(mut z: u64) -> u64 {
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+}
+
+impl Default for ConditionRng {
+    fn default() -> Self {
+        Self::new(Self::DEFAULT_SEED)
     }
 }
 

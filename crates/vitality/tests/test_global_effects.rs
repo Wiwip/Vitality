@@ -29,7 +29,7 @@ fn a_global_effect_lands_on_actors_spawned_after_it_is_added() {
     );
     record::<EffectApplied>(&mut app);
 
-    let registered = aura.clone();
+    let registered = aura;
     let global = with_vitality(&mut app, move |vitality| {
         vitality.add_global_effect(registered);
         vitality.global_actor()
@@ -40,7 +40,7 @@ fn a_global_effect_lands_on_actors_spawned_after_it_is_added() {
     ticks(&mut app, 2);
 
     let probe = {
-        let registered = aura.clone();
+        let registered = aura;
         with_effects(&mut app, move |effects| {
             (
                 effects.has(later, &registered),

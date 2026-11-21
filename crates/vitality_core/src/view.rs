@@ -1,7 +1,7 @@
-use bevy::ecs::bundle::Bundle;
-use bevy::ecs::component::{Component, Mutable};
-use bevy::ecs::world::{EntityMutExcept, EntityRefExcept, FilteredEntityMut, FilteredEntityRef};
-use bevy::prelude::{Entity, Mut};
+use bevy_ecs::bundle::Bundle;
+use bevy_ecs::component::{Component, Mutable};
+use bevy_ecs::prelude::{Entity, Mut};
+use bevy_ecs::world::{EntityMutExcept, EntityRefExcept, FilteredEntityMut, FilteredEntityRef};
 use std::any::TypeId;
 
 /// each crate picks its own exclusion list, so the view type stays local to the crate that owns the components it excludes

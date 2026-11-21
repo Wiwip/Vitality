@@ -29,8 +29,9 @@ use crate::modifier::{
 use crate::periodic::{PeriodicApplies, apply_all_periodic_effects};
 use crate::registry::EffectRegistry;
 use crate::stacks::read_add_stack_event;
-use bevy::ecs::world::{EntityMutExcept, EntityRefExcept};
-use bevy::prelude::*;
+use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_ecs::world::{EntityMutExcept, EntityRefExcept};
 use vitality_core::attributes::Attribute;
 use vitality_core::registry::scan_base_writes;
 use vitality_core::schedule::EffectsSet;
@@ -69,7 +70,8 @@ impl Plugin for EffectsPlugin {
         }
         app.insert_resource(EffectRegistry::default())
             .init_resource::<DefNames>()
-            .init_asset::<EffectDef>()
+            .init_resource::<conditions::ConditionRng>()
+            .init_resource::<vitality_core::store::Assets<EffectDef>>()
             .register_type::<AppliedEffects>()
             .register_type::<EffectTarget>()
             .register_type::<NodeType>();
@@ -131,6 +133,9 @@ pub fn init_effect_attribute<T: Attribute>(app: &mut App) {
     app.world_mut()
         .get_resource_or_init::<resolver::ModifierRecalcs>()
         .register::<T>();
+    app.world_mut()
+        .get_resource_or_init::<vitality_core::registry::AttributeRegistry>()
+        .set_fold_modifier::<T>(resolver::fold_modifier::<T>);
     app.world_mut()
         .get_resource_or_init::<ModifierApplies>()
         .register::<T>();

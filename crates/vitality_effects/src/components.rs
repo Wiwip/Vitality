@@ -1,7 +1,9 @@
 use crate::definition::EffectDef;
 use crate::{EffectApplicationPolicy, EffectBuilder, Stacks};
-use bevy::asset::Handle;
-use bevy::prelude::{Component, Deref, Entity, Event, Reflect};
+use bevy_derive::Deref;
+use bevy_ecs::prelude::{Component, Entity, Event};
+use bevy_reflect::Reflect;
+use vitality_core::store::Handle;
 
 pub enum EffectStatus {
     Active,

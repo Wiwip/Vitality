@@ -51,7 +51,7 @@ fn permanent_buff_applies_and_removal_reverts_it() {
         "a buff never touches the base"
     );
 
-    let buff_handle = buff.clone();
+    let buff_handle = buff;
     let removed = with_effects(&mut app, move |effects| {
         effects.remove_by_def(hero, &buff_handle)
     });

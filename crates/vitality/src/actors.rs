@@ -7,9 +7,7 @@ use std::sync::Arc;
 use vitality_abilities::{Ability, AbilityDef, AbilityOf, GrantedAbilities};
 use vitality_core::attributes::{Attribute, Clamp, ClampBounds, ManageAttributes};
 use vitality_core::context::ActorExprSchema;
-use vitality_core::modifier::AttributeCalculatorCached;
 use vitality_core::mutator::EntityActions;
-use vitality_core::num_traits::{AsPrimitive, Num};
 use vitality_core::registry::add_clamp_edges;
 use vitality_effects::definition::EffectDef;
 use vitality_effects::graph::NodeType;
@@ -24,7 +22,7 @@ pub struct ActorDef {
     pub description: String,
     pub builder_actions: VecDeque<EntityActions>,
     pub abilities: Vec<Handle<AbilityDef>>,
-    pub effects: Vec<Handle<EffectDef>>,
+    pub effects: Vec<vitality_core::store::Handle<EffectDef>>,
 
     pub clamp_dependents: ClampDependents,
 }
@@ -91,7 +89,7 @@ impl EntityCommand for SpawnActorCommand {
                     world.trigger(ApplyEffectEvent {
                         entity: actor_entity,
                         targeting: EffectTargeting::SelfCast(actor_entity),
-                        handle: effect.clone(),
+                        handle: *effect,
                     });
                 }
             });
@@ -140,20 +138,17 @@ impl ActorBuilder {
         self
     }
 
-    pub fn with<T: Attribute>(
-        mut self,
-        value: impl Num + AsPrimitive<T::Property> + Send + Sync + 'static,
-    ) -> ActorBuilder {
+    pub fn with<T: Attribute>(mut self, value: T::Property) -> ActorBuilder {
         self.actor.builder_actions.push_back(EntityActions::new(
             move |entity_commands: &mut EntityCommands| {
-                entity_commands.insert((T::new(value), AttributeCalculatorCached::<T>::default()));
+                entity_commands.insert(T::new(value));
             },
         ));
         self
     }
 
-    pub fn with_effect(mut self, effect: &Handle<EffectDef>) -> ActorBuilder {
-        self.actor.effects.push(effect.clone());
+    pub fn with_effect(mut self, effect: &vitality_core::store::Handle<EffectDef>) -> ActorBuilder {
+        self.actor.effects.push(*effect);
         self
     }
 

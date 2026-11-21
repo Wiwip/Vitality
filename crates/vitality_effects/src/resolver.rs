@@ -1,41 +1,42 @@
 //! one exclusive system that folds each dirty entity's modifiers and walks its attributes in dependency order, actors in parallel; cross-actor reads settle in extra passes inside the same tick
 
 use crate::components::{AppliedEffects, Effect, EffectInactive, EffectTarget};
+use crate::conditions::ConditionRng;
 use crate::modifier::{
     AttributeModifier, DependencyProxyOf, EffectSubject, ModifierOf, OwnedModifiers,
 };
 use crate::systems::MarkActorDirty;
 use crate::timing::EffectTicker;
 use crate::{EffectSource, EffectsRef, Stacks};
-use bevy::ecs::component::ComponentId;
-use bevy::ecs::entity::{EntityHashMap, EntityHashSet};
-use bevy::ecs::world::FilteredEntityMut;
-use bevy::platform::collections::HashMap;
-use bevy::prelude::*;
-use bevy::utils::Parallel;
+use bevy_ecs::component::ComponentId;
+use bevy_ecs::entity::{EntityHashMap, EntityHashSet};
+use bevy_ecs::prelude::*;
+use bevy_ecs::world::FilteredEntityMut;
+use bevy_platform::collections::HashMap;
+use bevy_utils::Parallel;
 use std::any::TypeId;
 use vitality_core::attributes::{Attribute, ManageAttributes};
-use vitality_core::modifier::ModOp;
-use vitality_core::num_traits::AsPrimitive;
+use vitality_core::modifier::{Calc, ModOp};
 use vitality_core::registry::{
-    AttrId, AttrSet, AttributeRegistry, ErasedCalc, Mark, ModifierTable, ResolveQueue,
-    add_clamp_edges,
+    AppendPairs, AttrComponents, AttrId, AttrSet, AttributeRegistry, Change, DependentsOf,
+    FoldModifier, Kind, Mark, ModifierTable, ResetCalcs, ResolveFn, ResolveQueue, ValueBuf,
+    WriteCalcs, add_clamp_edges,
 };
+use vitality_core::warn_once;
 
 /// Passes per tick before leftover cross-actor work waits for the next tick.
 const MAX_PASSES: usize = 4;
 
-/// The erased mirror of an `AttributeModifier<T>`, which is all a regather reads.
+/// The erased mirror of an `AttributeModifier<T>`; the magnitude stays on the typed component.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct ModifierSlot {
     pub attribute: TypeId,
     pub op: ModOp,
-    pub value: f64,
     pub who: EffectSubject,
 }
 
-/// Re-evaluates a live modifier of one attribute type; the effects crate registers one per type.
-type Recalc = fn(&mut World, Entity) -> Option<f64>;
+/// Re-evaluates a live modifier of one attribute type; true when its value moved.
+type Recalc = fn(&mut World, Entity) -> bool;
 
 #[derive(Resource, Default)]
 pub struct ModifierRecalcs(HashMap<TypeId, Recalc>);
@@ -53,7 +54,7 @@ struct RecalcState<T: Attribute> {
     actors: QueryState<EffectsRef<'static, 'static>>,
 }
 
-fn recalc<T: Attribute>(world: &mut World, modifier: Entity) -> Option<f64> {
+fn recalc<T: Attribute>(world: &mut World, modifier: Entity) -> bool {
     if !world.contains_resource::<RecalcState<T>>() {
         let state = RecalcState::<T> {
             modifiers: world.query(),
@@ -62,7 +63,9 @@ fn recalc<T: Attribute>(world: &mut World, modifier: Entity) -> Option<f64> {
         };
         world.insert_resource(state);
     }
-    let value = world.resource_scope(|world, mut state: Mut<RecalcState<T>>| {
+    let Some(value) = world.resource_scope(|world, mut state: Mut<RecalcState<T>>| {
+        let world: &World = world;
+        let rng = world.resource::<ConditionRng>();
         let (attribute_modifier, of) = state.modifiers.get(world, modifier).ok()?;
         let expr = attribute_modifier.expr.clone();
         let effect = of.0;
@@ -77,13 +80,40 @@ fn recalc<T: Attribute>(world: &mut World, modifier: Entity) -> Option<f64> {
             source_actor: source_ref,
             target_actor: Some(target_ref),
             effect_holder: effect_ref,
+            rng,
         };
         Some(expr.eval(&context))
-    })?;
-    if let Some(mut attribute_modifier) = world.get_mut::<AttributeModifier<T>>(modifier) {
-        attribute_modifier.value = value;
+    }) else {
+        return false;
+    };
+    let Some(mut attribute_modifier) = world.get_mut::<AttributeModifier<T>>(modifier) else {
+        return false;
+    };
+    // NaN != NaN, so a NaN modifier keeps fanning out
+    if attribute_modifier.value == value {
+        return false;
     }
-    Some(value.as_())
+    attribute_modifier.value = value;
+    true
+}
+
+pub(crate) fn fold_modifier<T: Attribute>(
+    scratch: &mut ValueBuf,
+    kind: Kind,
+    id: AttrId,
+    world: &World,
+    modifier: Entity,
+    stacks: u32,
+) {
+    let Some(attribute_modifier) = world.get::<AttributeModifier<T>>(modifier) else {
+        return;
+    };
+    let folded = scratch.calc_mut::<T::Property>(kind, id);
+    folded.combine(&Calc::from_op_stacked(
+        attribute_modifier.operation,
+        attribute_modifier.value,
+        stacks,
+    ));
 }
 
 /// Every structural change to an actor's effects arrives as `MarkActorDirty`.
@@ -119,9 +149,70 @@ fn grant_attributes(builder: &mut QueryBuilder<'_, ()>, ids: &[AttrIds]) {
     }
 }
 
+/// copied out of the registry so a walk can use them while it holds the world
+#[derive(Clone, Copy)]
+struct AttrVTable {
+    kind: Kind,
+    ids: AttrComponents,
+    resolve: ResolveFn,
+    dependents_of: DependentsOf,
+    fold_modifier: FoldModifier,
+}
+
+impl AttrVTable {
+    fn of(info: &vitality_core::registry::AttrInfo) -> Self {
+        Self {
+            kind: info.kind,
+            ids: info.ids,
+            resolve: info.resolve,
+            dependents_of: info.dependents_of,
+            fold_modifier: info.fold_modifier,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct KindPlan {
+    kind: Kind,
+    members: AttrSet,
+    reset: ResetCalcs,
+    write: WriteCalcs,
+}
+
+struct GatherState {
+    by_type: HashMap<TypeId, AttrId>,
+    vtables: Vec<AttrVTable>,
+    kinds: Vec<KindPlan>,
+}
+
+impl GatherState {
+    fn of(registry: &AttributeRegistry) -> Self {
+        Self {
+            by_type: registry
+                .infos()
+                .iter()
+                .map(|info| (info.type_id, info.id))
+                .collect(),
+            vtables: registry.infos().iter().map(AttrVTable::of).collect(),
+            kinds: registry
+                .kinds()
+                .iter()
+                .enumerate()
+                .map(|(kind, info)| KindPlan {
+                    kind,
+                    members: info.members,
+                    reset: info.reset_calcs,
+                    write: info.write_calcs,
+                })
+                .collect(),
+        }
+    }
+}
+
 #[derive(Default)]
 struct Output {
-    changes: Vec<(Entity, AttrId, f64, f64)>,
+    changes: Vec<(Entity, AttrId, Change)>,
+    pairs: ValueBuf,
     readers: Vec<Entity>,
     /// the limits of a clamp evaluated for the first time, before their edges exist
     clamp_reads: Vec<(Entity, TypeId, TypeId)>,
@@ -148,6 +239,8 @@ pub(crate) struct ResolverState {
     slot_effects: QueryState<(&'static ModifierSlot, &'static ModifierOf)>,
     targets: QueryState<&'static EffectTarget>,
     proxies: QueryState<&'static DependencyProxyOf>,
+    /// kept so its buffers stay allocated
+    scratch: ValueBuf,
     output: Parallel<Output>,
 }
 
@@ -163,6 +256,7 @@ impl FromWorld for ResolverState {
             slot_effects: world.query(),
             targets: world.query(),
             proxies: world.query(),
+            scratch: ValueBuf::default(),
             output: Parallel::default(),
         }
     }
@@ -193,21 +287,21 @@ impl ResolverState {
         self.actors.as_mut().expect("built above")
     }
 
-    /// The fold of every attribute in `wanted` that `entity`'s own effects carry.
+    /// The fold of every attribute in `wanted` that `entity`'s own effects carry, into `scratch`.
     fn gather(
         &mut self,
         world: &World,
-        registry: &AttributeRegistry,
+        state: &GatherState,
         entity: Entity,
         wanted: AttrSet,
-    ) -> Vec<(AttrId, ErasedCalc)> {
-        let mut calcs: Vec<(AttrId, ErasedCalc)> = registry
-            .order()
-            .iter()
-            .copied()
-            .filter(|id| wanted.contains(*id))
-            .map(|id| (id, ErasedCalc::default()))
-            .collect();
+        scratch: &mut ValueBuf,
+    ) {
+        for plan in &state.kinds {
+            let ids = wanted.intersection(&plan.members);
+            if !ids.is_empty() {
+                (plan.reset)(scratch, plan.kind, ids);
+            }
+        }
         // an effect entity is the write home of the modifiers that name it, so it folds its own children
         let own = self.effects.get(world, entity).is_ok();
         let applied = self.applied.get(world, entity).ok();
@@ -231,36 +325,47 @@ impl ResolverState {
                 if matches!(slot.who, EffectSubject::Effect) != own {
                     continue;
                 }
-                let Some(id) = registry.id_of(slot.attribute) else {
+                let Some(&id) = state.by_type.get(&slot.attribute) else {
                     continue;
                 };
-                if let Some((_, calc)) = calcs.iter_mut().find(|(a, _)| *a == id) {
-                    calc.combine(&ErasedCalc::from_op(slot.op, slot.value, stacks));
+                if !wanted.contains(id) {
+                    continue;
                 }
+                let vtable = state.vtables[id.index()];
+                (vtable.fold_modifier)(scratch, vtable.kind, id, world, modifier, stacks);
             }
         }
-        calcs
     }
 
     fn regather(&mut self, world: &mut World, marks: &EntityHashMap<Mark>) {
-        let mut folded: Vec<(Entity, Vec<(AttrId, ErasedCalc)>)> = Vec::new();
-        {
-            let registry = world.resource::<AttributeRegistry>();
-            for (&actor, mark) in marks {
-                if mark.regather.is_empty() {
-                    continue;
+        let mut marked: Vec<(Entity, AttrSet)> = marks
+            .iter()
+            .filter(|(_, mark)| !mark.regather.is_empty())
+            .map(|(entity, mark)| (*entity, mark.regather))
+            .collect();
+        if marked.is_empty() {
+            return;
+        }
+        // hash map order isn't deterministic
+        marked.sort_by_key(|(entity, _)| *entity);
+        let state = GatherState::of(world.resource::<AttributeRegistry>());
+        let mut scratch = std::mem::take(&mut self.scratch);
+        // taken out so the gather can borrow self
+        self.actor_query(world);
+        let mut actors = self.actors.take().expect("built above");
+        for (actor, wanted) in &marked {
+            self.gather(world, &state, *actor, *wanted, &mut scratch);
+            if let Ok((_, _, mut table)) = actors.get_mut(world, *actor) {
+                for plan in &state.kinds {
+                    let ids = wanted.intersection(&plan.members);
+                    if !ids.is_empty() {
+                        (plan.write)(&mut table, plan.kind, ids, &scratch);
+                    }
                 }
-                folded.push((actor, self.gather(world, registry, actor, mark.regather)));
             }
         }
-        let query = self.actor_query(world);
-        for (actor, calcs) in folded {
-            if let Ok((_, _, mut table)) = query.get_mut(world, actor) {
-                for (id, calc) in calcs {
-                    table.set_calc(id, calc);
-                }
-            }
-        }
+        self.actors = Some(actors);
+        self.scratch = scratch;
     }
 
     fn resolve(&mut self, world: &mut World, marks: &EntityHashMap<Mark>) {
@@ -270,11 +375,7 @@ impl ResolverState {
         let readers: Vec<Vec<AttrId>> = (0..registry.len())
             .map(|i| registry.readers(AttrId(i as u16)).to_vec())
             .collect();
-        let vtables: Vec<_> = registry
-            .infos()
-            .iter()
-            .map(|info| (info.resolve, info.ids, info.dependents_of))
-            .collect();
+        let vtables: Vec<AttrVTable> = registry.infos().iter().map(AttrVTable::of).collect();
 
         let dirty: EntityHashSet = marks
             .iter()
@@ -292,22 +393,33 @@ impl ResolverState {
                 return;
             };
             let mut todo = mark.dirty;
-            let mut out = output.borrow_local_mut();
+            let mut local = output.borrow_local_mut();
+            let Output {
+                changes,
+                pairs,
+                readers: walked_readers,
+                clamp_reads,
+            } = &mut *local;
             for &id in &order {
                 if !todo.contains(id) {
                     continue;
                 }
-                let (resolve, ids, dependents_of) = vtables[id.index()];
-                let calc = table.calc(id);
-                let Some(resolved) = resolve(&mut view, ids, &calc, &mut out.clamp_reads) else {
+                let vtable = vtables[id.index()];
+                let Some(change) = (vtable.resolve)(
+                    &mut view,
+                    vtable.ids,
+                    vtable.kind,
+                    id,
+                    &table.values,
+                    pairs,
+                    clamp_reads,
+                ) else {
                     continue;
                 };
-                if let Some((old, new)) = resolved.moved {
-                    out.changes.push((entity, id, old, new));
-                    dependents_of(&view.as_readonly(), ids, &mut out.readers);
-                    for &reader in &readers[id.index()] {
-                        todo.insert(reader);
-                    }
+                changes.push((entity, id, change));
+                (vtable.dependents_of)(&view.as_readonly(), vtable.ids, walked_readers);
+                for &reader in &readers[id.index()] {
+                    todo.insert(reader);
                 }
             }
         });
@@ -317,12 +429,14 @@ impl ResolverState {
     /// [`ModifierTable`] to hold it, the fold is gathered and written in one step, and an attribute
     /// the entity does not have resolves to nothing.
     fn resolve_carriers(&mut self, world: &mut World, marks: &EntityHashMap<Mark>) {
-        let marked: Vec<(Entity, Mark)> = marks
+        let mut marked: Vec<(Entity, Mark)> = marks
             .iter()
             .filter(|(_, mark)| !mark.dirty.is_empty())
             .map(|(entity, mark)| (*entity, *mark))
             .filter(|(entity, _)| world.get::<ManageAttributes>(*entity).is_none())
             .collect();
+        // hash map order isn't deterministic
+        marked.sort_by_key(|(entity, _)| *entity);
         if marked.is_empty() {
             return;
         }
@@ -332,21 +446,16 @@ impl ResolverState {
         let readers: Vec<Vec<AttrId>> = (0..registry.len())
             .map(|i| registry.readers(AttrId(i as u16)).to_vec())
             .collect();
-        let vtables: Vec<_> = registry
-            .infos()
-            .iter()
-            .map(|info| (info.resolve, info.ids, info.dependents_of))
-            .collect();
+        let mut state = GatherState::of(registry);
         // every attribute, because a value that moves can pull another one of the same entity into the walk
         let everything = AttrSet::all(registry.len());
         let mut folded = Vec::with_capacity(marked.len());
         for (entity, mark) in marked {
-            let mut calcs = vec![ErasedCalc::default(); registry.len()];
-            for (id, calc) in self.gather(world, registry, entity, everything) {
-                calcs[id.index()] = calc;
-            }
+            let mut calcs = ValueBuf::default();
+            self.gather(world, &state, entity, everything, &mut calcs);
             folded.push((entity, mark, calcs));
         }
+        let vtables = std::mem::take(&mut state.vtables);
 
         let output = &self.output;
         let query = self.carriers.as_mut().expect("built by actor_query");
@@ -355,23 +464,33 @@ impl ResolverState {
                 continue;
             };
             let mut todo = mark.dirty;
-            let mut out = output.borrow_local_mut();
+            let mut local = output.borrow_local_mut();
+            let Output {
+                changes,
+                pairs,
+                readers: walked_readers,
+                clamp_reads,
+            } = &mut *local;
             for &id in &order {
                 if !todo.contains(id) {
                     continue;
                 }
-                let (resolve, ids, dependents_of) = vtables[id.index()];
-                let Some(resolved) =
-                    resolve(&mut view, ids, &calcs[id.index()], &mut out.clamp_reads)
-                else {
+                let vtable = vtables[id.index()];
+                let Some(change) = (vtable.resolve)(
+                    &mut view,
+                    vtable.ids,
+                    vtable.kind,
+                    id,
+                    &calcs,
+                    pairs,
+                    clamp_reads,
+                ) else {
                     continue;
                 };
-                if let Some((old, new)) = resolved.moved {
-                    out.changes.push((entity, id, old, new));
-                    dependents_of(&view.as_readonly(), ids, &mut out.readers);
-                    for &reader in &readers[id.index()] {
-                        todo.insert(reader);
-                    }
+                changes.push((entity, id, change));
+                (vtable.dependents_of)(&view.as_readonly(), vtable.ids, walked_readers);
+                for &reader in &readers[id.index()] {
+                    todo.insert(reader);
                 }
             }
         }
@@ -397,18 +516,12 @@ impl ResolverState {
             let Ok((slot, of)) = self.slot_effects.get(world, modifier) else {
                 continue;
             };
-            let (attribute, old, who, effect) = (slot.attribute, slot.value, slot.who, of.0);
+            let (attribute, who, effect) = (slot.attribute, slot.who, of.0);
             let Some(recalc) = recalcs.get(&attribute) else {
                 continue;
             };
-            let Some(value) = recalc(world, modifier) else {
+            if !recalc(world, modifier) {
                 continue;
-            };
-            if value == old {
-                continue;
-            }
-            if let Some(mut slot) = world.get_mut::<ModifierSlot>(modifier) {
-                slot.value = value;
             }
             let Ok(target) = self.targets.get(world, effect) else {
                 continue;
@@ -427,6 +540,30 @@ impl ResolverState {
             mark.regather.insert(id);
         }
         next
+    }
+
+    /// Merges every thread's output, shifting each row's pair index by its kind's offset.
+    fn merge_threads(
+        &mut self,
+        append: &[AppendPairs],
+        changes: &mut Vec<(Entity, AttrId, Change)>,
+        all_pairs: &mut ValueBuf,
+        readers: &mut Vec<Entity>,
+        clamp_reads: &mut Vec<(Entity, TypeId, TypeId)>,
+    ) {
+        let mut offset = vec![0u32; append.len()];
+        for out in self.output.iter_mut() {
+            let out = &mut *out;
+            for (kind, append) in append.iter().enumerate() {
+                offset[kind] = append(all_pairs, &mut out.pairs, kind);
+            }
+            for row in out.changes.iter_mut() {
+                row.2.pair += offset[row.2.kind];
+            }
+            changes.append(&mut out.changes);
+            readers.append(&mut out.readers);
+            clamp_reads.append(&mut out.clamp_reads);
+        }
     }
 }
 
@@ -448,8 +585,20 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
     for (entity, id) in dirty {
         marks.entry(entity).or_default().dirty.insert(id);
     }
+    let (append, notifies): (Vec<_>, Vec<_>) = {
+        let registry = world.resource::<AttributeRegistry>();
+        (
+            registry
+                .kinds()
+                .iter()
+                .map(|kind| kind.append_pairs)
+                .collect(),
+            registry.infos().iter().map(|info| info.notify).collect(),
+        )
+    };
 
-    let mut changes = Vec::new();
+    let mut changes: Vec<(Entity, AttrId, Change)> = Vec::new();
+    let mut all_pairs = ValueBuf::default();
     let mut clamp_reads = Vec::new();
     for pass in 0..MAX_PASSES {
         state.actor_query(world);
@@ -457,12 +606,19 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
         state.resolve(world, &marks);
         state.resolve_carriers(world, &marks);
 
+        // stable sort by entity, so the result doesn't depend on which thread walked what
+        let (pass_changes, pass_clamps) = (changes.len(), clamp_reads.len());
         let mut readers = Vec::new();
-        for out in state.output.iter_mut() {
-            changes.append(&mut out.changes);
-            readers.append(&mut out.readers);
-            clamp_reads.append(&mut out.clamp_reads);
-        }
+        state.merge_threads(
+            &append,
+            &mut changes,
+            &mut all_pairs,
+            &mut readers,
+            &mut clamp_reads,
+        );
+        changes[pass_changes..].sort_by_key(|change| change.0);
+        clamp_reads[pass_clamps..].sort_by_key(|read| read.0);
+        readers.sort();
         marks = state.recalc(world, readers);
         if marks.is_empty() {
             break;
@@ -491,13 +647,9 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
     if changes.is_empty() {
         return;
     }
-    let notifies: Vec<_> = {
-        let registry = world.resource::<AttributeRegistry>();
-        registry.infos().iter().map(|info| info.notify).collect()
-    };
     let mut commands = world.commands();
-    for (entity, id, old, new) in changes {
-        (notifies[id.index()])(&mut commands, entity, old, new);
+    for (entity, id, change) in changes {
+        (notifies[id.index()])(&mut commands, entity, change, &all_pairs);
     }
     world.flush();
 }

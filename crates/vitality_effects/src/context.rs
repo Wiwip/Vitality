@@ -1,3 +1,4 @@
+use crate::conditions::ConditionRng;
 use crate::{EffectsMut, EffectsRef};
 use express_it::expr::{Context, ContextMut};
 use vitality_core::context::{ActorProvider, ActorProviderMut, Source, Target};
@@ -21,6 +22,7 @@ impl ContextMut for EffectExprSchema {
             source_actor: mut_item.source_actor.as_readonly(),
             target_actor: mut_item.target_actor.as_ref().map(|v| v.as_readonly()),
             effect_holder: mut_item.effect_holder.as_readonly(),
+            rng: mut_item.rng,
         }
     }
 }
@@ -29,12 +31,15 @@ pub struct EffectExprContext<'w, 's> {
     pub source_actor: EffectsRef<'w, 's>,
     pub target_actor: Option<EffectsRef<'w, 's>>,
     pub effect_holder: EffectsRef<'w, 's>,
+    /// what a [`crate::conditions::ChanceCondition`] draws from
+    pub rng: &'w ConditionRng,
 }
 
 pub struct EffectExprContextMut<'w, 's> {
     pub source_actor: EffectsMut<'w, 's>,
     pub target_actor: Option<EffectsMut<'w, 's>>,
     pub effect_holder: EffectsMut<'w, 's>,
+    pub rng: &'w ConditionRng,
 }
 
 impl<'w, 's> ActorProvider<'w, 's, Source> for EffectExprContext<'w, 's> {

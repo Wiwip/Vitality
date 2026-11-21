@@ -1,7 +1,7 @@
 mod calculator;
 
-use bevy::prelude::Reflect;
-pub use calculator::{AttributeCalculator, AttributeCalculatorCached, ModOp};
+use bevy_reflect::Reflect;
+pub use calculator::{Calc, ModOp};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::fmt::{Display, Formatter};

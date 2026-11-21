@@ -16,6 +16,7 @@ use vitality::effect::{Effect, EffectStackingPolicy};
 use vitality::inspector::ActorInspectorPlugin;
 use vitality::inspector::debug_overlay::DebugOverlayMarker;
 use vitality::prelude::*;
+use vitality::store;
 use vitality::{AttributesPlugin, attribute, init_attribute, tag};
 
 attribute!(Strength, u32);
@@ -100,10 +101,10 @@ struct AbilityDatabase {
 
 #[derive(Resource)]
 struct EffectsDatabase {
-    ap_buff: Handle<EffectDef>,
-    mp_buff: Handle<EffectDef>,
-    hp_buff: Handle<EffectDef>,
-    hp_regen: Handle<EffectDef>,
+    ap_buff: store::Handle<EffectDef>,
+    mp_buff: store::Handle<EffectDef>,
+    hp_buff: store::Handle<EffectDef>,
+    hp_regen: store::Handle<EffectDef>,
 }
 
 fn setup_effects(mut commands: Commands, mut ctx: Vitality) {
@@ -229,18 +230,18 @@ fn setup_actor(mut ctx: Vitality, abilities: Res<AbilityDatabase>) {
         .with::<Agility>(7)
         .with::<Intelligence>(1)
         // Health
-        .with::<Health>(85.0)
-        .with::<MaxHealth>(100.0)
-        .with::<HealthRegen>(2.0)
+        .with::<Health>(85)
+        .with::<MaxHealth>(100)
+        .with::<HealthRegen>(2)
         .clamp::<Health>(0, MaxHealth::src())
         // Mana
         .with::<Mana>(30u32)
-        .with::<ManaPool>(60.0)
-        .with::<ManaRegen>(4.0)
+        .with::<ManaPool>(60)
+        .with::<ManaRegen>(4)
         .clamp::<Mana>(0, ManaPool::src())
         // Misc
-        .with::<MagicPower>(1.0)
-        .with::<AttackPower>(10.0)
+        .with::<MagicPower>(1)
+        .with::<AttackPower>(10)
         .with::<Armour>(0.10)
         .insert((Player, DebugOverlayMarker))
         .grant_ability(&abilities.fireball)

@@ -5,11 +5,12 @@ use crate::{
     AppliedEffects, ApplyEffectEvent, Effect, EffectDuration, EffectSource, EffectTags,
     EffectTarget, EffectTargeting, Stacks,
 };
-use bevy::ecs::system::{SystemParam, SystemState};
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_ecs::system::{SystemParam, SystemState};
 use std::any::TypeId;
 use std::time::Duration;
 use vitality_core::attributes::Attribute;
+use vitality_core::store::Handle;
 
 type EffectInfo = (
     &'static Effect,
@@ -32,7 +33,7 @@ impl Effects<'_, '_> {
         self.commands.trigger(ApplyEffectEvent {
             entity: target,
             targeting: EffectTargeting::new(source, target),
-            handle: handle.clone(),
+            handle: *handle,
         });
     }
 

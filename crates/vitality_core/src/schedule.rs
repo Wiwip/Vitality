@@ -1,4 +1,4 @@
-use bevy::prelude::SystemSet;
+use bevy_ecs::prelude::SystemSet;
 
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum EffectsSet {

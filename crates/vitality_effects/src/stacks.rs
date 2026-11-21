@@ -2,10 +2,13 @@ use crate::definition::EffectDef;
 use crate::lifecycle::EffectStacksChanged;
 use crate::systems::MarkActorDirty;
 use crate::{Effect, EffectDuration, EffectTarget};
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
+use tracing::warn;
 use vitality_core::attribute_impl;
 use vitality_core::attributes::Attribute;
 use vitality_core::attributes::ReflectAccessAttribute;
+use vitality_core::store::Assets;
+use vitality_core::store::Handle;
 
 pub enum EffectStackingPolicy {
     None, // Each effect is independently added to the entity

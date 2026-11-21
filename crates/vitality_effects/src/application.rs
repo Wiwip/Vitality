@@ -1,6 +1,7 @@
 use crate::EffectTags;
 use crate::EffectTargeting;
 use crate::EffectsRef;
+use crate::conditions::ConditionRng;
 use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
 use crate::graph::NodeType;
@@ -11,17 +12,21 @@ use crate::timing::{EffectDuration, EffectTicker};
 use crate::{
     AppliedEffects, Effect, EffectSource, EffectStackingPolicy, EffectTarget, NotifyAddStackEvent,
 };
-use bevy::asset::Assets;
-use bevy::asset::Handle;
-use bevy::ecs::resource::IsResource;
-use bevy::ecs::system::SystemParam;
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_ecs::resource::IsResource;
+use bevy_ecs::system::SystemParam;
+use bevy_reflect::prelude::*;
+use bevy_time::prelude::*;
 use std::cmp::PartialEq;
+use tracing::warn;
 use vitality_core::AppAttributeBindings;
 use vitality_core::attributes::ManageAttributes;
 use vitality_core::registry::AttributeRegistry;
+use vitality_core::store::Assets;
+use vitality_core::store::Handle;
 use vitality_core::tags::ChangeTag;
 use vitality_core::view::ActorRead;
+use vitality_core::warn_once;
 
 #[derive(Debug, Clone, Reflect, PartialEq)]
 pub enum EffectApplicationPolicy {
@@ -131,6 +136,7 @@ impl ApplyEffectEvent {
         &self,
         actors: &'a ActorQuery,
         registry: &AttributeRegistry,
+        rng: &'a ConditionRng,
     ) -> Option<(Option<&'a AppliedEffects>, EffectExprContext<'a, 'a>)> {
         let Ok((_, source, _)) = actors.get(self.targeting.source()) else {
             warn!(
@@ -164,6 +170,7 @@ impl ApplyEffectEvent {
                 target_actor: Some(target),
                 source_actor: source,
                 effect_holder: source,
+                rng,
             },
         ))
     }
@@ -229,7 +236,7 @@ impl ApplyEffectEvent {
         })?;
         add_stack_event.write(NotifyAddStackEvent {
             effect_entity: existing,
-            handle: self.handle.clone(),
+            handle: self.handle,
         });
         Some(existing)
     }
@@ -260,7 +267,7 @@ impl ApplyEffectEvent {
             NodeType::Effect,
             EffectTarget(target),
             EffectSource(self.targeting.source()),
-            Effect(self.handle.clone()),
+            Effect(self.handle),
             EffectTags(effect.granted_tags.iter().map(|tag| tag.type_id).collect()),
         ));
         for &tag in &effect.granted_tags {
@@ -313,6 +320,7 @@ pub(crate) struct ApplyContext<'w, 's> {
     effect_assets: Res<'w, Assets<EffectDef>>,
     type_bindings: Res<'w, AppAttributeBindings>,
     attributes: Res<'w, AttributeRegistry>,
+    rng: Res<'w, ConditionRng>,
 }
 
 pub(crate) fn apply_effect_event_observer(
@@ -330,7 +338,7 @@ pub(crate) fn apply_effect_event_observer(
         );
         return;
     };
-    let Some((applied, context)) = trigger.context(&actors, &ctx.attributes) else {
+    let Some((applied, context)) = trigger.context(&actors, &ctx.attributes, &ctx.rng) else {
         return;
     };
     let source = trigger.targeting.source();
@@ -340,7 +348,7 @@ pub(crate) fn apply_effect_event_observer(
         commands.trigger(EffectBlocked {
             entity: target,
             source,
-            handle: trigger.handle.clone(),
+            handle: trigger.handle,
         });
         return;
     }
@@ -373,7 +381,7 @@ pub(crate) fn apply_effect_event_observer(
             entity: target,
             source,
             effect: None,
-            handle: trigger.handle.clone(),
+            handle: trigger.handle,
         });
         return;
     }
@@ -385,7 +393,7 @@ pub(crate) fn apply_effect_event_observer(
             entity: target,
             source,
             effect: Some(existing),
-            handle: trigger.handle.clone(),
+            handle: trigger.handle,
         });
         return;
     }
@@ -399,7 +407,7 @@ pub(crate) fn apply_effect_event_observer(
             entity: target,
             source,
             effect: Some(effect_entity),
-            handle: trigger.handle.clone(),
+            handle: trigger.handle,
         });
     }
 }

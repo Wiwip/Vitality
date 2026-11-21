@@ -1,7 +1,11 @@
 use crate::EffectInactive;
 use crate::lifecycle::{EffectRemovalReason, remove_effect};
-use bevy::prelude::*;
-use bevy::time::Timer;
+use bevy_derive::{Deref, DerefMut};
+use bevy_ecs::prelude::*;
+use bevy_time::Timer;
+use bevy_time::prelude::*;
+use bevy_utils::Parallel;
+use tracing::debug;
 
 #[derive(Component, Deref, DerefMut)]
 pub struct EffectDuration(pub Timer);
@@ -24,7 +28,9 @@ impl EffectTicker {
 pub fn tick_effect_durations(
     mut query: Query<(Entity, &mut EffectDuration), Without<EffectInactive>>,
     time: Res<Time>,
-    par_commands: ParallelCommands,
+    mut expired: Local<Parallel<Vec<Entity>>>,
+    mut gone: Local<Vec<Entity>>,
+    mut commands: Commands,
 ) {
     query
         .par_iter_mut()
@@ -32,12 +38,18 @@ pub fn tick_effect_durations(
             effect_duration.0.tick(time.delta());
 
             if effect_duration.is_finished() {
-                debug!("Effect expired on {}.", entity);
-                par_commands.command_scope(|mut commands| {
-                    remove_effect(&mut commands, entity, EffectRemovalReason::Expired);
-                });
+                expired.borrow_local_mut().push(entity);
             }
         });
+
+    // removed on this thread in entity order, so the removals do not follow the thread count
+    gone.clear();
+    expired.drain_into(&mut gone);
+    gone.sort();
+    for &entity in gone.iter() {
+        debug!("Effect expired on {}.", entity);
+        remove_effect(&mut commands, entity, EffectRemovalReason::Expired);
+    }
 }
 
 pub fn tick_effect_tickers(

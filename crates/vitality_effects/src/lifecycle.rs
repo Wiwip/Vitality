@@ -1,7 +1,10 @@
 use crate::definition::EffectDef;
 use crate::systems::MarkActorDirty;
 use crate::{Effect, EffectTarget};
-use bevy::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_reflect::prelude::*;
+use vitality_core::store::Assets;
+use vitality_core::store::Handle;
 use vitality_core::tags::ChangeTag;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Reflect)]
@@ -86,7 +89,7 @@ pub(crate) fn on_effect_removed(
     commands.trigger(EffectRemoved {
         entity: target,
         effect: trigger.entity,
-        handle: effect.0.clone(),
+        handle: effect.0,
         reason,
     });
 }

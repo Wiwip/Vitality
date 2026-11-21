@@ -19,6 +19,7 @@ use vitality::prelude::*;
 use vitality::tags::ChangeTag;
 
 use crate::common::{Attr0, Attr1, Attr2, Attr3, Attr4, Attr5, Attr6, Attr7, Attr8, Attr9};
+use vitality::store::{Assets, Handle};
 
 pub const ATTRIBUTES: usize = 20;
 pub const EFFECTS_PER_ACTOR: usize = 3;
@@ -168,7 +169,7 @@ pub fn build_in(workload: Workload, actors: usize) -> ScenarioWorld {
                 world.app.world_mut().trigger(ApplyEffectEvent {
                     entity: target,
                     targeting: EffectTargeting::new(caster, target),
-                    handle: aura.clone(),
+                    handle: aura,
                 });
             }
             world.app.world_mut().flush();
@@ -214,7 +215,7 @@ pub fn build_in(workload: Workload, actors: usize) -> ScenarioWorld {
                     .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
                     .build(),
             ));
-            let handle = world.effect.clone().expect("just added");
+            let handle = world.effect.expect("just added");
             let window = world.window.clone();
             world.queue_apply(&handle, &window);
             world.app.world_mut().flush();
@@ -260,7 +261,7 @@ pub fn build_in(workload: Workload, actors: usize) -> ScenarioWorld {
                     .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
                     .build(),
             ));
-            let handle = world.effect.clone().expect("just added");
+            let handle = world.effect.expect("just added");
             let window = world.window.clone();
             world.queue_apply(&handle, &window);
             world.app.world_mut().flush();
@@ -350,7 +351,7 @@ impl ScenarioWorld {
                 } else {
                     10
                 };
-                let handle = self.effect.clone().expect("workload has an effect");
+                let handle = self.effect.expect("workload has an effect");
                 let targets: Vec<Entity> = (0..n / share)
                     .map(|_| self.actors[self.rng.random_range(0..n)])
                     .collect();
@@ -380,17 +381,17 @@ impl ScenarioWorld {
                 }
             }
             Workload::StackAdd | Workload::Snapshot => {
-                let handle = self.effect.clone().expect("workload has an effect");
+                let handle = self.effect.expect("workload has an effect");
                 let window = self.round_robin(n / 10);
                 self.queue_apply(&handle, &window);
             }
             Workload::StackRefresh | Workload::Dot => {
-                let handle = self.effect.clone().expect("workload has an effect");
+                let handle = self.effect.expect("workload has an effect");
                 let window = self.window.clone();
                 self.queue_apply(&handle, &window);
             }
             Workload::TagRequired | Workload::Immunity => {
-                let handle = self.effect.clone().expect("workload has an effect");
+                let handle = self.effect.expect("workload has an effect");
                 let window = self.round_robin(n / 5);
                 self.queue_apply(&handle, &window);
             }
@@ -415,7 +416,7 @@ impl ScenarioWorld {
             commands.trigger(ApplyEffectEvent {
                 entity: target,
                 targeting: EffectTargeting::new(target, target),
-                handle: handle.clone(),
+                handle: *handle,
             });
         }
     }

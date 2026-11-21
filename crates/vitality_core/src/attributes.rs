@@ -1,44 +1,31 @@
 use crate::context::{ActorProvider, ActorProviderMut, Caster, Source, Target};
-use crate::math::{AbsDiff, SaturatingAttributes};
 use crate::util::pretty_type_name;
+use crate::value::AttributeValue;
 use crate::view::{ActorRead, ActorWrite};
-use bevy::ecs::component::Mutable;
-use bevy::log::error;
-use bevy::prelude::{Component, Entity, Reflect, ReflectComponent, TypePath};
-use bevy::reflect::{GetTypeRegistration, Typed, reflect_trait};
+use bevy_ecs::component::Mutable;
+use bevy_ecs::prelude::{Component, Entity};
+use bevy_ecs::reflect::ReflectComponent;
+use bevy_reflect::{GetTypeRegistration, Typed, reflect_trait};
+use bevy_reflect::{Reflect, TypePath};
 use express_it::expr::{AsExpression, Context, ContextMut, Expr};
 use express_it::nodes::Node;
 use express_it::plan::AssignmentStep;
-use num_traits::NumCast;
-pub use num_traits::{
-    AsPrimitive, Bounded, FromPrimitive, Num, NumAssign, NumAssignOps, NumOps, Saturating,
-    SaturatingAdd, SaturatingMul, Zero,
-};
 use std::any::TypeId;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
-use std::iter::Sum;
 use std::marker::PhantomData;
+use tracing::error;
 
-pub trait GameValue
-where
-    Self: Num + NumOps + NumAssign + NumAssignOps + NumCast,
-    Self: Default + PartialOrd + Copy + Debug + Display,
-    Self: GetTypeRegistration + Typed + Send + Sync,
-    Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff,
-    Self: FromPrimitive + AsPrimitive<f64> + Reflect,
+/// [`AttributeValue`] for the fold, plus what reflection and `attribute!` need.
+pub trait GameValue:
+    AttributeValue + Default + Debug + Display + Typed + GetTypeRegistration
 {
 }
 
-impl<T> GameValue for T
-where
-    Self: Num + NumOps + NumAssign + NumAssignOps + NumCast,
-    Self: Default + PartialOrd + Copy + Debug + Display,
-    Self: GetTypeRegistration + Typed + Send + Sync,
-    Self: SaturatingAttributes<Output = Self> + Sum + Bounded + AbsDiff,
-    Self: FromPrimitive + AsPrimitive<f64> + Reflect,
+impl<T> GameValue for T where
+    T: AttributeValue + Default + Debug + Display + Typed + GetTypeRegistration
 {
 }
 
@@ -65,7 +52,7 @@ where
 {
     type Property: GameValue;
 
-    fn new<T: Num + AsPrimitive<Self::Property> + Copy>(value: T) -> Self;
+    fn new(value: Self::Property) -> Self;
     /// the component as an entity that merely carries it starts out: base and current at the property's default
     fn zeroed() -> Self;
     fn base_value(&self) -> Self::Property;
@@ -159,7 +146,7 @@ where
                     }
                     Some(mut attr) => {
                         let base = attr.base();
-                        attr.set_base_value(base.saturating_add(expr_val))
+                        attr.set_base_value(<Self::Property as AttributeValue>::add(base, expr_val))
                     }
                 }
             },
@@ -196,7 +183,7 @@ where
                     }
                     Some(mut attr) => {
                         let base = attr.base();
-                        attr.set_base_value(base.saturating_sub(expr_val))
+                        attr.set_base_value(<Self::Property as AttributeValue>::sub(base, expr_val))
                     }
                 }
             },
@@ -244,7 +231,7 @@ where
 /// A read of an attribute the actor doesn't have counts as zero.
 #[cold]
 fn missing<T: Attribute, Role>() -> T::Property {
-    bevy::log::warn_once!(
+    crate::warn_once!(
         "{} not found on {}; reading it as zero: put the component on the actor, or stop \
          reading it there",
         pretty_type_name::<T>(),
@@ -257,15 +244,14 @@ fn missing<T: Attribute, Role>() -> T::Property {
 macro_rules! attribute_impl {
     ( $StructName:ident, $ValueType:ty ) => {
         #[derive(
-            bevy::prelude::Component,
+            $crate::bevy_ecs::prelude::Component,
             Clone,
             Copy,
-            bevy::prelude::Reflect,
+            $crate::bevy_reflect::Reflect,
             Debug,
-            bevy::prelude::FromTemplate,
-            bevy::prelude::Deref,
+            $crate::bevy_ecs::prelude::FromTemplate,
+            $crate::bevy_derive::Deref,
         )]
-        #[require($crate::modifier::AttributeCalculatorCached<$StructName>)]
         #[reflect(Component, AccessAttribute)]
         pub struct $StructName {
             pub base_value: $ValueType,
@@ -277,13 +263,10 @@ macro_rules! attribute_impl {
         impl $crate::attributes::Attribute for $StructName {
             type Property = $ValueType;
 
-            fn new<T>(value: T) -> Self
-            where
-                T: $crate::num_traits::Num + $crate::num_traits::AsPrimitive<Self::Property> + Copy,
-            {
+            fn new(value: $ValueType) -> Self {
                 Self {
-                    base_value: value.as_(),
-                    current_value: value.as_(),
+                    base_value: value,
+                    current_value: value,
                     folded_base: None,
                 }
             }
@@ -350,7 +333,7 @@ macro_rules! attribute_set {
 
         // the fields and `new`'s params keep the caller's case: macro_rules cannot convert it
         #[allow(non_snake_case)]
-        #[derive(bevy::prelude::Bundle)]
+        #[derive($crate::bevy_ecs::prelude::Bundle)]
         pub struct SetBundle {
             $( pub $Attr: $Attr, )*
         }
@@ -370,13 +353,13 @@ macro_rules! attribute_set {
 macro_rules! tag {
     ( $StructName:ident ) => {
         #[derive(
-            bevy::prelude::Component,
-            bevy::prelude::Reflect,
+            $crate::bevy_ecs::prelude::Component,
+            $crate::bevy_reflect::Reflect,
             Default,
             Copy,
             Clone,
             Debug,
-            bevy::prelude::FromTemplate,
+            $crate::bevy_ecs::prelude::FromTemplate,
         )]
         #[reflect(Component)]
         pub struct $StructName;
@@ -442,10 +425,10 @@ where
     T: Attribute,
 {
     fn access_base_value(&self) -> f64 {
-        self.base_value().as_()
+        self.base_value().to_f64()
     }
     fn access_current_value(&self) -> f64 {
-        self.current_value().as_()
+        self.current_value().to_f64()
     }
     fn name(&self) -> String {
         pretty_type_name::<T>()
@@ -454,11 +437,12 @@ where
 
 thread_local! {
     static RECORDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    static RECORDED: std::cell::RefCell<HashSet<TypeId>> = std::cell::RefCell::new(HashSet::new());
+    static RECORDED: std::cell::RefCell<Vec<TypeId>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
-/// express-it's operator nodes don't forward `get_dependencies`, so a composite expression only reports its reads through here
-pub fn record_dependencies<R>(f: impl FnOnce() -> R) -> (R, HashSet<TypeId>) {
+/// express-it's operator nodes don't forward `get_dependencies`, so composite reads are recorded
+/// here, de-duplicated in first-read order.
+pub fn record_dependencies<R>(f: impl FnOnce() -> R) -> (R, Vec<TypeId>) {
     let was_recording = RECORDING.replace(true);
     let out = f();
     RECORDING.set(was_recording);
@@ -468,7 +452,11 @@ pub fn record_dependencies<R>(f: impl FnOnce() -> R) -> (R, HashSet<TypeId>) {
 
 #[cold]
 fn note_read(key: TypeId) {
-    RECORDED.with_borrow_mut(|deps| deps.insert(key));
+    RECORDED.with_borrow_mut(|deps| {
+        if !deps.contains(&key) {
+            deps.push(key);
+        }
+    });
 }
 
 /// Dependency key of `T` read through `Role`, as reported by [`Expr::get_dependencies`].
@@ -539,7 +527,7 @@ mod tests {
     use super::*;
     use crate::context::{ActorExprContext, ActorExprSchema};
     use crate::{AttributeBindings, DepRole};
-    use bevy::prelude::World;
+    use bevy_ecs::prelude::World;
 
     crate::attribute!(Attack);
     crate::attribute!(Defense);
@@ -563,10 +551,6 @@ mod tests {
         }
     }
 
-    fn keys(ks: impl IntoIterator<Item = TypeId>) -> HashSet<TypeId> {
-        ks.into_iter().collect()
-    }
-
     #[test]
     fn recording_a_composite_expression_reports_every_attribute_it_reads() {
         let (world, actor) = world_with(3.0, 4.0, 2.0);
@@ -579,11 +563,11 @@ mod tests {
         assert_eq!(value, 14.0, "the recording eval still returns the value");
         assert_eq!(
             deps,
-            keys([
+            vec![
                 dep_key::<Attack, Source>(),
                 dep_key::<Defense, Source>(),
                 dep_key::<Haste, Source>(),
-            ]),
+            ],
             "a composite reading three attributes has to report one key per (attribute, read role)"
         );
 
@@ -610,12 +594,12 @@ mod tests {
 
         assert_eq!(
             inner,
-            keys([dep_key::<Attack, Source>(), dep_key::<Defense, Source>()]),
+            vec![dep_key::<Attack, Source>(), dep_key::<Defense, Source>()],
             "the nested call takes the whole buffer, including the read the outer call made before it"
         );
         assert_eq!(
             outer,
-            keys([dep_key::<Haste, Source>()]),
+            vec![dep_key::<Haste, Source>()],
             "the outer call is left with only the read made after the nested one returned"
         );
     }
@@ -631,7 +615,7 @@ mod tests {
 
         assert_eq!(
             leaked,
-            HashSet::new(),
+            Vec::<TypeId>::new(),
             "reads made with recording off must not reach the next capture"
         );
     }
