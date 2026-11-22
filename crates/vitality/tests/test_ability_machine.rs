@@ -686,14 +686,16 @@ fn a_wait_and_a_cooldown_of_the_same_length_end_on_the_same_fixed_tick() {
         };
         hit.map(|(_, at)| *at)
     };
-    let active = entered_at(AbilityState::Active, false)
-        .expect("the cast enters Active on the fixed clock");
-    let recovery = entered_at(AbilityState::Recovery, false)
-        .expect("the wait ending enters Recovery");
+    let active =
+        entered_at(AbilityState::Active, false).expect("the cast enters Active on the fixed clock");
+    let recovery =
+        entered_at(AbilityState::Recovery, false).expect("the wait ending enters Recovery");
     let ready = entered_at(AbilityState::Ready, true).expect("the cooldown ending enters Ready");
 
     let steps = |from: Duration, to: Duration| (to - from).div_duration_f64(timestep);
-    let needed = Duration::from_secs_f32(WAIT).div_duration_f64(timestep).ceil();
+    let needed = Duration::from_secs_f32(WAIT)
+        .div_duration_f64(timestep)
+        .ceil();
     assert!(
         needed > 2.0,
         "{WAIT}s is {needed} fixed steps, too few to tell two clocks apart"

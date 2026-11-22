@@ -443,7 +443,7 @@ impl ResolverState {
         self.scratch = scratch;
     }
 
-    fn resolve(&mut self, world: &mut World, marks: &EntityHashMap<Mark>, record: bool) {
+    fn resolve(&mut self, world: &mut World, marks: &EntityHashMap<Mark>, watched: &[bool]) {
         // the query borrows the world mutably, so the registry rides along as a shared plan
         let plan = self.plan.clone();
         let order = &plan.order;
@@ -478,6 +478,7 @@ impl ResolverState {
                     continue;
                 }
                 let vtable = vtables[id.index()];
+                let record = watched[id.index()];
                 let Some(change) = (vtable.resolve)(
                     &mut view,
                     vtable.ids,
@@ -502,7 +503,12 @@ impl ResolverState {
     }
 
     /// no `ManageAttributes`, so no [`ModifierTable`]: fold and write in one step, missing attributes nothing
-    fn resolve_carriers(&mut self, world: &mut World, marks: &EntityHashMap<Mark>, record: bool) {
+    fn resolve_carriers(
+        &mut self,
+        world: &mut World,
+        marks: &EntityHashMap<Mark>,
+        watched: &[bool],
+    ) {
         let mut marked: Vec<(Entity, Mark)> = marks
             .iter()
             .filter(|(_, mark)| !mark.dirty.is_empty())
@@ -547,6 +553,7 @@ impl ResolverState {
                     continue;
                 }
                 let vtable = vtables[id.index()];
+                let record = watched[id.index()];
                 let Some(change) = (vtable.resolve)(
                     &mut view,
                     vtable.ids,
@@ -674,6 +681,7 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
         .iter()
         .map(|info| (info.has_observers)(world))
         .collect();
+    // the pair merge is per property kind, so it runs whenever any attribute records at all
     let record = watched.iter().any(|watched| *watched);
     let (append, notifies): (Vec<_>, Vec<_>) = {
         let registry = world.resource::<AttributeRegistry>();
@@ -694,8 +702,8 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
         state.actor_query(world);
         state.sync_plan(world);
         state.regather(world, &marks);
-        state.resolve(world, &marks, record);
-        state.resolve_carriers(world, &marks, record);
+        state.resolve(world, &marks, &watched);
+        state.resolve_carriers(world, &marks, &watched);
 
         // stable sort by entity, so the result doesn't depend on which thread walked what
         let (pass_changes, pass_clamps) = (changes.len(), clamp_reads.len());

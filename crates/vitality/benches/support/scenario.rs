@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use rand::RngExt;
 use rand::rngs::StdRng;
 use std::collections::VecDeque;
+use vitality::CurrentValueChanged;
 use vitality::actors::{Actor, SpawnActorCommand};
 use vitality::effect::definition::EffectDef;
 use vitality::effect::modifier::{EffectSubject, ModOp};
@@ -37,6 +38,8 @@ pub enum Workload {
     Steady,
     /// Every actor, every attribute, every tick.
     Storm,
+    /// [`Storm`](Self::Storm) with a UI watching one attribute, so change recording has a consumer.
+    StormObserved,
     /// Every attribute rewritten with the value it already has.
     NoOpWrite,
     /// 10 % of the actors take a hit on one attribute.
@@ -64,10 +67,11 @@ pub enum Workload {
 }
 
 impl Workload {
-    pub const ALL: [Workload; 15] = [
+    pub const ALL: [Workload; 16] = [
         Workload::Idle,
         Workload::Steady,
         Workload::Storm,
+        Workload::StormObserved,
         Workload::NoOpWrite,
         Workload::Damage,
         Workload::Aura,
@@ -87,6 +91,7 @@ impl Workload {
             Workload::Idle => "idle",
             Workload::Steady => "steady",
             Workload::Storm => "storm",
+            Workload::StormObserved => "storm_observed",
             Workload::NoOpWrite => "no_op_write",
             Workload::Damage => "damage",
             Workload::Aura => "aura",
@@ -155,6 +160,12 @@ pub fn build_in(workload: Workload, actors: usize) -> ScenarioWorld {
     };
 
     match workload {
+        // one watched attribute is enough to make the resolver record: that is the real-game shape
+        Workload::StormObserved => {
+            world
+                .app
+                .add_observer(|_: On<CurrentValueChanged<Attr0>>| {});
+        }
         Workload::Aura => {
             let caster = actor_list[0];
             let aura = add_effect(
@@ -297,8 +308,8 @@ impl ScenarioWorld {
         let attrs = &ATTRIBUTE_POOL[..ATTRIBUTES];
         match self.workload {
             Workload::Idle => {}
-            Workload::Steady | Workload::Storm => {
-                let count = if self.workload == Workload::Storm {
+            Workload::Steady | Workload::Storm | Workload::StormObserved => {
+                let count = if matches!(self.workload, Workload::Storm | Workload::StormObserved) {
                     n
                 } else {
                     n / 10

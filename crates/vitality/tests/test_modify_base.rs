@@ -106,6 +106,32 @@ fn an_observer_added_mid_run_starts_receiving_with_the_next_change() {
 }
 
 #[test]
+fn a_watched_attribute_reports_its_own_pair_while_an_unwatched_one_moves() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    // Health and Mana share the f32 pair buffer, so a stale index shows up as the wrong old/new here
+    watch::<Mana>(&mut app);
+
+    with_vitality(&mut app, move |v| {
+        v.modify_base::<Health>(hero, ModOp::Add, 25.0);
+        v.modify_base::<Mana>(hero, ModOp::Add, 5.0);
+    });
+    ticks(&mut app, 1);
+
+    assert_eq!(
+        current::<Health>(&app, hero),
+        125.0,
+        "an unwatched attribute still folds"
+    );
+    assert_eq!(current::<Mana>(&app, hero), 55.0);
+    assert_eq!(
+        fires(&app),
+        [(50.0, 55.0)],
+        "the watched attribute reports the pair it wrote, whatever moved beside it"
+    );
+}
+
+#[test]
 fn modify_base_on_an_attribute_the_actor_does_not_carry_changes_nothing() {
     let mut app = app();
     let mute = spawn(

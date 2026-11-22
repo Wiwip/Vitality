@@ -45,6 +45,7 @@ fn write_workloads_touch_the_share_their_id_names() {
         (Workload::Idle, 0),
         (Workload::Steady, ACTORS / 10),
         (Workload::Storm, ACTORS),
+        (Workload::StormObserved, ACTORS),
         (Workload::NoOpWrite, 0),
         (Workload::Damage, ACTORS / 10),
     ] {
