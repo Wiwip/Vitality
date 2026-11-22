@@ -150,6 +150,36 @@ fn periodic_effect_faster_than_a_tick_fires_every_interval() {
     );
 }
 
+/// Seven sub-tick intervals, so the duration runs out between the seventh and the eighth fire.
+const SUB_TICK_DURATION: f32 = 7.0 * SUB_TICK_PERIOD;
+
+/// Fires owed by that duration, the one landing exactly on the expiry instant included.
+const SUB_TICK_FIRES_BY_EXPIRY: f32 = 7.0;
+
+#[test]
+fn a_sub_tick_periodic_effect_fires_nothing_after_its_expiry() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def().with::<Health>(0.0));
+    let twitch = effect(
+        &mut app,
+        EffectBuilder::every_second_for_duration(SUB_TICK_PERIOD, SUB_TICK_DURATION)
+            .modify::<Health>(1.0, ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+
+    apply(&mut app, hero, hero, &twitch);
+    ticks(&mut app, ticks_for(SUB_TICK_DURATION) + 2);
+
+    assert_eq!(
+        base::<Health>(&app, hero),
+        SUB_TICK_FIRES_BY_EXPIRY,
+        "the {} s tick carries two intervals, so the tick the {} s duration runs out on owes the \
+         fire at the expiry and not the one that falls after it",
+        STEP.as_secs_f32(),
+        SUB_TICK_DURATION,
+    );
+}
+
 #[test]
 fn periodic_effect_with_a_duration_stops_firing() {
     let mut app = app();

@@ -2,7 +2,9 @@ use crate::EffectsRef;
 use crate::definition::EffectDef;
 use crate::modifier::{ApplyAttributeModifierMessage, AttributeModifier, OwnedModifiers};
 use crate::resolver::ModifierSlot;
-use crate::{Effect, EffectInactive, EffectSource, EffectTarget, EffectTicker, Stacks};
+use crate::{
+    Effect, EffectDuration, EffectInactive, EffectSource, EffectTarget, EffectTicker, Stacks,
+};
 use bevy_ecs::prelude::*;
 use bevy_ecs::resource::IsResource;
 use bevy_platform::collections::HashMap;
@@ -35,11 +37,28 @@ type PeriodicEffectRow<'w, 's> = (
     &'w Effect,
     &'w Stacks,
     &'w EffectTicker,
+    Option<&'w EffectDuration>,
     &'w OwnedModifiers,
     &'w EffectTarget,
     &'w EffectSource,
     Option<&'w EffectInactive>,
 );
+
+/// Fires owed at or before the expiry; this node runs before the duration is ticked.
+fn fires_before_expiry(ticker: &EffectTicker, duration: &EffectDuration) -> u32 {
+    let interval = ticker.duration().as_nanos();
+    let (Some(at_expiry), Some(at_tick_start)) = (
+        duration.duration().as_nanos().checked_div(interval),
+        duration.elapsed().as_nanos().checked_div(interval),
+    ) else {
+        // no interval to count in, which is the ticker's own fire-everything case
+        return ticker.times_finished_this_tick();
+    };
+    let owed = at_expiry.saturating_sub(at_tick_start);
+    ticker
+        .times_finished_this_tick()
+        .min(u32::try_from(owed).unwrap_or(u32::MAX))
+}
 
 /// one write a due effect owes, with the verdict behind it already taken
 #[derive(Clone, Copy)]
@@ -85,8 +104,17 @@ impl PeriodicPass {
         self.actors.update_archetypes(world);
         self.effects.update_archetypes(world);
         self.slots.update_archetypes(world);
-        for (effect_ref, effect, stacks, timer, owned_modifiers, target, source, inactive) in
-            self.effects.iter(world)
+        for (
+            effect_ref,
+            effect,
+            stacks,
+            timer,
+            duration,
+            owned_modifiers,
+            target,
+            source,
+            inactive,
+        ) in self.effects.iter(world)
         {
             if !timer.just_finished() {
                 continue;
@@ -112,7 +140,11 @@ impl PeriodicPass {
             }
 
             // an interval under one tick is owed more than one write, and the timer says how many
-            for _ in 0..timer.times_finished_this_tick() {
+            let fires = match duration {
+                Some(duration) => fires_before_expiry(timer, duration),
+                None => timer.times_finished_this_tick(),
+            };
+            for _ in 0..fires {
                 for children in owned_modifiers.iter() {
                     // the slot says whose queue the write belongs to, so no attribute tries every modifier
                     let Ok(slot) = self.slots.get_manual(world, children) else {
