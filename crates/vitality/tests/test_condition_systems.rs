@@ -23,6 +23,28 @@ attribute!(TestB, f64);
 #[derive(Component, Copy, Clone, Debug, PartialEq)]
 struct ConditionTag;
 
+/// the build every cell here shares; each caller still adds its own `Startup` systems
+fn app() -> App {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        LogPlugin {
+            filter: "error,vitality=debug".into(),
+            level: bevy::log::Level::DEBUG,
+            ..default()
+        },
+        AttributesPlugin,
+    ));
+    app.add_plugins((
+        vitality::init_attribute::<TestA>,
+        vitality::init_attribute::<TestB>,
+    ));
+    // A headless update lasts microseconds, so with the real clock FixedUpdate never runs.
+    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+    app
+}
+
 fn prepare_actor(mut ctx: Vitality, registry: Registry) {
     let actor_template = ctx.add_actor(
         ActorBuilder::new()
@@ -100,23 +122,7 @@ fn prepare_gated_actor(mut ctx: Vitality, registry: Registry) {
 
 #[test]
 fn test_attribute_condition() {
-    let mut app = App::new();
-    app.add_plugins((
-        MinimalPlugins,
-        AssetPlugin::default(),
-        LogPlugin {
-            filter: "error,vitality=debug".into(),
-            level: bevy::log::Level::DEBUG,
-            ..default()
-        },
-        AttributesPlugin,
-    ));
-    app.add_plugins((
-        vitality::init_attribute::<TestA>,
-        vitality::init_attribute::<TestB>,
-    ));
-    // A headless update lasts microseconds, so with the real clock FixedUpdate never runs.
-    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+    let mut app = app();
 
     app.add_systems(
         Startup,
@@ -168,22 +174,7 @@ fn prepare_stale_actor(mut ctx: Vitality, registry: Registry) {
 /// clearing conditions is not enough: the fast path only skips an unmarked row, so the marker must survive
 #[test]
 fn test_dropping_conditions_clears_a_stale_inactive_marker() {
-    let mut app = App::new();
-    app.add_plugins((
-        MinimalPlugins,
-        AssetPlugin::default(),
-        LogPlugin {
-            filter: "error,vitality=debug".into(),
-            level: bevy::log::Level::DEBUG,
-            ..default()
-        },
-        AttributesPlugin,
-    ));
-    app.add_plugins((
-        vitality::init_attribute::<TestA>,
-        vitality::init_attribute::<TestB>,
-    ));
-    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+    let mut app = app();
 
     app.add_systems(Startup, (prepare_gated_effect, prepare_stale_actor).chain());
 
@@ -256,22 +247,7 @@ fn prepare_ungated_actor(mut ctx: Vitality, registry: Registry) {
 /// a def that gains its first rule after the effect spawned was marked, so the walk has to re-read it
 #[test]
 fn test_a_rule_added_to_a_live_def_gates_the_effect() {
-    let mut app = App::new();
-    app.add_plugins((
-        MinimalPlugins,
-        AssetPlugin::default(),
-        LogPlugin {
-            filter: "error,vitality=debug".into(),
-            level: bevy::log::Level::DEBUG,
-            ..default()
-        },
-        AttributesPlugin,
-    ));
-    app.add_plugins((
-        vitality::init_attribute::<TestA>,
-        vitality::init_attribute::<TestB>,
-    ));
-    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+    let mut app = app();
 
     app.add_systems(
         Startup,
@@ -317,22 +293,7 @@ fn test_a_rule_added_to_a_live_def_gates_the_effect() {
 /// flipping an effect off folds without writing the target's attributes, so only the flip's mark repaints
 #[test]
 fn test_condition_deactivation_repaints_target() {
-    let mut app = App::new();
-    app.add_plugins((
-        MinimalPlugins,
-        AssetPlugin::default(),
-        LogPlugin {
-            filter: "error,vitality=debug".into(),
-            level: bevy::log::Level::DEBUG,
-            ..default()
-        },
-        AttributesPlugin,
-    ));
-    app.add_plugins((
-        vitality::init_attribute::<TestA>,
-        vitality::init_attribute::<TestB>,
-    ));
-    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+    let mut app = app();
 
     app.add_systems(Startup, (prepare_gated_effect, prepare_gated_actor).chain());
 
