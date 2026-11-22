@@ -290,6 +290,12 @@ fn apply_queued_modifiers_of<T: Attribute>(world: &mut World) {
         });
     }
 
+    // an idle attribute pays two reads instead of three scopes, and idle is most ticks
+    let messages = world.resource::<Messages<ApplyAttributeModifierMessage<T>>>();
+    if world.resource::<ApplyState<T>>().cursor.is_empty(messages) {
+        return;
+    }
+
     // the messages ride out of the world so the actor query can hold it at the same time
     world.resource_scope(
         |world, messages: Mut<Messages<ApplyAttributeModifierMessage<T>>>| {
