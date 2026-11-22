@@ -120,12 +120,12 @@ What each break looks like in an app (contract: the `vitality` crate-level doc):
 
 ## Performance
 
-From the `scenario` group of `crates/vitality/benches/bench_systems.rs` at `1f0c562`, 2026-11-22, on this box (8-CPU quota, 1-min loadavg 1.2-2.8 across the runs, no cgroup throttling). Shape: 10 000 actors, 20 attributes and 3 effects each; each figure is the median of three runs of the filtered group, one build single-threaded and one with `--features multi_threaded`.
+From the `scenario` group of `crates/vitality/benches/bench_systems.rs` at `9a20c87`, 2026-11-22, on this box (8-CPU quota, 1-min loadavg 1.3-2.6 across the runs, no cgroup throttling). Shape: 10 000 actors, 20 attributes and 3 effects each; each figure is the median of three runs of the filtered group, one build single-threaded and one with `--features multi_threaded`.
 
-- `steady`, 10 % of the actors' attributes moved: **1.338 ms** single-threaded, 4.6 % spread — **inside the 2 ms ceiling**. Multi-threaded it is 6.721 ms. Ids `scenario/steady/actors=10000/a=20/e=3/{st,mt}-static`.
-- `storm`, every attribute of every actor: **12.27 ms** single-threaded, 10 % spread, and **33.7 ms** multi-threaded — over the 8 ms ceiling, and directional, since the three runs read 21.6 / 33.7 / 33.9 ms. Ids `scenario/storm/actors=10000/a=20/e=3/{st,mt}-static`.
-- `idle`, nothing moved at all: **288.4 µs** single-threaded, 3.7 % spread, and **2.279 ms** multi-threaded. Ids `scenario/idle/actors=10000/a=20/e=3/{st,mt}-static`.
-- Multi-threading costs ticks rather than saving them on all three shapes: 7.9x on `idle`, 5.0x on `steady`, 2.7x on `storm` (directional). The cost is bevy handing its schedule sets to the 8-thread pool, not a vitality walk — at `idle` nothing fans out, and single-threaded executors on the four `*Update` schedules read 1.20 ms against 2.22 ms threaded `idle` (harness means, not criterion). Ids `scenario/{idle,steady,storm}/actors=10000/a=20/e=3/{st,mt}-static`.
+- `steady`, 10 % of the actors' attributes moved: **807 µs** single-threaded, 13 % spread — **inside the 2 ms ceiling**. Multi-threaded it is 3.382 ms. Ids `scenario/steady/actors=10000/a=20/e=3/{st,mt}-static`.
+- `storm`, every attribute of every actor: **7.06 ms** single-threaded, 18 % spread, inside the 8 ms ceiling, and **10.3 ms** multi-threaded — over it, and directional, since the three runs read 7.24 / 10.3 / 11.59 ms. Ids `scenario/storm/actors=10000/a=20/e=3/{st,mt}-static`.
+- `idle`, nothing moved at all: **8.68 µs** single-threaded, 15 % spread, and **282 µs** multi-threaded. Ids `scenario/idle/actors=10000/a=20/e=3/{st,mt}-static`.
+- Multi-threading costs ticks rather than saving them on all three shapes: 32x on `idle`, 4.2x on `steady`, 1.5x on `storm` (directional). The cost is bevy handing its schedule sets to the 8-thread pool, not a vitality walk — at `idle` nothing fans out, and pinned to one core the threaded tick reads 38.1 µs against 8.3 µs single-threaded on that same core (one run each, `taskset -c 0`). Ids `scenario/{idle,steady,storm}/actors=10000/a=20/e=3/{st,mt}-static`.
 
 ## Running the benches
 
