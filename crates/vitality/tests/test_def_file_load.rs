@@ -238,6 +238,18 @@ fn a_def_file_line_the_loader_cannot_use_fails_naming_its_line() {
             2,
             "1e30",
         ),
+        (
+            "nan-modifier.effect",
+            "name = Chaos\nmodifier = Health add nan target\n",
+            2,
+            "nan",
+        ),
+        (
+            "inf-modifier.effect",
+            "name = Breaker\nmodifier = Health add inf target\n",
+            2,
+            "inf",
+        ),
     ];
     for (file, body, line, bad) in cases {
         let path = def_file("line-error", file, body);

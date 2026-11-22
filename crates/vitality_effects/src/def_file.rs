@@ -305,9 +305,20 @@ fn modifier(names: &DefNames, line: usize, spec: &str) -> Result<Box<dyn Modifie
             ));
         }
     };
+    let written = value;
     let value = value
         .parse::<f64>()
         .map_err(|_| DefFileError::line(line, format!("`{value}` is not a number")))?;
+    // nan or inf here turns the attribute non-finite and spreads to everything that reads it
+    if !value.is_finite() {
+        return Err(DefFileError::line(
+            line,
+            format!(
+                "`{written}` is not a finite number, which is what a modifier on {attribute} \
+                 has to be"
+            ),
+        ));
+    }
     names.modifier(line, attribute, value, op, who)
 }
 
