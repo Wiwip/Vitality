@@ -390,31 +390,6 @@ fn a_parallel_root_ends_the_ability_on_the_last_task_completion() {
     assert!(cooldown_armed(&app, ability));
 }
 
-/// `TaskFailed` is where listeners pick the end/retry/ignore policy
-#[test]
-fn a_failing_task_reaches_failed_and_fires_task_failed() {
-    let mut app = test_app(|| bsn! { Tasks [ @task::<FailingTask>(NoData) ] });
-    app.update();
-
-    let owner = spawned_actor(&mut app);
-    let ability = grant(&mut app);
-    app.update();
-
-    try_activate(&mut app, owner);
-    app.update();
-
-    let task = sub_tasks(&app, ability)[0];
-    assert!(
-        in_state::<TaskMachine>(&mut app, task, TaskState::Failed),
-        "a task that reports Failed must reach TaskState::Failed instead of staying Running"
-    );
-    assert_eq!(
-        vec![task],
-        app.world().resource::<Failures>().0,
-        "entering Failed fires TaskFailed once, targeted at the task"
-    );
-}
-
 #[test]
 fn machine_definition_is_installed_before_the_first_update() {
     let mut app = App::new();
@@ -1000,9 +975,11 @@ fn hold_keeps_the_ability_active_and_fires_task_failed() {
             ]
         }
     });
-    assert_eq!(
-        vec![task_named(&mut app, "Broken")],
-        app.world().resource::<Failures>().0
+    let broken = task_named(&mut app, "Broken");
+    assert_eq!(vec![broken], app.world().resource::<Failures>().0);
+    assert!(
+        in_state::<TaskMachine>(&mut app, broken, TaskState::Failed),
+        "a task that reports Failed must reach TaskState::Failed instead of staying Running"
     );
     assert!(in_state::<AbilityMachine>(
         &mut app,
