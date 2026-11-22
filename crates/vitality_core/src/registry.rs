@@ -772,7 +772,7 @@ mod tests {
         Attr120, Attr121, Attr122, Attr123, Attr124, Attr125, Attr126, Attr127, Attr128
     );
 
-    /// the refusal names 129; `should_panic` matches text because a caught panic escapes `catch_unwind`
+    /// names 129; `should_panic` matches text: in the cranelift dev build a panic escapes `catch_unwind`
     #[test]
     #[should_panic(
         expected = "register Attr128: the attribute registry holds at most 128 attributes"
