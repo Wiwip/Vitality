@@ -122,6 +122,34 @@ fn periodic_effect_fires_once_per_interval() {
     assert_eq!(current::<Health>(&app, hero), 4.0);
 }
 
+/// Half the harness' 1/64 s tick, so two intervals fit in one tick and both are exact in binary.
+const SUB_TICK_PERIOD: f32 = 1.0 / 128.0;
+const TICK_COUNT: usize = 8;
+
+#[test]
+fn periodic_effect_faster_than_a_tick_fires_every_interval() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def().with::<Health>(0.0));
+    let twitch = effect(
+        &mut app,
+        EffectBuilder::every_second_permanently(SUB_TICK_PERIOD)
+            .modify::<Health>(1.0, ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+
+    apply(&mut app, hero, hero, &twitch);
+    ticks(&mut app, TICK_COUNT);
+
+    assert_eq!(
+        base::<Health>(&app, hero),
+        2.0 * TICK_COUNT as f32,
+        "an interval of {} s is two fires per {} s tick, so each of the {} ticks owes both",
+        SUB_TICK_PERIOD,
+        STEP.as_secs_f32(),
+        TICK_COUNT,
+    );
+}
+
 #[test]
 fn periodic_effect_with_a_duration_stops_firing() {
     let mut app = app();

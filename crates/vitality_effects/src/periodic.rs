@@ -111,21 +111,24 @@ impl PeriodicPass {
                 continue;
             }
 
-            for children in owned_modifiers.iter() {
-                // the slot says whose queue the write belongs to, so no attribute tries every modifier
-                let Ok(slot) = self.slots.get_manual(world, children) else {
-                    continue;
-                };
-                let Some(&index) = self.index.get(&slot.attribute) else {
-                    continue;
-                };
-                self.buckets[index].push(DueModifier {
-                    source: source.0,
-                    target: target.0,
-                    effect: effect_ref.id(),
-                    stacks: stacks.current_value(),
-                    modifier: children,
-                });
+            // an interval under one tick is owed more than one write, and the timer says how many
+            for _ in 0..timer.times_finished_this_tick() {
+                for children in owned_modifiers.iter() {
+                    // the slot says whose queue the write belongs to, so no attribute tries every modifier
+                    let Ok(slot) = self.slots.get_manual(world, children) else {
+                        continue;
+                    };
+                    let Some(&index) = self.index.get(&slot.attribute) else {
+                        continue;
+                    };
+                    self.buckets[index].push(DueModifier {
+                        source: source.0,
+                        target: target.0,
+                        effect: effect_ref.id(),
+                        stacks: stacks.current_value(),
+                        modifier: children,
+                    });
+                }
             }
         }
     }
