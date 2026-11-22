@@ -43,8 +43,9 @@ const DAG_OBSERVERS_BASELINE: usize = 13;
 const DAG_TICK_RESOURCES_BASELINE: usize = 67;
 const DAG_TICK_RESOURCES_PER_ATTRIBUTE: usize = 3;
 
-/// exact, so a new per-attribute component is red here; 143 since the composite task tree landed
-const DAG_TICK_COMPONENTS_BASELINE: usize = 143;
+/// exact, so a new per-attribute component is red here; 144 since the condition walk's filter names
+/// `EffectConditional`, which registers it in every app that installs `ConditionPlugin`
+const DAG_TICK_COMPONENTS_BASELINE: usize = 144;
 const DAG_TICK_COMPONENTS_PER_ATTRIBUTE: usize = 7;
 
 fn spec(attributes: usize) -> WorldSpec {
