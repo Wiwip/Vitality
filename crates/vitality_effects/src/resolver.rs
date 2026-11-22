@@ -264,6 +264,8 @@ pub(crate) struct ResolverState {
     proxies: QueryState<&'static DependencyProxyOf>,
     /// kept so its buffers stay allocated
     scratch: ValueBuf,
+    /// one fold buffer per marked carrier, kept so a steady world allocates nothing
+    carrier_calcs: Vec<ValueBuf>,
     output: Parallel<Output>,
 }
 
@@ -281,6 +283,7 @@ impl FromWorld for ResolverState {
             targets: world.query(),
             proxies: world.query(),
             scratch: ValueBuf::default(),
+            carrier_calcs: Vec::new(),
             output: Parallel::default(),
         }
     }
@@ -475,18 +478,18 @@ impl ResolverState {
         let plan = self.plan.clone();
         let order = &plan.order;
         let readers = &plan.readers;
-        let mut folded = Vec::with_capacity(marked.len());
-        for (entity, mark) in marked {
-            let mut calcs = ValueBuf::default();
-            self.gather(world, &plan.gather, entity, everything, &mut calcs);
-            folded.push((entity, mark, calcs));
+        // the gather needs &mut self, so the pool leaves it for the walk and comes back at the end
+        let mut pool = std::mem::take(&mut self.carrier_calcs);
+        pool.resize_with(marked.len(), ValueBuf::default);
+        for (index, (entity, _)) in marked.iter().enumerate() {
+            self.gather(world, &plan.gather, *entity, everything, &mut pool[index]);
         }
         let vtables = &plan.gather.vtables;
 
         let output = &self.output;
         let query = self.carriers.as_mut().expect("built by actor_query");
-        for (entity, mark, calcs) in folded {
-            let Ok((_, mut view)) = query.get_mut(world, entity) else {
+        for ((entity, mark), calcs) in marked.iter().zip(&pool) {
+            let Ok((_, mut view)) = query.get_mut(world, *entity) else {
                 continue;
             };
             let mut todo = mark.dirty;
@@ -507,19 +510,20 @@ impl ResolverState {
                     vtable.ids,
                     vtable.kind,
                     id,
-                    &calcs,
+                    calcs,
                     pairs,
                     clamp_reads,
                 ) else {
                     continue;
                 };
-                changes.push((entity, id, change));
+                changes.push((*entity, id, change));
                 (vtable.dependents_of)(&view.as_readonly(), vtable.ids, walked_readers);
                 for &reader in &readers[id.index()] {
                     todo.insert(reader);
                 }
             }
         }
+        self.carrier_calcs = pool;
     }
 
     fn recalc(&mut self, world: &mut World, readers: Vec<Entity>) -> EntityHashMap<Mark> {
