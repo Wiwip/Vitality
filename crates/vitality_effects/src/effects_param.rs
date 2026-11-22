@@ -8,7 +8,6 @@ use crate::{
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{SystemParam, SystemState};
 use std::any::TypeId;
-use std::time::Duration;
 use vitality_core::attributes::Attribute;
 use vitality_core::store::Handle;
 
@@ -62,12 +61,6 @@ impl Effects<'_, '_> {
     pub fn stacks(&self, effect: Entity) -> Option<u32> {
         let (_, _, _, stacks, _) = self.effects.get(effect).ok()?;
         Some(stacks.map_or(1, |stacks| stacks.current_value()))
-    }
-
-    /// Time left before a temporary effect expires; None for effects without a duration.
-    pub fn remaining(&self, effect: Entity) -> Option<Duration> {
-        let (_, _, _, _, duration) = self.effects.get(effect).ok()?;
-        duration.map(|duration| duration.remaining())
     }
 
     pub fn remove(&mut self, effect: Entity) {

@@ -674,18 +674,4 @@ impl<'a, 'w, 's> TaskScope<'a, 'w, 's> {
             TaskEvent::Complete,
         ));
     }
-
-    pub fn fail(&mut self) {
-        self.commands.trigger(MachineEvent::<TaskMachine>::new(
-            self.task_id,
-            TaskEvent::Fail,
-        ));
-    }
-
-    pub fn stop(&mut self) {
-        self.commands.trigger(MachineEvent::<TaskMachine>::new(
-            self.task_id,
-            TaskEvent::Stop,
-        ));
-    }
 }
