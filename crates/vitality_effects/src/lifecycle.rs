@@ -1,8 +1,11 @@
 use crate::definition::EffectDef;
-use crate::systems::MarkActorDirty;
+use crate::modifier::OwnedModifiers;
+use crate::resolver::{ModifierSlot, folded_attributes};
+use crate::systems::{DirtyMarks, MarkActorDirty};
 use crate::{Effect, EffectTarget};
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
+use vitality_core::registry::AttributeRegistry;
 use vitality_core::store::Assets;
 use vitality_core::store::Handle;
 use vitality_core::tags::ChangeTag;
@@ -65,6 +68,9 @@ pub fn remove_effect(commands: &mut Commands, effect: Entity, reason: EffectRemo
 pub(crate) fn on_effect_removed(
     trigger: On<Remove<Effect>>,
     effects: Query<(&Effect, Option<&EffectTarget>, Option<&PendingRemoval>)>,
+    owned: Query<&OwnedModifiers>,
+    slots: Query<&ModifierSlot>,
+    registry: Res<AttributeRegistry>,
     effect_assets: Res<Assets<EffectDef>>,
     mut commands: Commands,
 ) {
@@ -85,7 +91,13 @@ pub(crate) fn on_effect_removed(
         }
     }
 
-    commands.trigger(MarkActorDirty { entity: target });
+    // the modifiers go with the effect entity, so their names have to be read here
+    let marks = folded_attributes(trigger.entity, &owned, &slots, &registry)
+        .map_or(DirtyMarks::Everything, DirtyMarks::Attrs);
+    commands.trigger(MarkActorDirty {
+        entity: target,
+        marks,
+    });
     commands.trigger(EffectRemoved {
         entity: target,
         effect: trigger.entity,

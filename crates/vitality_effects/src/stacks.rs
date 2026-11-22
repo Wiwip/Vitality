@@ -1,6 +1,6 @@
 use crate::definition::EffectDef;
 use crate::lifecycle::EffectStacksChanged;
-use crate::systems::MarkActorDirty;
+use crate::systems::{DirtyMarks, MarkActorDirty};
 use crate::{Effect, EffectDuration, EffectTarget};
 use bevy_ecs::prelude::*;
 use tracing::warn;
@@ -123,7 +123,10 @@ pub(crate) fn notify_stacks_changed(
     let Ok(target) = targets.get(effect) else {
         return;
     };
-    commands.trigger(MarkActorDirty { entity: target.0 });
+    commands.trigger(MarkActorDirty {
+        entity: target.0,
+        marks: DirtyMarks::Effect(effect),
+    });
     commands.trigger(EffectStacksChanged {
         entity: target.0,
         effect,

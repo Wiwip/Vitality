@@ -7,7 +7,7 @@ use crate::definition::EffectDef;
 use crate::graph::NodeType;
 use crate::lifecycle::{EffectApplied, EffectBlocked, EffectRemovalReason, remove_effect};
 use crate::modifier::ModifierOf;
-use crate::systems::MarkActorDirty;
+use crate::systems::{DirtyMarks, MarkActorDirty};
 use crate::timing::{EffectDuration, EffectTicker};
 use crate::{
     AppliedEffects, Effect, EffectSource, EffectStackingPolicy, EffectTarget, NotifyAddStackEvent,
@@ -416,7 +416,10 @@ pub(crate) fn apply_effect_event_observer(
         trigger.spawn_persistent_effect(&mut commands, effect, &context, &ctx.type_bindings)
     {
         trigger.cleanse(effect, applied, &ctx.effect_tags, &mut commands);
-        commands.trigger(MarkActorDirty { entity: target });
+        commands.trigger(MarkActorDirty {
+            entity: target,
+            marks: DirtyMarks::Effect(effect_entity),
+        });
         commands.trigger(EffectApplied {
             entity: target,
             source,

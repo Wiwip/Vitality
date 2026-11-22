@@ -5,7 +5,7 @@ use crate::conditions::ConditionRng;
 use crate::modifier::{
     AttributeModifier, DependencyProxyOf, EffectSubject, ModifierOf, OwnedModifiers,
 };
-use crate::systems::MarkActorDirty;
+use crate::systems::{DirtyMarks, MarkActorDirty};
 use crate::timing::EffectTicker;
 use crate::{EffectSource, EffectsRef, Stacks};
 use bevy_ecs::component::ComponentId;
@@ -117,13 +117,53 @@ pub(crate) fn fold_modifier<T: Attribute>(
     ));
 }
 
+/// The attributes `effect`'s modifiers fold onto the entity that carries it, read while the effect is
+/// still readable, or `None` when they cannot be.
+pub(crate) fn folded_attributes(
+    effect: Entity,
+    owned: &Query<&OwnedModifiers>,
+    slots: &Query<&ModifierSlot>,
+    registry: &AttributeRegistry,
+) -> Option<AttrSet> {
+    let mut attrs = AttrSet::default();
+    for modifier in owned.get(effect).ok()?.iter() {
+        let slot = slots.get(modifier).ok()?;
+        // an `Effect` modifier folds onto the effect entity, which this mark does not land on
+        if matches!(slot.who, EffectSubject::Effect) {
+            continue;
+        }
+        // an attribute no app registered owns nothing to mark
+        if let Some(id) = registry.id_of(slot.attribute) {
+            attrs.insert(id);
+        }
+    }
+    Some(attrs)
+}
+
 /// Every structural change to an actor's effects arrives as `MarkActorDirty`.
 pub(crate) fn mark_actor_dirty_dag(
     trigger: On<MarkActorDirty>,
     registry: Res<AttributeRegistry>,
     queue: Res<ResolveQueue>,
+    owned: Query<&OwnedModifiers>,
+    slots: Query<&ModifierSlot>,
 ) {
-    queue.everything(trigger.entity, registry.len());
+    let attrs = match trigger.marks {
+        DirtyMarks::Attrs(attrs) => Some(attrs),
+        DirtyMarks::Effect(effect) => folded_attributes(effect, &owned, &slots, &registry),
+        DirtyMarks::Everything => None,
+    };
+    match attrs {
+        // the walk pulls in whatever reads an attribute that moves
+        Some(attrs) => queue.push(
+            trigger.entity,
+            Mark {
+                dirty: attrs,
+                regather: attrs,
+            },
+        ),
+        None => queue.everything(trigger.entity, registry.len()),
+    }
 }
 
 type ActorItem = (

@@ -3,7 +3,7 @@ use crate::conditions::ConditionRng;
 use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
 use crate::lifecycle::{EffectRemovalReason, remove_effect};
-use crate::systems::MarkActorDirty;
+use crate::systems::{DirtyMarks, MarkActorDirty};
 use crate::{Effect, EffectInactive, EffectSource, EffectTarget};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -82,12 +82,18 @@ fn apply(commands: &mut Commands, decision: Decision) {
             debug!("Effect {effect} is now active.");
             commands.entity(effect).remove::<EffectInactive>();
             // nothing else dirties the target: no attribute changed and no leftover mark carries the fold
-            commands.trigger(MarkActorDirty { entity: target });
+            commands.trigger(MarkActorDirty {
+                entity: target,
+                marks: DirtyMarks::Effect(effect),
+            });
         }
         Verdict::BecameInactive => {
             debug!("Effect {effect} is now inactive.");
             commands.entity(effect).insert(EffectInactive);
-            commands.trigger(MarkActorDirty { entity: target });
+            commands.trigger(MarkActorDirty {
+                entity: target,
+                marks: DirtyMarks::Effect(effect),
+            });
         }
     }
 }
