@@ -15,6 +15,7 @@ use bevy_ecs::world::FilteredEntityMut;
 use bevy_platform::collections::HashMap;
 use bevy_utils::Parallel;
 use std::any::TypeId;
+use std::sync::Arc;
 use vitality_core::attributes::{Attribute, ManageAttributes};
 use vitality_core::modifier::{Calc, ModOp};
 use vitality_core::registry::{
@@ -209,6 +210,27 @@ impl GatherState {
     }
 }
 
+/// the registry copies every pass walks, rebuilt only when the registry itself moves
+struct Plan {
+    revision: u64,
+    gather: GatherState,
+    order: Vec<AttrId>,
+    readers: Vec<Vec<AttrId>>,
+}
+
+impl Plan {
+    fn of(registry: &AttributeRegistry) -> Self {
+        Self {
+            revision: registry.revision(),
+            gather: GatherState::of(registry),
+            order: registry.order().to_vec(),
+            readers: (0..registry.len())
+                .map(|i| registry.readers(AttrId(i as u16)).to_vec())
+                .collect(),
+        }
+    }
+}
+
 #[derive(Default)]
 struct Output {
     changes: Vec<(Entity, AttrId, Change)>,
@@ -233,6 +255,7 @@ pub(crate) struct ResolverState {
     actors: Option<ActorQuery>,
     carriers: Option<CarrierQuery>,
     built_for: usize,
+    plan: Arc<Plan>,
     applied: QueryState<&'static AppliedEffects>,
     effects: EffectFlags,
     slots: QueryState<&'static ModifierSlot>,
@@ -250,6 +273,7 @@ impl FromWorld for ResolverState {
             actors: None,
             carriers: None,
             built_for: 0,
+            plan: Arc::new(Plan::of(world.resource::<AttributeRegistry>())),
             applied: world.query(),
             effects: world.query_filtered(),
             slots: world.query(),
@@ -263,6 +287,14 @@ impl FromWorld for ResolverState {
 }
 
 impl ResolverState {
+    /// the pass walks ride on shared registry copies, so only a moved registry rebuilds them
+    fn sync_plan(&mut self, world: &World) {
+        let registry = world.resource::<AttributeRegistry>();
+        if registry.revision() != self.plan.revision {
+            self.plan = Arc::new(Plan::of(registry));
+        }
+    }
+
     fn actor_query(&mut self, world: &mut World) -> &mut ActorQuery {
         let registry = world.resource::<AttributeRegistry>();
         if self.actors.is_none() || self.carriers.is_none() || self.built_for != registry.len() {
@@ -348,13 +380,14 @@ impl ResolverState {
         }
         // hash map order isn't deterministic
         marked.sort_by_key(|(entity, _)| *entity);
-        let state = GatherState::of(world.resource::<AttributeRegistry>());
+        let plan = self.plan.clone();
+        let state = &plan.gather;
         let mut scratch = std::mem::take(&mut self.scratch);
         // taken out so the gather can borrow self
         self.actor_query(world);
         let mut actors = self.actors.take().expect("built above");
         for (actor, wanted) in &marked {
-            self.gather(world, &state, *actor, *wanted, &mut scratch);
+            self.gather(world, state, *actor, *wanted, &mut scratch);
             if let Ok((_, _, mut table)) = actors.get_mut(world, *actor) {
                 for plan in &state.kinds {
                     let ids = wanted.intersection(&plan.members);
@@ -369,13 +402,11 @@ impl ResolverState {
     }
 
     fn resolve(&mut self, world: &mut World, marks: &EntityHashMap<Mark>) {
-        let registry = world.resource::<AttributeRegistry>();
-        // the query borrows the world mutably, so the registry rides along as raw parts
-        let order: Vec<AttrId> = registry.order().to_vec();
-        let readers: Vec<Vec<AttrId>> = (0..registry.len())
-            .map(|i| registry.readers(AttrId(i as u16)).to_vec())
-            .collect();
-        let vtables: Vec<AttrVTable> = registry.infos().iter().map(AttrVTable::of).collect();
+        // the query borrows the world mutably, so the registry rides along as a shared plan
+        let plan = self.plan.clone();
+        let order = &plan.order;
+        let readers = &plan.readers;
+        let vtables = &plan.gather.vtables;
 
         let dirty: EntityHashSet = marks
             .iter()
@@ -400,7 +431,7 @@ impl ResolverState {
                 readers: walked_readers,
                 clamp_reads,
             } = &mut *local;
-            for &id in &order {
+            for &id in order {
                 if !todo.contains(id) {
                     continue;
                 }
@@ -439,21 +470,18 @@ impl ResolverState {
             return;
         }
 
-        let registry = world.resource::<AttributeRegistry>();
-        let order: Vec<AttrId> = registry.order().to_vec();
-        let readers: Vec<Vec<AttrId>> = (0..registry.len())
-            .map(|i| registry.readers(AttrId(i as u16)).to_vec())
-            .collect();
-        let mut state = GatherState::of(registry);
         // every attribute, because a value that moves can pull another one of the same entity into the walk
-        let everything = AttrSet::all(registry.len());
+        let everything = AttrSet::all(world.resource::<AttributeRegistry>().len());
+        let plan = self.plan.clone();
+        let order = &plan.order;
+        let readers = &plan.readers;
         let mut folded = Vec::with_capacity(marked.len());
         for (entity, mark) in marked {
             let mut calcs = ValueBuf::default();
-            self.gather(world, &state, entity, everything, &mut calcs);
+            self.gather(world, &plan.gather, entity, everything, &mut calcs);
             folded.push((entity, mark, calcs));
         }
-        let vtables = std::mem::take(&mut state.vtables);
+        let vtables = &plan.gather.vtables;
 
         let output = &self.output;
         let query = self.carriers.as_mut().expect("built by actor_query");
@@ -469,7 +497,7 @@ impl ResolverState {
                 readers: walked_readers,
                 clamp_reads,
             } = &mut *local;
-            for &id in &order {
+            for &id in order {
                 if !todo.contains(id) {
                     continue;
                 }
@@ -509,13 +537,18 @@ impl ResolverState {
             })
             .filter(|modifier| seen.insert(*modifier))
             .collect();
-        let recalcs = world.resource::<ModifierRecalcs>().0.clone();
         for modifier in modifiers {
             let Ok((slot, of)) = self.slot_effects.get(world, modifier) else {
                 continue;
             };
             let (attribute, who, effect) = (slot.attribute, slot.who, of.0);
-            let Some(recalc) = recalcs.get(&attribute) else {
+            // just the pointer, the walk needs the world back to run it
+            let Some(recalc) = world
+                .resource::<ModifierRecalcs>()
+                .0
+                .get(&attribute)
+                .copied()
+            else {
                 continue;
             };
             if !recalc(world, modifier) {
@@ -600,6 +633,7 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
     let mut clamp_reads = Vec::new();
     for pass in 0..MAX_PASSES {
         state.actor_query(world);
+        state.sync_plan(world);
         state.regather(world, &marks);
         state.resolve(world, &marks);
         state.resolve_carriers(world, &marks);

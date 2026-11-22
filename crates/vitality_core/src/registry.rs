@@ -349,6 +349,8 @@ pub struct AttributeRegistry {
     order: Vec<AttrId>,
     readers: Vec<Vec<AttrId>>,
     cyclic: bool,
+    /// bumped by every mutation, the cache key for copies of the lists below
+    revision: u64,
 }
 
 impl AttributeRegistry {
@@ -387,11 +389,17 @@ impl AttributeRegistry {
         self.kinds[kind].members.insert(id);
         self.readers.push(Vec::new());
         self.rebuild_order();
+        self.revision += 1;
         id
     }
 
     pub fn len(&self) -> usize {
         self.infos.len()
+    }
+
+    /// Moves on any mutation; `len` misses an edge or a rewritten fold.
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     pub fn is_empty(&self) -> bool {
@@ -430,6 +438,7 @@ impl AttributeRegistry {
         let attribute = TypeId::of::<T>();
         if let Some(info) = self.infos.iter_mut().find(|info| info.type_id == attribute) {
             info.fold_modifier = fold;
+            self.revision += 1;
         }
     }
 
@@ -456,6 +465,7 @@ impl AttributeRegistry {
         }
         self.readers[read.index()].push(reader);
         self.rebuild_order();
+        self.revision += 1;
         true
     }
 
