@@ -324,8 +324,7 @@ fn has_observers<T: Attribute>(world: &World) -> bool {
     !observers.global_observers().is_empty()
         || !observers.entity_observers().is_empty()
         || observers.component_observers().values().any(|scoped| {
-            !scoped.global_observers().is_empty()
-                || !scoped.entity_component_observers().is_empty()
+            !scoped.global_observers().is_empty() || !scoped.entity_component_observers().is_empty()
         })
 }
 

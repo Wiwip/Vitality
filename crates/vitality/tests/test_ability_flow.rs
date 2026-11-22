@@ -369,7 +369,10 @@ fn a_target_that_is_gone_fails_with_a_reason() {
 #[test]
 fn a_target_that_is_the_caster_itself_runs_and_pays() {
     let mut app = app();
-    let bolt = ability(&mut app, AbilityBuilder::new().with_cost::<Mana>(10.0).build());
+    let bolt = ability(
+        &mut app,
+        AbilityBuilder::new().with_cost::<Mana>(10.0).build(),
+    );
     let caster = caster_with(&mut app, &[&bolt]);
     record_all(&mut app);
 

@@ -2,8 +2,8 @@ mod gameplay;
 
 use bevy::prelude::*;
 use gameplay::*;
-use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::effect::GlobalEffectPlugin;
+use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 
 #[test]
