@@ -70,7 +70,11 @@ pub(crate) fn change_blocks(caster: &mut EntityCommands, tags: Vec<TypeId>, add:
         return;
     }
     caster.queue_silenced(move |mut entity: EntityWorldMut| {
-        let mut blocks = entity.take::<BlockedAbilityTags>().unwrap_or_default();
+        if !entity.contains::<BlockedAbilityTags>() {
+            entity.insert(BlockedAbilityTags::default());
+        }
+        // counts move in place; the component itself never leaves the archetype
+        let mut blocks = entity.get_mut::<BlockedAbilityTags>().unwrap();
         for tag in &tags {
             let count = blocks.0.entry(*tag).or_default();
             if add {
@@ -79,7 +83,6 @@ pub(crate) fn change_blocks(caster: &mut EntityCommands, tags: Vec<TypeId>, add:
                 *count = count.saturating_sub(1);
             }
         }
-        entity.insert(blocks);
     });
 }
 

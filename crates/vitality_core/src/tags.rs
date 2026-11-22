@@ -70,21 +70,35 @@ impl EntityCommand for ChangeTag {
     type Out = ();
 
     fn apply(self, mut entity: EntityWorldMut) {
-        let mut tags = entity.take::<ActorTags>().unwrap_or_default();
+        if !entity.contains::<ActorTags>() {
+            entity.insert(ActorTags::default());
+        }
         let id = self.spec.type_id;
-        if self.grant {
-            let count = tags.counts.entry(id).or_default();
-            *count += 1;
-            if *count == 1 {
-                (self.spec.insert)(&mut entity);
+        // the count moves in place, so only crossing the 0/1 line costs an archetype move
+        let crossed = {
+            let mut tags = entity.get_mut::<ActorTags>().unwrap();
+            if self.grant {
+                let count = tags.counts.entry(id).or_default();
+                *count += 1;
+                *count == 1
+            } else {
+                let mut crossed = false;
+                if let Some(count) = tags.counts.get_mut(&id) {
+                    *count -= 1;
+                    crossed = *count == 0;
+                }
+                if crossed {
+                    tags.counts.remove(&id);
+                }
+                crossed
             }
-        } else if let Some(count) = tags.counts.get_mut(&id) {
-            *count -= 1;
-            if *count == 0 {
-                tags.counts.remove(&id);
+        };
+        if crossed {
+            if self.grant {
+                (self.spec.insert)(&mut entity);
+            } else {
                 (self.spec.remove)(&mut entity);
             }
         }
-        entity.insert(tags);
     }
 }
