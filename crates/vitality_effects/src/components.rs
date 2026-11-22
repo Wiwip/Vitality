@@ -23,6 +23,11 @@ pub struct OnEffectStatusChangeEvent(pub EffectStatus);
 #[component(storage = "SparseSet")]
 pub struct EffectInactive;
 
+/// the def can change this effect's state on its own, so the condition walk keeps reading it
+#[derive(Component, Debug, Default)]
+#[component(storage = "SparseSet")]
+pub struct EffectConditional;
+
 #[derive(Component, Debug, Default, Deref)]
 #[require(Stacks)]
 pub struct Effect(pub Handle<EffectDef>);

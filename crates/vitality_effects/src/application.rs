@@ -10,7 +10,8 @@ use crate::modifier::ModifierOf;
 use crate::systems::{DirtyMarks, MarkActorDirty};
 use crate::timing::{EffectDuration, EffectTicker};
 use crate::{
-    AppliedEffects, Effect, EffectSource, EffectStackingPolicy, EffectTarget, NotifyAddStackEvent,
+    AppliedEffects, Effect, EffectConditional, EffectSource, EffectStackingPolicy, EffectTarget,
+    NotifyAddStackEvent,
 };
 use bevy_ecs::prelude::*;
 use bevy_ecs::resource::IsResource;
@@ -280,6 +281,10 @@ impl ApplyEffectEvent {
             Effect(self.handle),
             EffectTags(effect.granted_tags.iter().map(|tag| tag.type_id).collect()),
         ));
+        // the def is immutable once applied, so the marker cannot go stale on a live effect
+        if !effect.blocked_by_tags.is_empty() || !effect.activate_conditions.is_empty() {
+            effect_commands.insert(EffectConditional);
+        }
         for &tag in &effect.granted_tags {
             effect_commands.queue(move |mut entity: EntityWorldMut| tag.insert_on(&mut entity));
         }

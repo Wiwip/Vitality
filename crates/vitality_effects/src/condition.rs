@@ -4,7 +4,7 @@ use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
 use crate::lifecycle::{EffectRemovalReason, remove_effect};
 use crate::systems::{DirtyMarks, MarkActorDirty};
-use crate::{Effect, EffectInactive, EffectSource, EffectTarget};
+use crate::{Effect, EffectConditional, EffectInactive, EffectSource, EffectTarget};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::relationship::Relationship;
@@ -41,9 +41,12 @@ type ConditionRow<'w, 's> = (
     Option<&'w EffectInactive>,
 );
 
+/// the marker says the walk switched the effect off, and only the walk can clear it again
+type WatchedEffects = Or<(With<EffectConditional>, With<EffectInactive>)>;
+
 /// the walk stays on one thread: a row is cheap to decide and the task hand-off costs more than it wins
 fn evaluate_effect_conditions(
-    query: Query<ConditionRow<'_, '_>>,
+    query: Query<ConditionRow<'_, '_>, WatchedEffects>,
     parents: Query<EffectsRef>,
     effects: Res<Assets<EffectDef>>,
     rng: Res<ConditionRng>,
@@ -179,7 +182,7 @@ fn decide(
 }
 
 fn decide_serially(
-    query: &Query<ConditionRow<'_, '_>>,
+    query: &Query<ConditionRow<'_, '_>, WatchedEffects>,
     parents: &Query<EffectsRef>,
     effects: &Assets<EffectDef>,
     base: u64,
