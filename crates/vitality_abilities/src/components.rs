@@ -58,7 +58,13 @@ impl Template for AbilityAssetTemplate {
             .get_resource::<AbilityRegistry>()
             .expect("The AbilityRegistry must exist.");
 
-        let handle = ability_registry.get(&self.handle);
+        let Some(handle) = ability_registry.try_get(&self.handle) else {
+            return Err(BevyError::error(format!(
+                "Ability '{}' is not registered. Register it in the AbilityRegistry before spawning this scene.",
+                self.handle
+            )));
+        };
+
         Ok(Ability {
             handle: handle.clone(),
         })

@@ -43,9 +43,12 @@ impl AbilityRegistry {
     }
 
     pub fn get(&self, token: &AbilityToken) -> &Handle<AbilityDef> {
-        self.map
-            .get(token)
+        self.try_get(token)
             .unwrap_or_else(|| panic!("{:?} not registered", token))
+    }
+
+    pub fn try_get(&self, token: &AbilityToken) -> Option<&Handle<AbilityDef>> {
+        self.map.get(token)
     }
 }
 
