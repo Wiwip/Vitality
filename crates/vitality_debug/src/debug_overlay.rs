@@ -9,7 +9,7 @@ use bevy_ui::{prelude::*, px};
 use ptree::{TreeBuilder, write_tree};
 use std::any::TypeId;
 use vitality_abilities::ability_state::AbilityMachine;
-use vitality_abilities::tasks::Tasks;
+use vitality_abilities::tasks::{Composite, Tasks};
 use vitality_abilities::{Ability, GrantedAbilities, StateTimer, cooldown_remaining};
 use vitality_core::attributes::ManageAttributes;
 use vitality_core::attributes::ReflectAccessAttribute;
@@ -92,7 +92,7 @@ pub struct ExploreParams<'w, 's> {
     >,
     granted_abilities: Query<'w, 's, &'static GrantedAbilities>,
     ability_query: AbilityQuery<'w, 's>,
-    tasks: Query<'w, 's, &'static Tasks>,
+    tasks: Query<'w, 's, TaskRow>,
     names: Query<'w, 's, &'static Name>,
     modifiers: Query<'w, 's, EntityRef<'static>, With<ModifierMarker>>,
     type_registry: Res<'w, AppTypeRegistry>,
@@ -242,17 +242,22 @@ fn list_effects(
     builder.end_child();
 }
 
+type TaskRow = (&'static Tasks, Option<&'static Composite>);
+
 fn list_tasks(
     builder: &mut TreeBuilder,
     tasks: &Tasks,
     names: &Query<&Name>,
-    task_query: &Query<&Tasks>,
+    task_query: &Query<TaskRow>,
 ) {
     for task_entity in tasks.iter() {
         let name = names.get(task_entity).map(|n| n.as_str()).unwrap_or("Task");
 
-        if let Ok(tasks) = task_query.get(task_entity) {
-            builder.begin_child(format!("[{task_entity}] {name}"));
+        if let Ok((tasks, composite)) = task_query.get(task_entity) {
+            let kind = composite
+                .map(|kind| format!(" ({kind:?})"))
+                .unwrap_or_default();
+            builder.begin_child(format!("[{task_entity}] {name}{kind}"));
             list_tasks(builder, tasks, names, task_query);
             builder.end_child();
         } else {
@@ -281,7 +286,7 @@ fn list_abilities(
     builder: &mut TreeBuilder,
     abilities: &GrantedAbilities,
     ability_query: &AbilityQuery<'_, '_>,
-    task_query: &Query<&Tasks>,
+    task_query: &Query<TaskRow>,
     names: &Query<&Name>,
 ) {
     builder.begin_child("Abilities".to_string());
@@ -295,7 +300,7 @@ fn list_abilities(
 
         builder.begin_child(format!("[{ability_entity}] {name}{cooldown_str}"));
 
-        if let Ok(tasks) = task_query.get(*ability_entity) {
+        if let Ok((tasks, _)) = task_query.get(*ability_entity) {
             list_tasks(builder, tasks, names, task_query);
         }
 

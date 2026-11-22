@@ -2,7 +2,7 @@ use crate::ability_state::AbilityMachine;
 use crate::definition::AbilityDef;
 use crate::lifecycle::AbilityEnding;
 use crate::registry::{AbilityRegistry, AbilityToken};
-use crate::tasks::Tasks;
+use crate::tasks::{Composite, Tasks};
 use bevy_asset::Handle;
 use bevy_ecs::prelude::*;
 use bevy_ecs::template::TemplateContext;
@@ -35,7 +35,7 @@ impl GrantedAbilities {
 
 #[derive(Component, Clone, Reflect)]
 #[reflect(Component)]
-#[require(Tasks, AbilityEnding, MachineInstance<AbilityMachine>)]
+#[require(Tasks, Composite, AbilityEnding, MachineInstance<AbilityMachine>)]
 pub struct Ability {
     pub handle: Handle<AbilityDef>,
 }

@@ -9,7 +9,7 @@ use crate::registry::Registry;
 use crate::systems::ActivateAbility;
 use crate::task_states::TaskMachine;
 use crate::task_states::{TaskEvent, TaskState};
-use crate::tasks::Tasks;
+use crate::tasks::{StartComposite, Tasks};
 use crate::{Ability, AbilityOf, GrantedAbilities, TargetData};
 use crate::{BeginAbility, ExecuteAbility};
 use bevy_asset::Assets;
@@ -76,10 +76,15 @@ impl ExternalContext for AbilitySystemParam<'static, 'static> {
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum AbilityEvent {
-    TryActivate { source: Entity, target: TargetData },
+    TryActivate {
+        source: Entity,
+        target: TargetData,
+    },
     Activate,
     CancelAbility,
     EndAbility,
+    /// The root's `OnFail::Propagate` saw a child fail.
+    FailAbility,
     TimerExpired,
     Recovered,
 }
@@ -91,7 +96,8 @@ pub(crate) fn build_machine() -> MachineDefinition<AbilityMachine> {
 
         root.leaf(AbilityState::Active, "Active", ActiveState)
             .on(AbilityEvent::EndAbility, AbilityState::Recovery)
-            .on(AbilityEvent::CancelAbility, AbilityState::Recovery);
+            .on(AbilityEvent::CancelAbility, AbilityState::Recovery)
+            .on(AbilityEvent::FailAbility, AbilityState::Recovery);
 
         root.leaf(AbilityState::Recovery, "Cooldown", RecoveryState)
             .on(AbilityEvent::Recovered, AbilityState::Ready);
@@ -229,6 +235,7 @@ impl MachineState<AbilityMachine> for ActiveState {
     fn on_enter(&self, ctx: &mut Access<AbilityMachine>) {
         debug!("[{}] Ability enter ActiveState", ctx.ability_id);
         ctx.local.ending.cancelled = false;
+        ctx.local.ending.failed = false;
         let Ok(tasks) = ctx.external.tasks.get(ctx.ability_id) else {
             error!("Activated an unavailable ability.");
             return;
@@ -239,20 +246,16 @@ impl MachineState<AbilityMachine> for ActiveState {
             return;
         }
 
-        for task_entity in tasks.iter() {
-            if let Err(err) = ctx
-                .external
-                .task_machines
-                .dispatch_event(task_entity, TaskEvent::Activate)
-            {
-                error!("[{}] TaskMachine dispatch failed: {err}", task_entity);
-            }
-        }
+        // the ability is the root composite, started like any other
+        ctx.external.commands.trigger(StartComposite {
+            node: ctx.ability_id,
+        });
     }
 
     fn on_event(&self, ctx: &mut Access<AbilityMachine>, event: &AbilityEvent) -> EventResult {
         match event {
             AbilityEvent::CancelAbility => ctx.local.ending.cancelled = true,
+            AbilityEvent::FailAbility => ctx.local.ending.failed = true,
             AbilityEvent::TryActivate { .. } => {
                 report_busy(ctx, event, ActivationError::AlreadyActive);
                 return EventResult::Handled;
@@ -288,6 +291,7 @@ impl MachineState<AbilityMachine> for ActiveState {
             entity: ability_id,
             caster,
             cancelled: ctx.local.ending.cancelled,
+            failed: ctx.local.ending.failed,
         });
     }
 }
@@ -333,7 +337,14 @@ impl MachineState<AbilityMachine> for RecoveryState {
             );
         }
 
-        for task_id in ctx.external.tasks.iter_descendants(ability_id) {
+        // only the direct children: a stopped composite stops its own
+        let children: Vec<Entity> = ctx
+            .external
+            .tasks
+            .get(ability_id)
+            .map(|tasks| tasks.iter().collect())
+            .unwrap_or_default();
+        for task_id in children {
             if ctx
                 .external
                 .task_machines

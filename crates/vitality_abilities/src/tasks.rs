@@ -24,7 +24,68 @@ pub enum TaskStatus {
 }
 
 #[derive(Component, Default, Copy, Clone, Debug)]
+#[require(Cast)]
 pub struct Task;
+
+/// How a node with `Tasks` runs and judges its children; the ability itself is the root composite.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default, FromTemplate)]
+#[require(OnFail, Progress, Cast)]
+pub enum Composite {
+    /// Starts every child and completes once all of them completed.
+    #[default]
+    Parallel,
+    /// Starts one child at a time and completes after the last one.
+    Sequence,
+    /// Starts every child, completes on the first completion and stops the rest.
+    Race,
+}
+
+/// What a composite does when one of its children fails.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default, FromTemplate)]
+pub enum OnFail {
+    /// `TaskFailed` fires and the composite keeps running; listeners decide (D-101).
+    #[default]
+    Hold,
+    /// The composite fails too, stopping its other children; at the root the ability ends failed.
+    Propagate,
+    /// The failed child counts as finished.
+    Skip,
+}
+
+/// A composite's tally for the current cast, reset whenever it starts.
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub struct Progress {
+    done: usize,
+    failed: usize,
+    next: usize,
+}
+
+/// Which cast of its ability a node was started in, so a late settle from an earlier cast is dropped.
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Cast(pub u32);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Settled {
+    Completed,
+    Failed,
+}
+
+/// Sent to a node's owner when the node enters `Completed` or `Failed`.
+#[derive(EntityEvent, Debug, Clone, Copy)]
+pub struct ChildSettled {
+    #[event_target]
+    pub parent: Entity,
+    pub child: Entity,
+    pub outcome: Settled,
+    pub cast: u32,
+}
+
+/// Starts a composite's children; triggered when a composite enters Running or an ability goes Active.
+#[derive(EntityEvent, Debug, Clone, Copy)]
+pub(crate) struct StartComposite {
+    #[event_target]
+    pub node: Entity,
+}
 
 #[derive(EntityEvent)]
 pub struct ExecuteTask {
@@ -50,28 +111,13 @@ pub struct TaskFailed {
     pub task_id: Entity,
 }
 
-#[derive(EntityEvent)]
-#[entity_event(propagate = &'static TaskOwner, auto_propagate)]
-pub struct NotifyTaskCompletion {
-    #[event_target]
-    pub entity: Entity,
-}
-
 #[derive(Component, Reflect, Debug)]
 #[relationship(relationship_target = Tasks)]
 pub struct TaskOwner(pub Entity);
 
 #[derive(Component, Reflect, Debug, Default)]
 #[relationship_target(relationship = TaskOwner, linked_spawn)]
-#[require[Task, Complete::All]]
 pub struct Tasks(Vec<Entity>);
-
-#[derive(Component, Debug, FromTemplate)]
-pub enum Complete {
-    #[default]
-    All,
-    Any,
-}
 
 #[derive(Component, Reflect, Clone, Default)]
 #[reflect(Component)]
@@ -98,6 +144,10 @@ impl WaitTask {
 
     pub fn just_finished(&self) -> bool {
         self.0.just_finished()
+    }
+
+    pub fn pause(&mut self) {
+        self.0.pause();
     }
 }
 
@@ -165,6 +215,18 @@ pub fn task<T: AbilityTask>(data: T::Data) -> impl Scene {
 
 pub fn wait_task(secs: f32) -> impl Scene {
     task::<WaitTask>(WaitTask::from_secs(secs))
+}
+
+pub fn sequence() -> impl Scene {
+    bsn! { Task MachineInstance<TaskMachine> Composite::Sequence }
+}
+
+pub fn parallel() -> impl Scene {
+    bsn! { Task MachineInstance<TaskMachine> Composite::Parallel }
+}
+
+pub fn race() -> impl Scene {
+    bsn! { Task MachineInstance<TaskMachine> Composite::Race }
 }
 
 #[derive(SystemParam)]
@@ -298,45 +360,173 @@ fn on_task_stopped_observer<T: AbilityTask>(
     );
 }
 
-pub fn on_task_completion_notification(
-    mut trigger: On<NotifyTaskCompletion>,
-    query: Query<(&Tasks, &Complete)>,
-    abilities: Query<&Ability>,
+fn start_child(commands: &mut Commands, child: Entity, cast: u32) {
+    // the insert lands before the Activate, so the child's settle carries this cast
+    commands.entity(child).insert(Cast(cast));
+    commands.trigger(MachineEvent::<TaskMachine>::new(child, TaskEvent::Activate));
+}
+
+/// Ends the node as `outcome`: an ability through its own machine, a composite through `TaskMachine`.
+fn settle_node(commands: &mut Commands, node: Entity, is_ability: bool, outcome: Settled) {
+    // a trigger, not a dispatch: one system cannot borrow both machine queries
+    match (is_ability, outcome) {
+        (true, Settled::Completed) => commands.trigger(MachineEvent::<AbilityMachine>::new(
+            node,
+            AbilityEvent::EndAbility,
+        )),
+        (true, Settled::Failed) => commands.trigger(MachineEvent::<AbilityMachine>::new(
+            node,
+            AbilityEvent::FailAbility,
+        )),
+        (false, Settled::Completed) => {
+            commands.trigger(MachineEvent::<TaskMachine>::new(node, TaskEvent::Complete))
+        }
+        (false, Settled::Failed) => {
+            commands.trigger(MachineEvent::<TaskMachine>::new(node, TaskEvent::Fail))
+        }
+    }
+}
+
+/// Starts children synchronously, so every sibling is Running before any of them can settle.
+pub(crate) fn on_start_composite(
+    trigger: On<StartComposite>,
+    mut composites: Query<(&Composite, Option<&Tasks>, &mut Progress, Has<Ability>)>,
+    mut access: ParamSet<(Query<&mut Cast>, MachineQuery<TaskMachine>)>,
+    mut commands: Commands,
+) {
+    let node = trigger.node;
+    let Ok((kind, tasks, mut progress, is_ability)) = composites.get_mut(node) else {
+        return;
+    };
+    *progress = Progress::default();
+    let children: Vec<Entity> = tasks
+        .map(|tasks| tasks.iter().collect())
+        .unwrap_or_default();
+    let starting = match kind {
+        Composite::Sequence => children.len().min(1),
+        Composite::Parallel | Composite::Race => children.len(),
+    };
+    progress.next = starting;
+
+    {
+        let mut casts = access.p0();
+        let Ok(mut cast) = casts.get_mut(node) else {
+            return;
+        };
+        if is_ability {
+            cast.0 = cast.0.wrapping_add(1);
+        }
+        let cast = cast.0;
+        for child in &children[..starting] {
+            if let Ok(mut child_cast) = casts.get_mut(*child) {
+                child_cast.0 = cast;
+            }
+        }
+    }
+
+    if children.is_empty() {
+        settle_node(&mut commands, node, is_ability, Settled::Completed);
+        return;
+    }
+    let mut machines = access.p1();
+    for child in &children[..starting] {
+        if let Err(err) = machines.dispatch_event(*child, TaskEvent::Activate) {
+            error!("[{child}] TaskMachine dispatch failed: {err}");
+        }
+    }
+}
+
+type JudgeItem = (
+    &'static Composite,
+    &'static OnFail,
+    Option<&'static Tasks>,
+    &'static Cast,
+    &'static mut Progress,
+    Has<Ability>,
+);
+
+/// The only place a composite judges its children; it reads its own tally, not their states.
+pub(crate) fn on_child_settled(
+    trigger: On<ChildSettled>,
+    // Cast is read only: the task machine query below reads it too
+    mut nodes: Query<JudgeItem>,
     task_machines: MachineQuery<TaskMachine>,
     mut commands: Commands,
 ) {
-    let Ok((tasks, rule)) = query.get(trigger.entity) else {
+    let ChildSettled {
+        parent,
+        child,
+        outcome,
+        cast: settled_cast,
+    } = *trigger.event();
+    let Ok((kind, on_fail, tasks, cast, mut progress, is_ability)) = nodes.get_mut(parent) else {
         return;
     };
+    if settled_cast != cast.0 {
+        debug!("[{parent}] dropped a settle of {child} from cast {settled_cast}");
+        return;
+    }
+    // an ability that left Active ignores EndAbility anyway; a composite that stopped must not move
+    if !is_ability
+        && !task_machines
+            .is_in_state(parent, TaskState::Running)
+            .inspect_err(|err| error!("[{parent}] TaskMachine is_in_state failed: {err}"))
+            .unwrap_or_default()
+    {
+        return;
+    }
+    let children: Vec<Entity> = tasks
+        .map(|tasks| tasks.iter().collect())
+        .unwrap_or_default();
 
-    let result = match rule {
-        Complete::All => tasks.iter().all(|task| {
-            task_machines
-                .is_in_state(task, TaskState::Completed)
-                .inspect_err(|err| error!("[{}] TaskMachine is_in_state failed: {err}", task))
-                .unwrap_or_default()
-        }),
-        Complete::Any => tasks.iter().any(|task| {
-            task_machines
-                .is_in_state(task, TaskState::Completed)
-                .inspect_err(|err| error!("[{}] TaskMachine is_in_state failed: {err}", task))
-                .unwrap_or_default()
-        }),
+    let counts = match (outcome, on_fail) {
+        (Settled::Completed, _) => {
+            progress.done += 1;
+            true
+        }
+        (Settled::Failed, OnFail::Hold) => return,
+        (Settled::Failed, OnFail::Propagate) => {
+            settle_node(&mut commands, parent, is_ability, Settled::Failed);
+            return;
+        }
+        (Settled::Failed, OnFail::Skip) => {
+            progress.failed += 1;
+            false
+        }
     };
 
-    debug!(
-        "[{}] Task Completion Notification ({:?}) [{result}] ({rule:?})",
-        trigger.entity, tasks
-    );
-
-    if !abilities.contains(trigger.entity) {
-        trigger.propagate(result);
-    } else if result {
-        // A trigger, not a dispatch: this system cannot borrow both machine queries.
-        commands.trigger(MachineEvent::<AbilityMachine>::new(
-            trigger.entity,
-            AbilityEvent::EndAbility,
-        ));
+    match kind {
+        Composite::Sequence => {
+            if let Some(next) = children.get(progress.next).copied() {
+                progress.next += 1;
+                start_child(&mut commands, next, cast.0);
+            } else {
+                settle_node(&mut commands, parent, is_ability, Settled::Completed);
+            }
+        }
+        Composite::Parallel => {
+            if progress.done + progress.failed >= children.len() {
+                settle_node(&mut commands, parent, is_ability, Settled::Completed);
+            }
+        }
+        Composite::Race if counts => {
+            for other in children.into_iter().filter(|other| *other != child) {
+                let running = task_machines
+                    .is_in_state(other, TaskState::Running)
+                    .inspect_err(|err| error!("[{other}] TaskMachine is_in_state failed: {err}"))
+                    .unwrap_or_default();
+                if running {
+                    commands.trigger(MachineEvent::<TaskMachine>::new(other, TaskEvent::Stop));
+                }
+            }
+            settle_node(&mut commands, parent, is_ability, Settled::Completed);
+        }
+        Composite::Race => {
+            // a skipped failure only loses the race once nobody is left to win it
+            if progress.failed >= children.len() {
+                settle_node(&mut commands, parent, is_ability, Settled::Failed);
+            }
+        }
     }
 }
 
@@ -466,6 +656,17 @@ impl AbilityTask for WaitTask {
         task.timer.start();
         TaskStatus::Running
     }
+
+    fn on_stop(
+        _task_id: Entity,
+        _caster: CasterItem<Self>,
+        _ability: AbilityItem<Self>,
+        mut task: TaskItem<Self>,
+        _param: &mut TaskParam<Self>,
+    ) {
+        // a stopped wait must not run out later and complete a task that is no longer running
+        task.timer.pause();
+    }
 }
 
 #[derive(QueryData)]
@@ -502,16 +703,6 @@ impl<'a, 'w, 's> TaskScope<'a, 'w, 's> {
         }
     }
 
-    pub fn execute(&mut self) {
-        let Some(task_id) = self.task_id else {
-            return;
-        };
-        self.commands.trigger(MachineEvent::<TaskMachine>::new(
-            task_id,
-            TaskEvent::Execute,
-        ));
-    }
-
     pub fn complete(&mut self) {
         let Some(task_id) = self.task_id else {
             return;
@@ -520,6 +711,14 @@ impl<'a, 'w, 's> TaskScope<'a, 'w, 's> {
             task_id,
             TaskEvent::Complete,
         ));
+    }
+
+    pub fn fail(&mut self) {
+        let Some(task_id) = self.task_id else {
+            return;
+        };
+        self.commands
+            .trigger(MachineEvent::<TaskMachine>::new(task_id, TaskEvent::Fail));
     }
 
     pub fn stop(&mut self) {

@@ -44,12 +44,15 @@ pub struct AbilityEnded {
     pub entity: Entity,
     pub caster: Entity,
     pub cancelled: bool,
+    /// The root's `OnFail::Propagate` ended it.
+    pub failed: bool,
 }
 
-/// Whether the active run is ending through a cancel, read when the ability leaves Active.
+/// Whether the active run is ending through a cancel or a failure, read when the ability leaves Active.
 #[derive(Component, Default, Debug, Clone, Copy)]
 pub struct AbilityEnding {
     pub cancelled: bool,
+    pub failed: bool,
 }
 
 /// Ability tags blocked on this caster by its active abilities, counted.

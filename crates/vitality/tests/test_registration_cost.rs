@@ -41,8 +41,9 @@ fn dag_app(attributes: usize) -> App {
 /// exact, both directions: a fourth once-per-app node `EffectsPlugin` would add is a +1 here
 const DAG_SYSTEMS_BASELINE: usize = 43;
 
-/// an observer is not a schedule node, so only this counter can see one
-const DAG_OBSERVERS_BASELINE: usize = 12;
+/// an observer is not a schedule node, so only this counter can see one; 13 since the task
+/// judge became two observers, one that starts a composite and one that settles it
+const DAG_OBSERVERS_BASELINE: usize = 13;
 
 /// the per-attribute query states the collapsed nodes only install on first use, so an at-rest
 /// counter cannot see them. The periodic applier is the odd one: its per-attribute state appears for
@@ -52,8 +53,9 @@ const DAG_OBSERVERS_BASELINE: usize = 12;
 const DAG_TICK_RESOURCES_BASELINE: usize = 67;
 const DAG_TICK_RESOURCES_PER_ATTRIBUTE: usize = 3;
 
-/// exact, so a component the DAG branch starts registering per attribute is red here
-const DAG_TICK_COMPONENTS_BASELINE: usize = 138;
+/// exact, so a component the DAG branch starts registering per attribute is red here; 143 since the
+/// composite task tree, whose node components and events replaced `Complete` and the old notification
+const DAG_TICK_COMPONENTS_BASELINE: usize = 143;
 const DAG_TICK_COMPONENTS_PER_ATTRIBUTE: usize = 7;
 
 fn spec(attributes: usize) -> WorldSpec {

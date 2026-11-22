@@ -17,8 +17,8 @@ use crate::ability_state::AbilityMachine;
 use crate::command::on_add_ability;
 use crate::systems::activate_ability;
 use crate::task_states::TaskMachine;
-use crate::tasks::{Tasks, WaitTask};
-use crate::tasks::{handles_wait_task_timers, on_task_completion_notification};
+use crate::tasks::{Cast, Composite, OnFail, Progress, Tasks, WaitTask};
+use crate::tasks::{handles_wait_task_timers, on_child_settled, on_start_composite};
 use bevy_app::prelude::*;
 use bevy_asset::AssetApp;
 use bevy_ecs::prelude::*;
@@ -63,7 +63,8 @@ impl Plugin for AbilityPlugin {
         app.add_systems(PreUpdate, handles_wait_task_timers);
 
         app.add_observer(activate_ability)
-            .add_observer(on_task_completion_notification)
+            .add_observer(on_start_composite)
+            .add_observer(on_child_settled)
             .add_observer(on_add_ability);
     }
 }
@@ -84,6 +85,7 @@ pub type AbilityMut<'w, 's> = EntityMutExcept<
             StateTimer<TaskMachine>,
             WaitTask,
         ),
+        (Composite, OnFail, Progress, Cast),
     ),
 >;
 
@@ -103,5 +105,6 @@ pub type AbilityRef<'w, 's> = EntityRefExcept<
             StateTimer<TaskMachine>,
             WaitTask,
         ),
+        (Composite, OnFail, Progress, Cast),
     ),
 >;

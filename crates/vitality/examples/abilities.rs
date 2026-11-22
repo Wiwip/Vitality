@@ -3,8 +3,8 @@ use bevy::ecs::system::SystemParam;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use vitality::ability::tasks::{
-    AbilityItem, AbilityTask, CasterItem, Complete, DebugInstantTask, DebugLongTask, NoData,
-    TaskItem, TaskParam, TaskStatus, Tasks, task, wait_task,
+    AbilityItem, AbilityTask, CasterItem, Composite, DebugInstantTask, DebugLongTask, NoData,
+    TaskItem, TaskParam, TaskStatus, Tasks, parallel, sequence, task, wait_task,
 };
 use vitality::ability::{Abilities, AbilityBuilder, ExecuteAbility, TargetData};
 use vitality::actors::ActorBuilder;
@@ -63,19 +63,26 @@ fn setup_ability(mut registry: RegistryMut) {
         )
         .set_tasks(|| {
             bsn! {
-                Complete::Any
+                Composite::Race
                 Tasks [
                     #LongTask
                     @task::<DebugLongTask>(NoData)
                     --
-                    #WaitTask
-                    @wait_task(3.0)
+                    #Cast
+                    @sequence()
                     Tasks [
-                        #SpawnFireball
-                        @task::<DebugInstantTask>(NoData)
+                        #WaitTask
+                        @wait_task(3.0)
                         --
-                        #Teleport
-                        @task::<DebugInstantTask>(NoData)
+                        #Effects
+                        @parallel()
+                        Tasks [
+                            #SpawnFireball
+                            @task::<DebugInstantTask>(NoData)
+                            --
+                            #Teleport
+                            @task::<DebugInstantTask>(NoData)
+                        ]
                     ]
                 ]
             }
