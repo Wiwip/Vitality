@@ -10,7 +10,7 @@ use bevy_ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
 use bevy_log::{debug, error, warn};
 use bevy_reflect::prelude::Reflect;
 use bevy_scene::{Scene, bsn, on};
-use bevy_time::{Time, Timer, TimerMode, Virtual};
+use bevy_time::{Time, Timer, TimerMode};
 use hfsm_bevy::{MachineDefinition, MachineEvent, MachineInstance, MachineQuery};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -643,7 +643,7 @@ pub struct WaitTaskContext {
 
 pub fn handles_wait_task_timers(
     mut tasks: Query<(Entity, &mut WaitTask)>,
-    time: Res<Time<Virtual>>,
+    time: Res<Time>,
     mut abilities: Abilities,
 ) {
     for (task_id, mut wait_task) in tasks.iter_mut() {

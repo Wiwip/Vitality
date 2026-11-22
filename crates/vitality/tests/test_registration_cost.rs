@@ -18,7 +18,8 @@ const SYSTEMS_PER_ATTR_BASELINE: usize = 0;
 const COMPONENTS_PER_ATTR_BASELINE: usize = 5;
 
 /// a node added at plugin build time is a +1 here, where the slope above still reads 0
-const SYSTEMS_INTERCEPT_BASELINE: usize = 10;
+/// (`handles_wait_task_timers` is one, since the waits moved onto the fixed clock with the cooldowns)
+const SYSTEMS_INTERCEPT_BASELINE: usize = 11;
 
 fn dag_app(attributes: usize) -> App {
     let mut app = App::new();
@@ -120,7 +121,7 @@ fn registration_cost_per_attribute_is_pinned() {
         intercept <= SYSTEMS_INTERCEPT_BASELINE,
         "measured {intercept} fixed scheduled nodes: FixedUpdate systems_len() is {} at {NARROW} \
          attributes, i.e. {SYSTEMS_PER_ATTR_BASELINE} per attribute plus a fixed {intercept}; the \
-         intercept baseline is {SYSTEMS_INTERCEPT_BASELINE} (the never-run graph, 10 + 0a)",
+         intercept baseline is {SYSTEMS_INTERCEPT_BASELINE} (the never-run graph, 11 + 0a)",
         narrow.systems,
     );
     assert!(

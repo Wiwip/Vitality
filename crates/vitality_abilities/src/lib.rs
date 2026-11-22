@@ -53,14 +53,16 @@ impl Plugin for AbilityPlugin {
         if !vitality_core::first_install::<Self>(app) {
             return;
         }
+        // the wait runs on the fixed clock like the cooldown and the effect timers, so a wait and a
+        // cooldown of the same length end on the same tick; added first, so it lands before the machines
+        app.add_systems(FixedUpdate, handles_wait_task_timers);
+
         // add_state_machine inserts the definition and the plugin together, so the definition is never absent
         app.init_asset::<AbilityDef>()
             .insert_resource(registry::AbilityRegistry::default());
 
         app.add_state_machine::<AbilityMachine>(ability_state::build_machine())
             .add_state_machine::<TaskMachine>(task_states::build_machine());
-
-        app.add_systems(PreUpdate, handles_wait_task_timers);
 
         app.add_observer(activate_ability)
             .add_observer(on_start_composite)

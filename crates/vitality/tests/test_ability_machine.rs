@@ -638,6 +638,78 @@ fn complete(app: &mut App, task: Entity) {
     app.update();
 }
 
+/// The ability states with the fixed-clock instant they were entered at.
+#[derive(Resource, Default)]
+struct ClockMarks(Vec<(StateId, Duration)>);
+
+fn record_clock(
+    trigger: On<StateEntered<AbilityMachine>>,
+    time: Res<Time<Fixed>>,
+    mut marks: ResMut<ClockMarks>,
+) {
+    marks.0.push((trigger.state, time.elapsed()));
+}
+
+/// The wait shares the fixed clock with the cooldown, so a frame that is not a whole number of
+/// fixed steps cannot end an N-second wait and an N-second cooldown on different ticks.
+#[test]
+fn a_wait_and_a_cooldown_of_the_same_length_end_on_the_same_fixed_tick() {
+    let mut app = app_with(WAIT, || bsn! { Tasks [ @wait_task(WAIT) ] });
+    app.insert_resource(ClockMarks::default());
+    app.add_observer(record_clock);
+    app.update();
+
+    let owner = spawned_actor(&mut app);
+    let ability = grant(&mut app);
+    app.update();
+    try_activate(&mut app, owner);
+    app.update();
+    assert!(
+        in_state::<AbilityMachine>(&mut app, ability, AbilityState::Active),
+        "a wait of {WAIT}s holds the cast Active"
+    );
+
+    // one and a half fixed steps per frame, the shape that separates a frame clock from the fixed one
+    let timestep = app.world().resource::<Time<Fixed>>().timestep();
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(timestep + timestep / 2));
+    for _ in 0..40 {
+        app.update();
+    }
+
+    let marks = app.world().resource::<ClockMarks>().0.clone();
+    let entered_at = |want: AbilityState, last: bool| -> Option<Duration> {
+        let want = StateId::from(want);
+        let hit = if last {
+            marks.iter().rev().find(|(state, _)| *state == want)
+        } else {
+            marks.iter().find(|(state, _)| *state == want)
+        };
+        hit.map(|(_, at)| *at)
+    };
+    let active = entered_at(AbilityState::Active, false)
+        .expect("the cast enters Active on the fixed clock");
+    let recovery = entered_at(AbilityState::Recovery, false)
+        .expect("the wait ending enters Recovery");
+    let ready = entered_at(AbilityState::Ready, true).expect("the cooldown ending enters Ready");
+
+    let steps = |from: Duration, to: Duration| (to - from).div_duration_f64(timestep);
+    let needed = Duration::from_secs_f32(WAIT).div_duration_f64(timestep).ceil();
+    assert!(
+        needed > 2.0,
+        "{WAIT}s is {needed} fixed steps, too few to tell two clocks apart"
+    );
+    assert_eq!(
+        steps(active, recovery),
+        needed,
+        "a wait of {WAIT}s runs out {needed} fixed steps after the cast"
+    );
+    assert_eq!(
+        steps(recovery, ready),
+        needed,
+        "a cooldown of {WAIT}s runs out {needed} fixed steps after Recovery"
+    );
+}
+
 /// a completed sequence means its subtree is done, so the root never ends on a sibling mid-branch
 #[test]
 fn parallel_waits_for_the_whole_subtree() {

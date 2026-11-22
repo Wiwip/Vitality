@@ -80,7 +80,7 @@ Attributes are components: `Query<&Health>`, `Changed<Health>`, `On<CurrentValue
 
 Events: `EffectApplied`, `EffectRemoved` (reason), `EffectStacksChanged`, `AbilityActivated`, `AbilityActivationFailed` (`ActivationError`), `AbilityEnded`. `EffectBlocked` means a tag rule; a failed `attach_if` or `active_while` fires nothing.
 
-`EffectsSet` runs on `FixedUpdate`: headless apps need a time-advancing `TimeUpdateStrategy`. Ability timers use the frame clock (`handles_wait_task_timers`, `PreUpdate`); the cooldown reads through `cooldown_remaining`.
+`EffectsSet` runs on `FixedUpdate`: headless apps need a time-advancing `TimeUpdateStrategy`. `handles_wait_task_timers` runs there too, on the fixed clock, so a wait and a cooldown of the same length end on the same tick; the cooldown reads through `cooldown_remaining`.
 
 ## Def files
 
