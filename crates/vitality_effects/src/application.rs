@@ -281,7 +281,7 @@ impl ApplyEffectEvent {
             Effect(self.handle),
             EffectTags(effect.granted_tags.iter().map(|tag| tag.type_id).collect()),
         ));
-        // the def is immutable once applied, so the marker cannot go stale on a live effect
+        // a def edited through get_mut later gets its marker re-derived by the condition walk
         if !effect.blocked_by_tags.is_empty() || !effect.activate_conditions.is_empty() {
             effect_commands.insert(EffectConditional);
         }

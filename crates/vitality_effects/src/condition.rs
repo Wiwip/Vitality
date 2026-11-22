@@ -47,6 +47,7 @@ type WatchedEffects = Or<(With<EffectConditional>, With<EffectInactive>)>;
 /// the walk stays on one thread: a row is cheap to decide and the task hand-off costs more than it wins
 fn evaluate_effect_conditions(
     query: Query<ConditionRow<'_, '_>, WatchedEffects>,
+    carriers: Query<(Entity, &Effect, Option<&EffectConditional>)>,
     parents: Query<EffectsRef>,
     effects: Res<Assets<EffectDef>>,
     rng: Res<ConditionRng>,
@@ -54,10 +55,35 @@ fn evaluate_effect_conditions(
 ) {
     // one draw a tick, forked per row so rolls don't depend on thread count
     let base = rng.next_u64();
+    if effects.take_revised() {
+        derive_markers(&carriers, &effects, &mut commands);
+    }
     let decisions = decide_serially(&query, &parents, &effects, base);
 
     for decision in decisions {
         apply(&mut commands, decision);
+    }
+}
+
+/// the spawn decided the marker off a def that `get_mut` may have rewritten since, so re-read them all
+fn derive_markers(
+    carriers: &Query<(Entity, &Effect, Option<&EffectConditional>)>,
+    effects: &Assets<EffectDef>,
+    commands: &mut Commands,
+) {
+    for (entity, effect, marker) in carriers.iter() {
+        let Some(effect) = effects.get(&effect.0) else {
+            continue;
+        };
+        let watched = !effect.blocked_by_tags.is_empty() || !effect.activate_conditions.is_empty();
+        if watched == marker.is_some() {
+            continue;
+        }
+        if watched {
+            commands.entity(entity).insert(EffectConditional);
+        } else {
+            commands.entity(entity).remove::<EffectConditional>();
+        }
     }
 }
 

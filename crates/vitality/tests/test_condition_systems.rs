@@ -58,6 +58,7 @@ fn prepare_effects(mut registry: RegistryMut) {
 pub const TEST_EFFECT: EffectToken = EffectToken::new_static("test.test");
 pub const CONDITION_EFFECT: EffectToken = EffectToken::new_static("test.condition");
 pub const GATED_BUFF: EffectToken = EffectToken::new_static("test.gated_buff");
+pub const UNGATED_BUFF: EffectToken = EffectToken::new_static("test.ungated_buff");
 
 fn prepare_abilities(mut abilities: RegistryMut) {
     abilities.add_ability(TEST_ABILITY_TOKEN, fireball_ability());
@@ -226,6 +227,90 @@ fn test_dropping_conditions_clears_a_stale_inactive_marker() {
         test_b.current_value(),
         26.0,
         "the marker is gone but the unconditional buff still does not apply"
+    );
+}
+
+/// the buff with no rule of its own, so one can be added to the def while an instance is live
+fn prepare_ungated_effect(mut registry: RegistryMut) {
+    registry.add_effect(
+        UNGATED_BUFF,
+        Effect::permanent()
+            .name("Ungated Buff".into())
+            .modify::<TestB>(25.0_f64, ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+}
+
+fn prepare_ungated_actor(mut ctx: Vitality, registry: Registry) {
+    let actor_template = ctx.add_actor(
+        ActorBuilder::new()
+            .name("UngatedActor")
+            .with::<TestA>(0.0)
+            .with::<TestB>(1.0)
+            .with_effect(&registry.effect(&UNGATED_BUFF))
+            .build(),
+    );
+    ctx.spawn_actor_from_handle(&actor_template);
+}
+
+/// a def that gains its first rule after the effect spawned was marked, so the walk has to re-read it
+#[test]
+fn test_a_rule_added_to_a_live_def_gates_the_effect() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        LogPlugin {
+            filter: "error,vitality=debug".into(),
+            level: bevy::log::Level::DEBUG,
+            ..default()
+        },
+        AttributesPlugin,
+    ));
+    app.add_plugins((
+        vitality::init_attribute::<TestA>,
+        vitality::init_attribute::<TestB>,
+    ));
+    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+
+    app.add_systems(
+        Startup,
+        (prepare_ungated_effect, prepare_ungated_actor).chain(),
+    );
+
+    app.update();
+    app.update();
+
+    let mut query = app
+        .world_mut()
+        .query::<(Entity, &Effect, Option<&EffectInactive>)>();
+    assert!(
+        query.single(app.world()).unwrap().2.is_none(),
+        "the unconditional buff is already inactive, so there is no rule to add"
+    );
+
+    app.world_mut()
+        .run_system_once(
+            |mut defs: ResMut<Assets<EffectDef>>, rows: Query<&Effect>| {
+                let handle = rows.single().unwrap().0;
+                defs.get_mut(&handle)
+                    .unwrap()
+                    .activate_conditions
+                    .push(Box::new(IsAttributeWithinBounds::<TestA>::target(50.0..)));
+            },
+        )
+        .unwrap();
+
+    for _ in 0..4 {
+        app.update();
+    }
+
+    let mut query = app
+        .world_mut()
+        .query::<(Entity, &Effect, Option<&EffectInactive>)>();
+    assert!(
+        query.single(app.world()).unwrap().2.is_some(),
+        "the def gained a condition that fails, but the walk never saw an effect whose def moved"
     );
 }
 

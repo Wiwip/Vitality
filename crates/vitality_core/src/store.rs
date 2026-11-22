@@ -4,6 +4,7 @@ use bevy_ecs::resource::Resource;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct Handle<T> {
     index: u32,
@@ -61,11 +62,16 @@ impl<T> fmt::Debug for Handle<T> {
 #[derive(Resource)]
 pub struct Assets<T: Send + Sync + 'static> {
     items: Vec<T>,
+    /// a definition is out of sync with whatever was derived from it at `add` time
+    revised: AtomicBool,
 }
 
 impl<T: Send + Sync + 'static> Default for Assets<T> {
     fn default() -> Self {
-        Self { items: Vec::new() }
+        Self {
+            items: Vec::new(),
+            revised: AtomicBool::new(false),
+        }
     }
 }
 
@@ -83,8 +89,15 @@ impl<T: Send + Sync + 'static> Assets<T> {
         self.items.get(handle.index as usize)
     }
 
+    /// the borrow can rewrite a definition live consumers already derived from, hence [`Self::take_revised`]
     pub fn get_mut(&mut self, handle: &Handle<T>) -> Option<&mut T> {
+        self.revised.store(true, Ordering::Relaxed);
         self.items.get_mut(handle.index as usize)
+    }
+
+    /// true once per run of [`Self::get_mut`], so a `Res` reader can re-derive without `ResMut`
+    pub fn take_revised(&self) -> bool {
+        self.revised.swap(false, Ordering::Relaxed)
     }
 
     pub fn len(&self) -> usize {
