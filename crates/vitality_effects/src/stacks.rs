@@ -47,7 +47,7 @@ impl EffectStackingPolicy {
                     return None;
                 };
                 let old = stack_count.current_value();
-                let new = (old + count).clamp(1, (*max_stack).max(1));
+                let new = old.saturating_add(*count).clamp(1, (*max_stack).max(1));
                 // a capped add still refreshes the duration, like a reapplication would
                 if let Ok(mut duration) = durations.get_mut(effect_entity) {
                     duration.reset();
