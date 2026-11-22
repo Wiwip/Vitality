@@ -7,6 +7,7 @@ use crate::builder::AbilityBuilder;
 use crate::definition::AbilityDef;
 use bevy_ecs::prelude::*;
 use std::path::Path;
+use std::time::Duration;
 use vitality_core::mutator::EntityActions;
 use vitality_effects::def_file::def_fields;
 
@@ -61,6 +62,17 @@ pub fn ability_def_from_str(source: &str, names: &DefNames) -> Result<AbilityDef
         let seconds = value.parse::<f32>().map_err(|_| {
             DefFileError::line(*line, format!("`{value}` is no cooldown in seconds"))
         })?;
+        // try_from_secs_f32 covers negative, NaN, infinite and the finite values too big for a
+        // Duration, all of which panic inside bevy's Timer once Recovery arms the cooldown
+        if Duration::try_from_secs_f32(seconds).is_err() {
+            return Err(DefFileError::line(
+                *line,
+                format!(
+                    "`{value}` is no cooldown in seconds, which has to be a finite number of 0 or \
+                     more that a `Duration` can hold"
+                ),
+            ));
+        }
         builder = builder.with_cooldown(seconds);
     }
     let mut def = builder.build();

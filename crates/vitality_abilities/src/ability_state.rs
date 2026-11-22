@@ -18,7 +18,7 @@ use bevy_ecs::query::QueryData;
 use bevy_ecs::resource::IsResource;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::system::lifetimeless::{Read, Write};
-use bevy_log::{debug, error, warn};
+use bevy_log::{debug, error, warn, warn_once};
 use hfsm_bevy::{Access, EventResult, MachineDefinition, MachineEvent, MachineState};
 use hfsm_bevy::{ExternalContext, LocalContext, Machine, MachineQuery, StateId, StateTimer};
 use std::time::Duration;
@@ -321,20 +321,23 @@ impl MachineState<AbilityMachine> for RecoveryState {
             return;
         };
 
-        // non-finite or negative cooldowns would panic in Duration
-        let cooldown = if cooldown.is_finite() {
-            cooldown.max(0.0)
-        } else {
-            0.0
+        // a negative, non-finite or oversized cooldown cannot be a Duration, so it recovers now
+        let cooldown = match Duration::try_from_secs_f32(cooldown) {
+            Ok(duration) => duration,
+            Err(_) => {
+                warn_once!(
+                    "[{ability_id}] Cooldown {cooldown} is not a number of seconds a `Duration` \
+                     can hold; recovering immediately."
+                );
+                Duration::ZERO
+            }
         };
-        if cooldown == 0.0 {
+        if cooldown.is_zero() {
             ctx.internal_events.push_back(AbilityEvent::Recovered);
         } else {
-            ctx.local.timers.set_timer(
-                Duration::from_secs_f32(cooldown),
-                AbilityEvent::Recovered,
-                AbilityState::Recovery,
-            );
+            ctx.local
+                .timers
+                .set_timer(cooldown, AbilityEvent::Recovered, AbilityState::Recovery);
         }
 
         // only the direct children: a stopped composite stops its own

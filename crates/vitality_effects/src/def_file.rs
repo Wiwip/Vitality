@@ -17,6 +17,7 @@ use bevy_platform::collections::HashMap;
 use express_it::nodes::LiteralNode;
 use smol_str::SmolStr;
 use std::sync::Arc;
+use std::time::Duration;
 use vitality_core::attributes::Attribute;
 use vitality_core::tags::TagSpec;
 use vitality_core::util::pretty_type_name;
@@ -230,15 +231,16 @@ fn policy_builder(line: usize, spec: &str) -> Result<EffectBuilder, DefFileError
         let value = word
             .parse::<f32>()
             .map_err(|_| DefFileError::line(line, format!("`{word}` is not {what} in seconds")))?;
-        if value.is_finite() && value >= 0.0 {
+        // try_from_secs_f32 covers negative, NaN, infinite and the finite values too big for a
+        // Duration, all of which panic inside bevy's Timer
+        if Duration::try_from_secs_f32(value).is_ok() {
             Ok(value)
         } else {
-            // a negative, NaN or infinite count panics Duration::from_secs_f32 inside bevy
             Err(DefFileError::line(
                 line,
                 format!(
                     "`{word}` is not {what} in seconds, which has to be a finite number of 0 or \
-                     more"
+                     more that a `Duration` can hold"
                 ),
             ))
         }

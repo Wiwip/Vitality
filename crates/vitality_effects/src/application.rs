@@ -19,6 +19,7 @@ use bevy_ecs::system::SystemParam;
 use bevy_reflect::prelude::*;
 use bevy_time::prelude::*;
 use std::cmp::PartialEq;
+use std::time::Duration;
 use tracing::warn;
 use vitality_core::AppAttributeBindings;
 use vitality_core::attributes::ManageAttributes;
@@ -111,8 +112,12 @@ impl EffectApplicationPolicy {
 }
 
 fn checked_seconds(method: &str, seconds: f32) -> f32 {
-    if !seconds.is_finite() || seconds < 0.0 {
-        panic!("`{method}` needs a finite number of seconds of 0 or more, got {seconds}");
+    // bevy builds the Timer with Duration::from_secs_f32, which panics on anything this rejects
+    if Duration::try_from_secs_f32(seconds).is_err() {
+        panic!(
+            "`{method}` needs a finite number of seconds of 0 or more that a `Duration` can hold, \
+             got {seconds}"
+        );
     }
     seconds
 }

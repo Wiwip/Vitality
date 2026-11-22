@@ -232,10 +232,42 @@ fn a_def_file_line_the_loader_cannot_use_fails_naming_its_line() {
             2,
             "nan",
         ),
+        (
+            "huge-duration.effect",
+            "name = Aeon\npolicy = for 1e30\n",
+            2,
+            "1e30",
+        ),
     ];
     for (file, body, line, bad) in cases {
         let path = def_file("line-error", file, body);
         let Err(error) = effect_def_from_file(&path, &names) else {
+            panic!("{file} loaded even though line {line} spells `{bad}` wrong");
+        };
+        let error = error.to_string();
+        assert!(
+            error.starts_with(&format!("line {line}:")) && error.contains(bad),
+            "{file} has to name line {line} and the `{bad}` it refused, got: {error}"
+        );
+    }
+
+    let ability_cases = [
+        (
+            "huge-cooldown.ability",
+            "name = Meteor\ncooldown = 1e30\n",
+            2,
+            "1e30",
+        ),
+        (
+            "nan-cooldown.ability",
+            "name = Hex\ncooldown = nan\n",
+            2,
+            "nan",
+        ),
+    ];
+    for (file, body, line, bad) in ability_cases {
+        let path = def_file("line-error", file, body);
+        let Err(error) = ability_def_from_file(&path, &names) else {
             panic!("{file} loaded even though line {line} spells `{bad}` wrong");
         };
         let error = error.to_string();
