@@ -154,7 +154,7 @@ pub type ResolveFn = fn(
     Kind,
     AttrId,
     &ValueBuf,
-    &mut ValueBuf,
+    Option<&mut ValueBuf>,
     &mut Vec<(Entity, TypeId, TypeId)>,
 ) -> Option<Change>;
 
@@ -200,7 +200,7 @@ fn resolve<T: Attribute>(
     kind: Kind,
     id: AttrId,
     folded: &ValueBuf,
-    changes: &mut ValueBuf,
+    changes: Option<&mut ValueBuf>,
     clamp_reads: &mut Vec<(Entity, TypeId, TypeId)>,
 ) -> Option<Change> {
     let mut clamp: Option<Clamp<T>> = None;
@@ -274,12 +274,16 @@ fn resolve<T: Attribute>(
         None
     } else {
         attribute.set_current_value(new);
-        Some(changes.push_change(kind, old, new))
+        // a value nobody observes has no old/new pair to hand to anyone
+        Some(Change {
+            kind,
+            pair: changes.map_or(0, |changes| changes.push_change(kind, old, new)),
+        })
     };
     if attribute.folded_base() != Some(base) {
         attribute.set_folded_base(base);
     }
-    moved.map(|pair| Change { kind, pair })
+    moved
 }
 
 fn dependents_of<T: Attribute>(

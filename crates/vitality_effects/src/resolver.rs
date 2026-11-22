@@ -444,7 +444,7 @@ impl ResolverState {
         self.scratch = scratch;
     }
 
-    fn resolve(&mut self, world: &mut World, marks: &EntityHashMap<Mark>) {
+    fn resolve(&mut self, world: &mut World, marks: &EntityHashMap<Mark>, record: bool) {
         // the query borrows the world mutably, so the registry rides along as a shared plan
         let plan = self.plan.clone();
         let order = &plan.order;
@@ -485,12 +485,15 @@ impl ResolverState {
                     vtable.kind,
                     id,
                     &table.values,
-                    pairs,
+                    // the pairs are only worth writing when someone will read them back
+                    record.then_some(&mut *pairs),
                     clamp_reads,
                 ) else {
                     continue;
                 };
-                changes.push((entity, id, change));
+                if record {
+                    changes.push((entity, id, change));
+                }
                 (vtable.dependents_of)(&view.as_readonly(), vtable.ids, walked_readers);
                 for &reader in &readers[id.index()] {
                     todo.insert(reader);
@@ -500,7 +503,7 @@ impl ResolverState {
     }
 
     /// no `ManageAttributes`, so no [`ModifierTable`]: fold and write in one step, missing attributes nothing
-    fn resolve_carriers(&mut self, world: &mut World, marks: &EntityHashMap<Mark>) {
+    fn resolve_carriers(&mut self, world: &mut World, marks: &EntityHashMap<Mark>, record: bool) {
         let mut marked: Vec<(Entity, Mark)> = marks
             .iter()
             .filter(|(_, mark)| !mark.dirty.is_empty())
@@ -551,12 +554,14 @@ impl ResolverState {
                     vtable.kind,
                     id,
                     calcs,
-                    pairs,
+                    record.then_some(&mut *pairs),
                     clamp_reads,
                 ) else {
                     continue;
                 };
-                changes.push((*entity, id, change));
+                if record {
+                    changes.push((*entity, id, change));
+                }
                 (vtable.dependents_of)(&view.as_readonly(), vtable.ids, walked_readers);
                 for &reader in &readers[id.index()] {
                     todo.insert(reader);
@@ -621,6 +626,7 @@ impl ResolverState {
     fn merge_threads(
         &mut self,
         append: &[AppendPairs],
+        record: bool,
         changes: &mut Vec<(Entity, AttrId, Change)>,
         all_pairs: &mut ValueBuf,
         readers: &mut Vec<Entity>,
@@ -629,13 +635,15 @@ impl ResolverState {
         let mut offset = vec![0u32; append.len()];
         for out in self.output.iter_mut() {
             let out = &mut *out;
-            for (kind, append) in append.iter().enumerate() {
-                offset[kind] = append(all_pairs, &mut out.pairs, kind);
+            if record {
+                for (kind, append) in append.iter().enumerate() {
+                    offset[kind] = append(all_pairs, &mut out.pairs, kind);
+                }
+                for row in out.changes.iter_mut() {
+                    row.2.pair += offset[row.2.kind];
+                }
+                changes.append(&mut out.changes);
             }
-            for row in out.changes.iter_mut() {
-                row.2.pair += offset[row.2.kind];
-            }
-            changes.append(&mut out.changes);
             readers.append(&mut out.readers);
             clamp_reads.append(&mut out.clamp_reads);
         }
@@ -660,7 +668,15 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
     for (entity, id) in dirty {
         marks.entry(entity).or_default().dirty.insert(id);
     }
-    let (append, notifies, watchers): (Vec<_>, Vec<_>, Vec<_>) = {
+    // decided before the walk: an attribute nobody observes has no consumer for what moved
+    let watched: Vec<bool> = world
+        .resource::<AttributeRegistry>()
+        .infos()
+        .iter()
+        .map(|info| (info.has_observers)(world))
+        .collect();
+    let record = watched.iter().any(|watched| *watched);
+    let (append, notifies): (Vec<_>, Vec<_>) = {
         let registry = world.resource::<AttributeRegistry>();
         (
             registry
@@ -669,11 +685,6 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
                 .map(|kind| kind.append_pairs)
                 .collect(),
             registry.infos().iter().map(|info| info.notify).collect(),
-            registry
-                .infos()
-                .iter()
-                .map(|info| info.has_observers)
-                .collect(),
         )
     };
 
@@ -684,14 +695,15 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
         state.actor_query(world);
         state.sync_plan(world);
         state.regather(world, &marks);
-        state.resolve(world, &marks);
-        state.resolve_carriers(world, &marks);
+        state.resolve(world, &marks, record);
+        state.resolve_carriers(world, &marks, record);
 
         // stable sort by entity, so the result doesn't depend on which thread walked what
         let (pass_changes, pass_clamps) = (changes.len(), clamp_reads.len());
         let mut readers = Vec::new();
         state.merge_threads(
             &append,
+            record,
             &mut changes,
             &mut all_pairs,
             &mut readers,
@@ -727,8 +739,6 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
     if changes.is_empty() {
         return;
     }
-    // an unobserved trigger still costs a queued command and a flush, so decide once per attribute
-    let watched: Vec<bool> = watchers.iter().map(|probe| probe(world)).collect();
     let mut commands = world.commands();
     for (entity, id, change) in changes {
         if watched[id.index()] {
