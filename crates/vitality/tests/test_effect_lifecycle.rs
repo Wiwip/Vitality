@@ -366,9 +366,12 @@ fn a_fire_due_on_the_expiry_tick_beats_the_expiry() {
         with_effects(&mut app, move |effects| effects.on(hero).len()),
         0
     );
+}
 
-    // the order edge is only visible in the graph: running a schedule moves its systems out of it
-    let built = gameplay::app();
+/// what the fire above depends on, read off the graph: an executed schedule drops its declared edges
+#[test]
+fn the_periodic_fire_is_ordered_ahead_of_the_duration_walk() {
+    let built = app();
     let schedule = built
         .world()
         .resource::<bevy::ecs::schedule::Schedules>()
@@ -381,8 +384,8 @@ fn a_fire_due_on_the_expiry_tick_beats_the_expiry() {
             "tick_effect_durations"
         ),
         "apply_all_periodic_effects is no longer ordered ahead of tick_effect_durations in \
-         FixedUpdate, which is what delivers the fire above; the edge lives in \
-         vitality_effects::EffectsPlugin's build.",
+         FixedUpdate, which is what lets `a_fire_due_on_the_expiry_tick_beats_the_expiry` land \
+         its last fire; the edge lives in vitality_effects::EffectsPlugin's build.",
     );
 }
 
