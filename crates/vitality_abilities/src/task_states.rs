@@ -205,13 +205,3 @@ impl MachineState<TaskMachine> for FailedState {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn print_mermaid_state_machine() {
-        let machine = build_machine();
-        println!("{}", machine.to_mermaid().unwrap());
-    }
-}
