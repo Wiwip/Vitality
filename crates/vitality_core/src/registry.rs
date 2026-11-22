@@ -731,9 +731,7 @@ struct BaseScanState<T: Attribute> {
     component: ComponentId,
 }
 
-/// a summary tick is the latest change written to any row of a dense column, so a column whose summary
-/// is not newer than `last_run` cannot yield one entity and the whole scan is skipped; only components
-/// derived with `#[component(summary_tick)]` have one, see `attribute_impl!`
+/// a summary tick older than `last_run` means no row of that column changed, so the whole scan is skipped
 fn anything_written(world: &World, component: ComponentId, last_run: Tick, this_run: Tick) -> bool {
     world.storages().tables.iter().any(|table| {
         table

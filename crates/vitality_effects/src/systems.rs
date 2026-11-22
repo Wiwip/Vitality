@@ -12,8 +12,7 @@ pub(crate) enum DirtyMarks {
     Everything,
 }
 
-/// effects changed but no attribute did; untyped code can still dirty it, and [`crate::resolver`]
-/// queues the attributes the changed effect names, or every attribute under [`DirtyMarks::Everything`]
+/// effects changed but no attribute did; the resolver queues the effect's attributes, or all of them
 #[derive(EntityEvent)]
 pub(crate) struct MarkActorDirty {
     pub entity: Entity,

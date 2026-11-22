@@ -117,8 +117,7 @@ pub(crate) fn fold_modifier<T: Attribute>(
     ));
 }
 
-/// The attributes `effect`'s modifiers fold onto the entity that carries it, read while the effect is
-/// still readable, or `None` when they cannot be.
+/// the attributes `effect`'s modifiers fold onto, read while the effect is still readable
 pub(crate) fn folded_attributes(
     effect: Entity,
     owned: &Query<&OwnedModifiers>,
