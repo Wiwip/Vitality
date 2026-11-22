@@ -12,7 +12,7 @@ pub enum EffectRemovalReason {
     Expired,
     Removed,
     Cleansed,
-    /// the target picked up a tag the effect is `blocked_by_tag` for, which makes it immune while it carries it
+    /// the target picked up a `blocked_by_tag` tag, which makes the effect immune while it carries it
     BlockedByTag,
     /// the effect entity went away without going through a removal API, e.g. its source or target despawned
     Despawned,

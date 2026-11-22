@@ -101,9 +101,7 @@ impl EntityCommand for SpawnActorCommand {
     }
 }
 
-/// Clamped attributes read their limits' attributes, so those resolve first. A limit that reads
-/// several attributes reports the rest of them later, from the resolver's first pass. A spawn marks
-/// every attribute of the actor, so an edge that is new here needs no re-mark.
+/// Clamped attributes read their limits, so those resolve first; a new edge needs no re-mark at spawn.
 fn register_clamp_edges(world: &mut World, actor: Entity, def: &ActorDef) {
     add_clamp_edges(
         world,

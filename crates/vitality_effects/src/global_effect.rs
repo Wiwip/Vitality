@@ -17,8 +17,7 @@ pub struct GlobalActor;
 #[derive(Component, Clone, Copy)]
 pub struct GlobalEffect;
 
-/// applies every [`GlobalEffects`] handle to each entity as it gains the marker `M`; the default
-/// [`ManageAttributes`] keeps today's actor-only reach
+/// applies every [`GlobalEffects`] handle to each entity gaining marker `M`; the default stays actor-only
 pub struct GlobalEffectPlugin<M = ManageAttributes>(PhantomData<M>);
 
 impl<M: Component> GlobalEffectPlugin<M> {

@@ -32,7 +32,7 @@ impl<T> GameValue for T where
 /// The `Node` an attribute read compiles to; spelled out it sits over clippy's complexity limit.
 type AttributeNode<A, P, C, Role> = Node<P, C, AttributeVar<A, P, C, Role>>;
 
-/// the setter half of an assignment step, named so `add`/`sub`/`set` don't spell a bare `impl Fn` in return position
+/// setter half of an assignment step, so `add`/`sub`/`set` don't spell a bare `impl Fn` in return position
 pub trait Setter<P, C: ContextMut>:
     Fn(&mut C::ContextItemMut<'_, '_>, P) + 'static + Send + Sync
 {
@@ -53,7 +53,7 @@ where
     type Property: GameValue;
 
     fn new(value: Self::Property) -> Self;
-    /// the component as an entity that merely carries it starts out: base and current at the property's default
+    /// the component as a mere carrier starts out: base and current at the property's default
     fn zeroed() -> Self;
     fn base_value(&self) -> Self::Property;
     fn base(&self) -> Self::Property;
@@ -370,7 +370,7 @@ macro_rules! tag {
 #[require(crate::registry::ModifierTable)]
 pub struct ManageAttributes;
 
-/// bounds on an attribute's base and current value, kept up to date by the facade from the actor definition's clamp expressions
+/// bounds on an attribute's base and current value, kept current by the facade from the actor's clamps
 #[derive(Component, Default, Debug, Clone, Reflect)]
 #[reflect(Component, from_reflect = false)]
 pub struct Clamp<T: Attribute> {
@@ -440,8 +440,7 @@ thread_local! {
     static RECORDED: std::cell::RefCell<Vec<TypeId>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
-/// express-it's operator nodes don't forward `get_dependencies`, so composite reads are recorded
-/// here, de-duplicated in first-read order.
+/// operator nodes don't forward `get_dependencies`, so composite reads are recorded here, in first-read order
 pub fn record_dependencies<R>(f: impl FnOnce() -> R) -> (R, Vec<TypeId>) {
     let was_recording = RECORDING.replace(true);
     let out = f();

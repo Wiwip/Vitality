@@ -15,7 +15,7 @@ pub struct ActivateAbility {
     pub source: Entity,
 }
 
-/// commits the activation [`ActivateAbility`] carries, bypassing the [`AbilityEvent::TryActivate`](crate::ability_state::AbilityEvent::TryActivate) checks the ready state would otherwise run first
+/// commits what [`ActivateAbility`] carries, bypassing the checks the ready state would run first
 pub(crate) fn activate_ability(
     trigger: On<ActivateAbility>,
     mut actors: Query<AbilityMut, Without<IsResource>>,

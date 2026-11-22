@@ -1,16 +1,13 @@
 //! Def files: the declarative half of an [`EffectDef`], written as data instead of Rust.
 //!
-//! Every line is `key = value`, `#` starts a comment and runs to the end of its line, and a key may
-//! repeat where the def holds a list. Names are the one thing a file cannot invent: [`DefNames`]
-//! holds the attributes and tags the app registered, and a file spells them exactly as Rust does,
-//! so `Health` is the attribute [`crate::init_effect_attribute`] registered and anything else fails
-//! naming its line.
+//! Every line is `key = value`, `#` starts a comment, and a key may repeat where the def holds a list.
+//! [`DefNames`] holds the names the app registered, spelled exactly as Rust does, and anything else
+//! fails naming its line.
 //!
 //! An effect file holds `name`, `policy`, `tag`, `requires`, `blocked_by`, `cleanses` and
 //! `modifier`, and a file with no `policy` is a permanent effect.
 //!
-//! Expressions, scenes and observers stay Rust, so an ability cost, a clamp or a `Damage::src()`
-//! read cannot come out of a file.
+//! Expressions, scenes and observers stay Rust, so costs and clamps cannot come out of a file.
 
 use crate::builder::EffectBuilder;
 use crate::definition::EffectDef;
@@ -25,8 +22,7 @@ use vitality_core::tags::TagSpec;
 use vitality_core::util::pretty_type_name;
 use vitality_core::value::AttributeValue;
 
-/// A file names an attribute and a literal, so one fn pointer builds that attribute's modifiers
-/// without the file ever knowing the type.
+/// one fn pointer builds each attribute's modifiers, so a file never learns the property type
 type NewModifier = fn(value: f64, op: ModOp, who: EffectSubject) -> Option<Box<dyn Modifier>>;
 
 /// What a def file is allowed to name. A name missing here fails the file that used it.
@@ -37,8 +33,7 @@ pub struct DefNames {
 }
 
 impl DefNames {
-    /// [`crate::init_effect_attribute`] calls this for every registered attribute, so a file spells
-    /// an attribute the way Rust does: the short name the registry records.
+    /// [`crate::init_effect_attribute`] calls this per attribute, so a file spells it as Rust does
     pub fn attribute<T: Attribute>(&mut self) {
         self.attributes
             .insert(pretty_type_name::<T>().into(), new_modifier::<T>);
@@ -104,8 +99,7 @@ impl DefFileError {
     }
 }
 
-/// The `key = value` lines of a def file, numbered, comments and blanks gone. Shared with the
-/// ability files, which read the same shape and a different set of keys.
+/// `key = value` lines of a def file, numbered, comments and blanks gone; the ability files share it
 pub fn def_fields(source: &str) -> Result<Vec<(usize, SmolStr, String)>, DefFileError> {
     let mut fields = Vec::new();
     for (index, line) in source.lines().enumerate() {
@@ -204,8 +198,7 @@ pub fn effect_def_from_str(source: &str, names: &DefNames) -> Result<EffectDef, 
     Ok(def)
 }
 
-/// Reads a def file off disk. A game that ships its defs inside a bundle parses the same text with
-/// [`effect_def_from_str`] instead.
+/// Reads a def file off disk; a bundle ships the same text through [`effect_def_from_str`].
 pub fn effect_def_from_file(
     path: impl AsRef<std::path::Path>,
     names: &DefNames,

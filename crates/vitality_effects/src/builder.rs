@@ -62,9 +62,7 @@ impl EffectBuilder {
         ))
     }
 
-    /// the value is anything implementing [`AsExpression`] for the attribute's property: a literal (`100u32`) or an attribute node (`Damage::src()`)
-    ///
-    /// instant and periodic effects write the actor `who` names; a persistent effect folds every modifier into the actor that carries it, so `EffectSubject::Source` writes its target there
+    /// instant/periodic write `who`; a persistent effect folds into its carrier: `Source` writes its target
     ///
     /// # Example
     /// ```
@@ -93,7 +91,7 @@ impl EffectBuilder {
         self.push_modifier::<T>(Arc::new(expr.as_expr()), op, who, Capture::Live)
     }
 
-    /// like [`Self::modify`], but the expression is evaluated once at application and never follows later changes of the attributes it reads
+    /// like [`Self::modify`], but evaluated once at application, never following later attribute changes
     pub fn modify_snapshot<T: Attribute>(
         self,
         expr: impl AsExpression<T::Property, EffectExprSchema> + Send + Sync + 'static,
@@ -143,7 +141,7 @@ impl EffectBuilder {
         self
     }
 
-    /// while this misses the effect is inactive: it folds nothing, fires nothing, and pauses its duration until it holds again
+    /// while this misses the effect is inactive: folds nothing, fires nothing, duration paused until it holds
     pub fn active_while(
         mut self,
         condition: impl Expr<bool, EffectExprSchema> + Send + Sync + 'static,

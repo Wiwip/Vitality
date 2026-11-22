@@ -1,6 +1,6 @@
 use bevy_ecs::prelude::*;
 
-/// something about an actor's effects changed and no attribute of it did, so code that is not typed on an attribute can still dirty it; [`crate::resolver`] answers by queueing every attribute the actor has
+/// effects changed but no attribute did; untyped code can still dirty it, and [`crate::resolver`] queues all
 #[derive(EntityEvent)]
 pub(crate) struct MarkActorDirty {
     pub entity: Entity,

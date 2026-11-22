@@ -1,5 +1,4 @@
-/// The number type an attribute folds in. Every fold step runs in this type, so a host type that
-/// rounds differently from f64, or outgrows it, gets its own arithmetic back.
+/// The number type an attribute folds in, so a type that rounds unlike f64 keeps its own arithmetic.
 ///
 /// Call the ops as `P::add(a, b)`, so an inherent `add` or `std::ops::Add` can't take the call.
 pub trait AttributeValue: Copy + PartialOrd + Send + Sync + 'static {

@@ -61,7 +61,7 @@ pub mod prelude {
 #[derive(Resource, Default)]
 struct InstalledPlugins(bevy_platform::collections::HashSet<TypeId>);
 
-/// true the first time it is called for `P`, so a plugin added twice or after one that already brings it is a no-op instead of a panic
+/// true the first time it is called for `P`, so a plugin added twice is a no-op instead of a panic
 pub fn first_install<P: 'static>(app: &mut App) -> bool {
     app.world_mut()
         .get_resource_or_init::<InstalledPlugins>()

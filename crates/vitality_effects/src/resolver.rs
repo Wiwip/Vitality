@@ -1,4 +1,4 @@
-//! one exclusive system that folds each dirty entity's modifiers and walks its attributes in dependency order, actors in parallel; cross-actor reads settle in extra passes inside the same tick
+//! one exclusive system resolves dirty entities in dependency order; cross-actor reads settle in later passes
 
 use crate::components::{AppliedEffects, Effect, EffectInactive, EffectTarget};
 use crate::conditions::ConditionRng;
@@ -321,7 +321,7 @@ impl ResolverState {
                 let Ok(slot) = self.slots.get(world, modifier) else {
                     continue;
                 };
-                // an `Effect` modifier folds onto the effect entity, every other one onto the entity carrying the effect
+                // an `Effect` modifier folds onto the effect entity, the rest onto the entity carrying it
                 if matches!(slot.who, EffectSubject::Effect) != own {
                     continue;
                 }
@@ -425,9 +425,7 @@ impl ResolverState {
         });
     }
 
-    /// The same queue for an entity that carries attributes but no `ManageAttributes`: with no
-    /// [`ModifierTable`] to hold it, the fold is gathered and written in one step, and an attribute
-    /// the entity does not have resolves to nothing.
+    /// no `ManageAttributes`, so no [`ModifierTable`]: fold and write in one step, missing attributes nothing
     fn resolve_carriers(&mut self, world: &mut World, marks: &EntityHashMap<Mark>) {
         let mut marked: Vec<(Entity, Mark)> = marks
             .iter()
@@ -529,7 +527,7 @@ impl ResolverState {
             let Some(id) = world.resource::<AttributeRegistry>().id_of(attribute) else {
                 continue;
             };
-            // the new value dirties the entity the fold lands on, which is the effect itself for an `Effect` modifier
+            // the new value dirties the entity the fold lands on, the effect itself for an `Effect` modifier
             let holder = if matches!(who, EffectSubject::Effect) {
                 effect
             } else {
@@ -634,8 +632,7 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
         }
     }
 
-    // the walk already read this tick's order, so a limit whose edge is new has to mark the
-    // attribute it governs: that one was walked before the edge existed
+    // the walk already read this tick's order, so a new limit edge has to mark the attribute it governs
     let connected = add_clamp_edges(world, clamp_reads.into_iter());
     if !connected.is_empty() {
         let queue = world.resource::<ResolveQueue>();

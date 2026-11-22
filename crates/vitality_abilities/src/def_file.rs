@@ -1,8 +1,7 @@
 //! Def files: the declarative half of an [`AbilityDef`], written as data instead of Rust.
 //!
-//! Same `key = value` shape as [`vitality_effects::def_file`], the same [`DefNames`] registry, and
-//! the same rule that a name the app never registered fails the file. Costs, task scenes and
-//! observers stay Rust, so what an ability spends and what it runs cannot come out of a file.
+//! Same `key = value` shape and [`DefNames`] registry as [`vitality_effects::def_file`], where a
+//! name the app never registered fails the file. Costs, task scenes and observers stay Rust.
 
 use crate::builder::AbilityBuilder;
 use crate::definition::AbilityDef;
@@ -91,8 +90,7 @@ pub fn ability_def_from_str(source: &str, names: &DefNames) -> Result<AbilityDef
     Ok(def)
 }
 
-/// Reads a def file off disk. A game that ships its defs inside a bundle parses the same text with
-/// [`ability_def_from_str`] instead.
+/// Reads a def file off disk; a bundle ships the same text through [`ability_def_from_str`].
 pub fn ability_def_from_file(
     path: impl AsRef<Path>,
     names: &DefNames,

@@ -156,7 +156,7 @@ impl<'w, 's> Abilities<'w, 's> {
         }
     }
 
-    /// asks the actor's granted copy of `handle` to activate; false when it isn't granted, and the outcome arrives as `AbilityActivated` or `AbilityActivationFailed`
+    /// false if the actor lacks `handle`; outcome comes as `AbilityActivated` or `AbilityActivationFailed`
     pub fn try_activate(
         &mut self,
         actor: Entity,
@@ -178,7 +178,7 @@ impl<'w, 's> Abilities<'w, 's> {
         true
     }
 
-    /// one call is one activation: the first granted ability with the tag that can activate takes it and the rest are left alone
+    /// one call is one activation: the first granted ability with the tag that can activate takes it
     pub fn try_activate_by_tag<T: Component + Reflect>(
         &mut self,
         actor_id: Entity,

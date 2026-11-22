@@ -37,8 +37,7 @@ pub struct Change {
 
 type Slots = Vec<Option<Box<dyn Any + Send + Sync>>>;
 
-/// One typed buffer per [`Kind`]; only the generic fns behind [`AttrInfo`] know the type, so a
-/// wrong downcast is an internal bug and panics.
+/// One typed buffer per [`Kind`]; a wrong downcast is an internal bug, so the generic fns panic.
 #[derive(Default)]
 pub struct ValueBuf {
     /// `Vec<Calc<P>>` per kind, dense by [`AttrId`]
@@ -166,8 +165,7 @@ pub struct AttrInfo {
     pub type_id: TypeId,
     pub kind: Kind,
     pub ids: AttrComponents,
-    /// recomputes current from base, the folded modifiers and the clamp, writing only on change; None when the actor doesn't have the attribute
-    /// the sink collects the limits a first clamp pass read, see [`add_clamp_edges`]
+    /// None when the actor lacks it; the sink takes limits a first clamp pass read, see [`add_clamp_edges`]
     pub resolve: ResolveFn,
     pub dependents_of: DependentsOf,
     pub notify: fn(&mut Commands, Entity, Change, &ValueBuf),
@@ -461,9 +459,7 @@ impl AttributeRegistry {
         true
     }
 
-    /// Walking the edges already in the graph from `reader`, does `read` come back? Then adding
-    /// `read -> reader` would close a cycle, which is a startup error rather than a live-world one.
-    /// A self edge never needs asking: `add_edge` drops `read == reader` before it touches the graph.
+    /// Would `read -> reader` close a cycle? a startup error, not a live one; `add_edge` drops self edges
     pub fn closes_cycle(&self, read: AttrId, reader: AttrId) -> bool {
         let mut seen = AttrSet::default();
         seen.insert(reader);
@@ -517,10 +513,7 @@ impl AttributeRegistry {
     }
 }
 
-/// Clamped attributes read their limits' attributes, so those resolve first. `reads` pairs an actor
-/// with a dependency key and the attribute clamped by it; a key no binding knows is dropped, and so
-/// is an edge that would close a cycle. The attributes walked before an edge that only appeared in
-/// this call come back, so they resolve again against the order the walk never had.
+/// Limits resolve first; unknown or cyclic edges drop and attributes walked before a new edge come back.
 pub fn add_clamp_edges(
     world: &mut World,
     reads: impl Iterator<Item = (Entity, TypeId, TypeId)>,
@@ -703,7 +696,7 @@ struct BaseScanState<T: Attribute> {
     carriers: BaseScanQuery<T>,
 }
 
-/// marks `T` dirty on any entity that carries it whose base moved since the last scan, actor or not; a write that leaves the base where it was, including the resolver's own current-value write, costs a compare
+/// marks `T` dirty where its base moved since the last scan, actor or not; an unchanged base costs a compare
 fn base_write_scan<T: Attribute>(world: &mut World, id: AttrId, out: &mut Vec<(Entity, AttrId)>) {
     if !world.contains_resource::<BaseScanState<T>>() {
         let carriers = world.query_filtered();
@@ -769,7 +762,7 @@ mod tests {
         Attr120, Attr121, Attr122, Attr123, Attr124, Attr125, Attr126, Attr127, Attr128
     );
 
-    /// attribute 129 has no index to hand out and the refusal has to name it; a caught panic escapes `catch_unwind` in the cranelift dev build, so `should_panic` matches the message
+    /// the refusal names 129; `should_panic` matches text because a caught panic escapes `catch_unwind`
     #[test]
     #[should_panic(
         expected = "register Attr128: the attribute registry holds at most 128 attributes"

@@ -11,7 +11,7 @@ use tracing::warn;
 use vitality_core::attributes::Attribute;
 use vitality_core::store::Assets;
 
-/// fires one attribute's due writes; [`PeriodicApplies`] holds one per registered attribute so periodic application costs a single `FixedUpdate` node
+/// fires one attribute's due writes; [`PeriodicApplies`] holds one per attribute so they cost one node
 type PeriodicApply = fn(&mut World, &[DueModifier]);
 
 #[derive(Resource, Default)]
@@ -167,7 +167,7 @@ fn apply_periodic_effects_of<T: Attribute>(world: &mut World, due: &[DueModifier
         .write_batch(fired);
 }
 
-/// asks each registered attribute to fire the periodic effects that are due, so a periodic effect costs one schedule node however many attributes the app has
+/// asks each registered attribute to fire its due periodic effects, so they cost one schedule node
 pub fn apply_all_periodic_effects(world: &mut World) {
     if !world.contains_resource::<PeriodicApplies>() {
         return;

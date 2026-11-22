@@ -53,7 +53,7 @@ impl Plugin for AbilityPlugin {
         if !vitality_core::first_install::<Self>(app) {
             return;
         }
-        // add_state_machine inserts the definition and the plugin together, so the definition is never missing when a MachineInstance is first inserted
+        // add_state_machine inserts the definition and the plugin together, so the definition is never absent
         app.init_asset::<AbilityDef>()
             .insert_resource(registry::AbilityRegistry::default());
 

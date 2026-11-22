@@ -37,7 +37,7 @@ impl TagSpec {
     }
 }
 
-/// how many grants hold each tag, so overlapping sources don't remove it early; the tag component itself sits on the actor only while the count is above zero
+/// how many grants hold each tag, so overlapping sources don't remove it early; zero drops the component
 #[derive(Component, Default, Debug)]
 pub struct ActorTags {
     counts: HashMap<TypeId, u32>,

@@ -216,7 +216,7 @@ impl ApplyEffectEvent {
         }
     }
 
-    /// a stacking policy lands on the copy already applied, so the spawn has nothing left to do; that copy when it happened
+    /// a stacking policy lands on the copy already applied, so the spawn has nothing left to do
     fn queue_stacked_effect(
         &self,
         effect: &EffectDef,

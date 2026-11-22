@@ -23,7 +23,7 @@ use vitality_core::warn_once;
 use vitality_core::{AttributeBindings, DepRole};
 
 pub trait Modifier: Send + Sync {
-    /// spawns the modifier onto the effect entity; `commands` already carries the attribute modifier component
+    /// spawns the modifier onto the effect entity; `commands` already carries the modifier component
     fn spawn_persistent_modifier(
         &self,
         targeting: &EffectTargeting,
@@ -254,7 +254,7 @@ pub struct ApplyAttributeModifierMessage<T: Attribute> {
     pub stacks: u32,
 }
 
-/// one attribute's [`ApplyAttributeModifierMessage`] queue; [`ModifierApplies`] holds one per registered attribute so instant modifiers cost a single `FixedUpdate` node
+/// one attribute's queued [`ApplyAttributeModifierMessage`]s, so instant modifiers cost one node
 type ModifierApply = fn(&mut World);
 
 #[derive(Resource, Default)]
@@ -273,7 +273,7 @@ impl ModifierApplies {
     }
 }
 
-/// kept as a resource so the collapsed node pays nothing per attribute beyond building its cursor and query once
+/// kept as a resource so the collapsed node pays nothing per attribute beyond building them once
 #[derive(Resource)]
 struct ApplyState<T: Attribute> {
     cursor: MessageCursor<ApplyAttributeModifierMessage<T>>,
@@ -308,7 +308,7 @@ fn apply_queued_modifiers_of<T: Attribute>(world: &mut World) {
     );
 }
 
-/// asks each registered attribute to apply the modifier messages it queued, so an instant modifier costs one schedule node however many attributes the app has
+/// each registered attribute applies the modifier messages it queued, so instant mods cost one node
 pub fn apply_all_modifier_events(world: &mut World, mut applies: Local<Vec<ModifierApply>>) {
     let Some(registry) = world.get_resource::<ModifierApplies>() else {
         return;
@@ -343,8 +343,7 @@ fn apply_modifier<T: Attribute>(
         }
         EffectSubject::Effect => (trigger.effect_entity, trigger.target_entity),
     };
-    // the actor the write lands on is the one worth naming first, but a gone bystander drops the
-    // write too, because the expression reads it
+    // the write lands on `writer`, but a gone `other` drops it too, because the expression reads it
     if let Some(gone) = [writer, other]
         .into_iter()
         .find(|e| attributes.get(*e).is_err())

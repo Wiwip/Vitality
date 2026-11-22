@@ -106,9 +106,7 @@ pub mod inspector {
     pub use vitality_debug::*;
 }
 
-/// Everything vitality needs except the attributes themselves. See [`VitalityPlugin`] for a
-/// version that also registers attributes, and [the crate page][crate] for the wiring
-/// contract this plugin's `build` is part of.
+/// Everything but the attributes themselves; see [`VitalityPlugin`] and [the crate page][crate].
 #[derive(Default)]
 pub struct AttributesPlugin;
 

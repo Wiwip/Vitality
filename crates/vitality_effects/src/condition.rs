@@ -84,7 +84,7 @@ fn apply(commands: &mut Commands, decision: Decision) {
         Verdict::BecameActive => {
             debug!("Effect {effect} is now active.");
             commands.entity(effect).remove::<EffectInactive>();
-            // nothing else dirties the target: no attribute of its own changed and no leftover mark carries the fold into the next tick
+            // nothing else dirties the target: no attribute changed and no leftover mark carries the fold
             commands.trigger(MarkActorDirty { entity: target });
         }
         Verdict::BecameInactive => {

@@ -1,5 +1,4 @@
-//! Append-only definition store; replaces `bevy_asset` so handles are plain indices that order and
-//! hash the same every run.
+//! Append-only definition store replacing `bevy_asset`, so handles are plain indices stable across runs.
 
 use bevy_ecs::resource::Resource;
 use std::fmt;
