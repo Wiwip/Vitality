@@ -371,6 +371,20 @@ impl MachineState<AbilityMachine> for RecoveryState {
 
     fn on_exit(&self, ctx: &mut Access<AbilityMachine>) {
         for task_id in ctx.external.tasks.iter_descendants(ctx.ability_id) {
+            // a zero cooldown hits Pending before the composite's deferred Stop, so stop it first
+            let running = ctx
+                .external
+                .task_machines
+                .is_in_state(task_id, TaskState::Running)
+                .unwrap_or_default();
+            if running
+                && let Err(err) = ctx
+                    .external
+                    .task_machines
+                    .dispatch_event(task_id, TaskEvent::Stop)
+            {
+                error!("[{}] TaskMachine dispatch failed: {err}", task_id);
+            }
             if let Err(err) = ctx
                 .external
                 .task_machines

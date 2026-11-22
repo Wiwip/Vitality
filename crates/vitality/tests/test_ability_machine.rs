@@ -1136,6 +1136,11 @@ fn a_zero_cooldown_cancel_restarts_the_nested_task_on_the_next_cast() {
         in_state::<AbilityMachine>(&mut app, ability, AbilityState::Ready),
         "with no cooldown the ability is Ready again the moment it ends"
     );
+    let stopped_leaf = task_named(&mut app, "Leaf");
+    assert!(
+        app.world().resource::<Stops>().0.contains(&stopped_leaf),
+        "the leaf was Running when Recovery reset it, so it must still see TaskStopped"
+    );
 
     try_activate(&mut app, owner);
     app.update();
