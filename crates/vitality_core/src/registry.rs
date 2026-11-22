@@ -169,6 +169,8 @@ pub struct AttrInfo {
     pub resolve: ResolveFn,
     pub dependents_of: DependentsOf,
     pub notify: fn(&mut Commands, Entity, Change, &ValueBuf),
+    /// Whether anything would receive this attribute's `CurrentValueChanged` trigger.
+    pub has_observers: fn(&World) -> bool,
     /// Entities of this attribute whose base moved since the last scan, for [`scan_base_writes`].
     pub base_write_scan: fn(&mut World, AttrId, &mut Vec<(Entity, AttrId)>),
     pub fold_modifier: FoldModifier,
@@ -306,6 +308,22 @@ fn notify<T: Attribute>(
     });
 }
 
+/// Registering an observer registers the event key, so an unwatched attribute has no key to look up.
+fn has_observers<T: Attribute>(world: &World) -> bool {
+    let Some(key) = world.event_key::<CurrentValueChanged<T>>() else {
+        return false;
+    };
+    let Some(observers) = world.observers().try_get_observers(key) else {
+        return false;
+    };
+    !observers.global_observers().is_empty()
+        || !observers.entity_observers().is_empty()
+        || observers.component_observers().values().any(|scoped| {
+            !scoped.global_observers().is_empty()
+                || !scoped.entity_component_observers().is_empty()
+        })
+}
+
 fn reset_calcs<P: AttributeValue>(values: &mut ValueBuf, kind: Kind, ids: AttrSet) {
     let rows = values.calcs_slot::<P>(kind);
     for id in ids.iter() {
@@ -382,6 +400,7 @@ impl AttributeRegistry {
             resolve: resolve::<T>,
             dependents_of: dependents_of::<T>,
             notify: notify::<T>,
+            has_observers: has_observers::<T>,
             base_write_scan: base_write_scan::<T>,
             fold_modifier: fold_nothing,
         });

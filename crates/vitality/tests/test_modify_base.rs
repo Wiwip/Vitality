@@ -80,6 +80,31 @@ fn add_sub_and_set_land_on_the_base_and_the_current_value_follows_in_one_tick() 
     );
 }
 
+/// a change nobody could hear is skipped per tick, so the decision has to be re-taken every tick
+#[test]
+fn an_observer_added_mid_run_starts_receiving_with_the_next_change() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+
+    write(&mut app, hero, ModOp::Set, 80.0);
+    assert_eq!(current::<Health>(&app, hero), 80.0);
+
+    watch::<Health>(&mut app);
+    ticks(&mut app, 1);
+    assert!(
+        fires(&app).is_empty(),
+        "an observer does not receive the change that preceded it: {:?}",
+        fires(&app)
+    );
+
+    write(&mut app, hero, ModOp::Add, 5.0);
+    assert_eq!(
+        fires(&app),
+        [(80.0, 85.0)],
+        "the tick that found no observer dropped the event, the one after it has to send it"
+    );
+}
+
 #[test]
 fn modify_base_on_an_attribute_the_actor_does_not_carry_changes_nothing() {
     let mut app = app();

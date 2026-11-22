@@ -620,7 +620,7 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
     for (entity, id) in dirty {
         marks.entry(entity).or_default().dirty.insert(id);
     }
-    let (append, notifies): (Vec<_>, Vec<_>) = {
+    let (append, notifies, watchers): (Vec<_>, Vec<_>, Vec<_>) = {
         let registry = world.resource::<AttributeRegistry>();
         (
             registry
@@ -629,6 +629,11 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
                 .map(|kind| kind.append_pairs)
                 .collect(),
             registry.infos().iter().map(|info| info.notify).collect(),
+            registry
+                .infos()
+                .iter()
+                .map(|info| info.has_observers)
+                .collect(),
         )
     };
 
@@ -682,9 +687,13 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
     if changes.is_empty() {
         return;
     }
+    // an unobserved trigger still costs a queued command and a flush, so decide once per attribute
+    let watched: Vec<bool> = watchers.iter().map(|probe| probe(world)).collect();
     let mut commands = world.commands();
     for (entity, id, change) in changes {
-        (notifies[id.index()])(&mut commands, entity, change, &all_pairs);
+        if watched[id.index()] {
+            (notifies[id.index()])(&mut commands, entity, change, &all_pairs);
+        }
     }
     world.flush();
 }
