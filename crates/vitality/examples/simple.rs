@@ -1,4 +1,4 @@
-use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
+use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings, SingleThreadedExecutor};
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
@@ -82,6 +82,8 @@ fn main() {
                 ambiguity_detection: LogLevel::Warn,
                 ..default()
             });
+            // two systems here, so the thread pool only pays for waking up
+            schedule.set_executor(SingleThreadedExecutor::new());
         })
         .run();
 }
