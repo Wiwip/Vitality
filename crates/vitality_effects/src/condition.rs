@@ -41,7 +41,7 @@ type ConditionRow<'w, 's> = (
     Option<&'w EffectInactive>,
 );
 
-/// decisions run in parallel only with `multi_threaded`: on one thread the hand-off costs more than it saves
+/// the walk stays on one thread: a row is cheap to decide and the task hand-off costs more than it wins
 fn evaluate_effect_conditions(
     query: Query<ConditionRow<'_, '_>>,
     parents: Query<EffectsRef>,
@@ -51,9 +51,6 @@ fn evaluate_effect_conditions(
 ) {
     // one draw a tick, forked per row so rolls don't depend on thread count
     let base = rng.next_u64();
-    #[cfg(feature = "multi_threaded")]
-    let decisions = decide_in_parallel(&query, &parents, &effects, base);
-    #[cfg(not(feature = "multi_threaded"))]
     let decisions = decide_serially(&query, &parents, &effects, base);
 
     for decision in decisions {
@@ -175,7 +172,6 @@ fn decide(
     })
 }
 
-#[cfg(not(feature = "multi_threaded"))]
 fn decide_serially(
     query: &Query<ConditionRow<'_, '_>>,
     parents: &Query<EffectsRef>,
@@ -187,33 +183,4 @@ fn decide_serially(
         .enumerate()
         .filter_map(|(i, row)| decide(&row, parents, effects, &ConditionRng::fork(base, i as u64)))
         .collect()
-}
-
-/// chunked so verdicts come back in row order, which the event interleaving is pinned on
-#[cfg(feature = "multi_threaded")]
-fn decide_in_parallel(
-    query: &Query<ConditionRow<'_, '_>>,
-    parents: &Query<EffectsRef>,
-    effects: &Assets<EffectDef>,
-    base: u64,
-) -> Vec<Decision> {
-    use bevy_tasks::ComputeTaskPool;
-
-    let rows = query.iter().enumerate().collect::<Vec<_>>();
-    let pool = ComputeTaskPool::get();
-    let chunk = rows.len().div_ceil(pool.thread_num().max(1)).max(1);
-    pool.scope(|scope| {
-        for rows in rows.chunks(chunk) {
-            scope.spawn(async move {
-                rows.iter()
-                    .filter_map(|(i, row)| {
-                        decide(row, parents, effects, &ConditionRng::fork(base, *i as u64))
-                    })
-                    .collect::<Vec<_>>()
-            });
-        }
-    })
-    .into_iter()
-    .flatten()
-    .collect()
 }
