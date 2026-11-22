@@ -366,6 +366,38 @@ fn a_target_that_is_gone_fails_with_a_reason() {
     );
 }
 
+#[test]
+fn a_target_that_is_the_caster_itself_runs_and_pays() {
+    let mut app = app();
+    let bolt = ability(&mut app, AbilityBuilder::new().with_cost::<Mana>(10.0).build());
+    let caster = caster_with(&mut app, &[&bolt]);
+    record_all(&mut app);
+
+    let handle = bolt.clone();
+    let granted = with_abilities(&mut app, move |a| {
+        a.try_activate(caster, &handle, TargetData::Target(caster))
+    });
+    assert!(granted, "the caster holds the ability");
+    ticks(&mut app, 2);
+
+    assert_eq!(
+        failures(&app),
+        vec![],
+        "aiming at the caster is not a rejected activation"
+    );
+    assert_eq!(recorded::<AbilityActivated>(&app).len(), 1);
+    assert_eq!(
+        base::<Mana>(&app, caster),
+        40.0,
+        "aiming at the caster pays the cost once"
+    );
+    assert_eq!(
+        recorded::<AbilityEnded>(&app).len(),
+        1,
+        "no tasks: it ends at once"
+    );
+}
+
 // HasComponent is the only condition this schema has, so an attribute value cannot gate an ability
 #[test]
 fn an_unmet_activation_condition_fails_with_a_reason() {

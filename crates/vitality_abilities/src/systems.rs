@@ -36,6 +36,17 @@ pub(crate) fn activate_ability(
     };
 
     let mut context = match trigger.target {
+        // a caster aimed at itself is a self-cast: get_many_mut refuses a repeated entity
+        TargetData::Target(target) if target == trigger.source => {
+            let [caster_mut, ability_mut] =
+                actors.get_many_mut([trigger.source, trigger.ability])?;
+            AbilityExprContextMut {
+                caster_mut,
+                ability_mut,
+                target_mut: None,
+                location,
+            }
+        }
         TargetData::Target(target) => {
             let [caster_mut, target_mut, ability_mut] =
                 actors.get_many_mut([trigger.source, target, trigger.ability])?;
