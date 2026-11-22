@@ -2,6 +2,7 @@ mod gameplay;
 
 use bevy::prelude::{App, Entity};
 use gameplay::*;
+use vitality::effect::EffectStackingPolicy;
 use vitality::effect::conditions::HasComponent;
 use vitality::effect::definition::EffectDef;
 use vitality::effect::modifier::{EffectSubject, ModOp};
@@ -91,6 +92,56 @@ fn a_satisfied_attach_if_applies_and_fires() {
         "a periodic effect reports the entity it spawned"
     );
     assert_eq!(base::<Health>(&app, hero), 1.0, "one interval, one fire");
+}
+
+#[test]
+fn a_failed_attach_if_adds_no_stack_to_an_effect_already_carried() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def().insert(Immune));
+    let buff = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Power>(5.0, ModOp::Add, EffectSubject::Target)
+            .attach_if(HasComponent::<Immune>::target())
+            .with_stacking_policy(EffectStackingPolicy::Add {
+                count: 1,
+                max_stack: 5,
+            })
+            .build(),
+    );
+    record::<EffectApplied>(&mut app);
+
+    apply(&mut app, hero, hero, &buff);
+    ticks(&mut app, 1);
+    let held = with_effects(&mut app, move |e| e.on(hero));
+    assert_eq!(
+        held.len(),
+        1,
+        "the satisfied gate lets the first apply attach"
+    );
+    let held = held[0];
+    assert_eq!(with_effects(&mut app, move |e| e.stacks(held)), Some(1));
+
+    // the second apply takes the stacking branch, and the gate has to hold there too
+    app.world_mut().entity_mut(hero).remove::<Immune>();
+    apply(&mut app, hero, hero, &buff);
+    ticks(&mut app, 1);
+
+    assert_eq!(
+        with_effects(&mut app, move |e| e.stacks(held)),
+        Some(1),
+        "a failed attach_if adds no stack to the effect already carried"
+    );
+    assert_eq!(
+        current::<Power>(&app, hero),
+        15.0,
+        "one stack, one modifier"
+    );
+    assert_eq!(
+        recorded::<EffectApplied>(&app).len(),
+        1,
+        "the missed re-apply is not an apply"
+    );
 }
 
 #[test]

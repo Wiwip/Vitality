@@ -226,6 +226,14 @@ impl ApplyEffectEvent {
         }
     }
 
+    /// read once per apply, ahead of the stack path so a re-application has to pass it too
+    fn attach_passes(&self, effect: &EffectDef, context: &EffectExprContext) -> bool {
+        effect
+            .attach_conditions
+            .iter()
+            .all(|condition| condition.eval(context))
+    }
+
     /// a stacking policy lands on the copy already applied, so the spawn has nothing left to do
     fn queue_stacked_effect(
         &self,
@@ -258,14 +266,6 @@ impl ApplyEffectEvent {
         context: &EffectExprContext,
         type_bindings: &AppAttributeBindings,
     ) -> Option<Entity> {
-        if !effect
-            .attach_conditions
-            .iter()
-            .all(|condition| condition.eval(context))
-        {
-            return None;
-        }
-
         let target = self.targeting.target();
         let mut effect_commands = commands.spawn_empty();
         let effect_entity = effect_commands.id();
@@ -393,6 +393,10 @@ pub(crate) fn apply_effect_event_observer(
             effect: None,
             handle: trigger.handle,
         });
+        return;
+    }
+
+    if !trigger.attach_passes(effect, &context) {
         return;
     }
 
