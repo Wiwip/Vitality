@@ -102,7 +102,9 @@ pub(crate) fn build_machine() -> MachineDefinition<TaskMachine> {
         root.leaf(TaskState::Running, "Running", RunningState)
             .on(TaskEvent::Complete, TaskState::Completed)
             .on(TaskEvent::Stop, TaskState::Stopped)
-            .on(TaskEvent::Fail, TaskState::Failed);
+            .on(TaskEvent::Fail, TaskState::Failed)
+            // recovery resets descendants before a composite's deferred Stop lands on them
+            .on(TaskEvent::Reset, TaskState::Pending);
 
         root.leaf(TaskState::Completed, "Completed", CompleteState)
             .on(TaskEvent::Reset, TaskState::Pending);

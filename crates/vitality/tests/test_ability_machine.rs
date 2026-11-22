@@ -176,9 +176,16 @@ fn spawn_actor(mut ctx: Vitality) {
 }
 
 fn test_app<S: Scene + 'static, F: Fn() -> S + Send + Sync + 'static>(tasks: F) -> App {
+    app_with(COOLDOWN, tasks)
+}
+
+fn app_with<S: Scene + 'static, F: Fn() -> S + Send + Sync + 'static>(
+    cooldown: f32,
+    tasks: F,
+) -> App {
     let ability = AbilityBuilder::new()
         .with_name("Headless".into())
-        .with_cooldown(COOLDOWN)
+        .with_cooldown(cooldown)
         .set_tasks(tasks)
         .build();
 
@@ -1108,4 +1115,33 @@ fn a_sequence_runs_again_on_the_next_cast() {
         ability,
         AbilityState::Recovery
     ));
+}
+
+/// the grandchild is still Running when Recovery resets it, so the deferred stop lands after the reset
+#[test]
+fn a_zero_cooldown_cancel_restarts_the_nested_task_on_the_next_cast() {
+    let mut app = app_with(
+        0.0,
+        || bsn! { Tasks [ @parallel() Tasks [ #Leaf @task::<LongTask>(NoData) ] ] },
+    );
+    app.update();
+    let owner = spawned_actor(&mut app);
+    let ability = grant(&mut app);
+    app.update();
+
+    try_activate(&mut app, owner);
+    app.update();
+    cancel(&mut app, ability);
+    assert!(
+        in_state::<AbilityMachine>(&mut app, ability, AbilityState::Ready),
+        "with no cooldown the ability is Ready again the moment it ends"
+    );
+
+    try_activate(&mut app, owner);
+    app.update();
+    let leaf = task_named(&mut app, "Leaf");
+    assert!(
+        in_state::<TaskMachine>(&mut app, leaf, TaskState::Running),
+        "the second cast must start the grandchild again"
+    );
 }
