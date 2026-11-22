@@ -146,7 +146,11 @@ pub fn explore_actors_system(
     if let Ok(mut text) = debug_overlay.single_mut() {
         let mut w = Vec::new();
         let _ = write_tree(&tree, &mut w);
-        text.0 = String::from_utf8(w).unwrap();
+        let rendered = String::from_utf8(w).unwrap();
+        // assigning Text unconditionally change-detects it and bevy re-lays-out the block
+        if text.0 != rendered {
+            text.0 = rendered;
+        }
     } else {
         warn_once!("Debug overlay rendering failed");
     }
