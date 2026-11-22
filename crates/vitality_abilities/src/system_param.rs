@@ -137,23 +137,14 @@ impl<'w, 's> Abilities<'w, 's> {
         token: &AbilityToken,
         target_data: TargetData,
     ) {
-        let Some(ability_entity) = self.get_ability_entity(entity, token) else {
-            warn_once!(
-                "{entity} was never granted {token}: the token is registered, so that activation \
-                 is dropped; grant it with ActorBuilder::grant_ability or Abilities::grant_ability"
-            );
+        let handle = self.get_ability_from_token(token);
+        if self.try_activate(entity, &handle, target_data) {
             return;
-        };
-
-        if let Err(err) = self.machines.dispatch_event(
-            ability_entity,
-            AbilityEvent::TryActivate {
-                source: entity,
-                target: target_data,
-            },
-        ) {
-            error!("[{}] AbilityMachine dispatch failed: {err}", ability_entity);
         }
+        warn_once!(
+            "{entity} was never granted {token}: the token is registered, so that activation \
+             is dropped; grant it with ActorBuilder::grant_ability or Abilities::grant_ability"
+        );
     }
 
     /// false if the actor lacks `handle`; outcome comes as `AbilityActivated` or `AbilityActivationFailed`
