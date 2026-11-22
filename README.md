@@ -110,12 +110,12 @@ The contract, with what each break looks like from inside an app and the test th
 
 ## Performance
 
-From the `scenario` group of `crates/vitality/benches/bench_systems.rs` at `a54fcea`, 2026-11-22, on this box (8-CPU quota, 1-min loadavg 1.2-2.5 across the runs, no cgroup throttling). Shape: 10 000 actors, 20 attributes and 3 effects each; each figure is the median of three runs of the filtered group, one build single-threaded and one with `--features multi_threaded`.
+From the `scenario` group of `crates/vitality/benches/bench_systems.rs` at `1f0c562`, 2026-11-22, on this box (8-CPU quota, 1-min loadavg 1.2-2.8 across the runs, no cgroup throttling). Shape: 10 000 actors, 20 attributes and 3 effects each; each figure is the median of three runs of the filtered group, one build single-threaded and one with `--features multi_threaded`.
 
-- `steady`, 10 % of the actors' attributes moved: **1.377 ms** single-threaded, 0.7 % spread — **inside the 2 ms ceiling**. Multi-threaded it is 7.404 ms. Ids `scenario/steady/actors=10000/a=20/e=3/{st,mt}-static`.
-- `storm`, every attribute of every actor: **11.95 ms** single-threaded, 1.0 % spread, and **32.6 ms** multi-threaded — over the 8 ms ceiling, and directional, since the three runs read 15.6 / 32.6 / 38.0 ms. Ids `scenario/storm/actors=10000/a=20/e=3/{st,mt}-static`.
-- `idle`, nothing moved at all: **298.9 µs** single-threaded, 2.9 % spread, and **3.15 ms** multi-threaded. Ids `scenario/idle/actors=10000/a=20/e=3/{st,mt}-static`.
-- Multi-threading costs ticks rather than saving them on all three shapes — 10.5x on `idle`, 5.4x on `steady`, 2.7x on `storm` (directional). The fan-out is the cost, not the work under it: pinning the threaded process to one core, which collapses `decide_in_parallel` to a single chunk, reads 509 µs on `idle` against 308 µs for the single-threaded build on that same core. Ids `scenario/{idle,steady,storm}/actors=10000/a=20/e=3/{st,mt}-static`.
+- `steady`, 10 % of the actors' attributes moved: **1.338 ms** single-threaded, 4.6 % spread — **inside the 2 ms ceiling**. Multi-threaded it is 6.721 ms. Ids `scenario/steady/actors=10000/a=20/e=3/{st,mt}-static`.
+- `storm`, every attribute of every actor: **12.27 ms** single-threaded, 10 % spread, and **33.7 ms** multi-threaded — over the 8 ms ceiling, and directional, since the three runs read 21.6 / 33.7 / 33.9 ms. Ids `scenario/storm/actors=10000/a=20/e=3/{st,mt}-static`.
+- `idle`, nothing moved at all: **288.4 µs** single-threaded, 3.7 % spread, and **2.279 ms** multi-threaded. Ids `scenario/idle/actors=10000/a=20/e=3/{st,mt}-static`.
+- Multi-threading still costs ticks rather than saving them on all three shapes — 7.9x on `idle`, 5.0x on `steady`, 2.7x on `storm` (directional) — but the fan-out is the cost, not the work under it. The condition walk is serial in both builds, and pinning the threaded process to one core reads 337.5 µs on `idle` against 271.9 µs for the single-threaded build on that same core: four fifths of the threaded `idle` tick is the executor and the schedule — deleting the parallel condition walk dropped threaded `idle` from 3.15 ms to 2.28 ms and left the multiplier at 7.9x. Ids `scenario/{idle,steady,storm}/actors=10000/a=20/e=3/{st,mt}-static`.
 
 ## Running the benches
 
