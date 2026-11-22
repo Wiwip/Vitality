@@ -21,10 +21,10 @@ use vitality::ability::task_states::TaskEvent;
 use vitality::ability::task_states::{TaskMachine, TaskState};
 use vitality::ability::tasks::{
     AbilityItem, AbilityTask, Cast, CasterItem, ChildSettled, Composite, ExecuteTask, NoData,
-    OnFail, Settled, Task, TaskFailed, TaskItem, TaskParam, TaskStatus, TaskStopped, Tasks,
-    parallel, race, sequence, task, wait_task,
+    OnFail, Settled, Task, TaskCompleted, TaskFailed, TaskItem, TaskParam, TaskStatus, TaskStopped,
+    Tasks, parallel, race, sequence, task, wait_task,
 };
-use vitality::ability::{Abilities, AbilityBuilder, TargetData};
+use vitality::ability::{Abilities, Ability, AbilityBuilder, TargetData};
 use vitality::actors::ActorDef;
 use vitality::actors::{Actor, ActorBuilder};
 use vitality::context::Vitality;
@@ -944,6 +944,58 @@ fn cancelling_mid_sequence_never_starts_the_rest() {
         "the cascade stops the composite, then its running child, and never the pending one"
     );
     assert!(!app.world().resource::<Starts>().0.contains(&later));
+}
+
+fn cancel_when_a_completes(
+    trigger: On<TaskCompleted>,
+    names: Query<&Name>,
+    granted: Query<Entity, With<Ability>>,
+    mut abilities: Abilities,
+) {
+    if names
+        .get(trigger.task_id)
+        .is_ok_and(|name| name.as_str() == "A")
+        && let Ok(ability) = granted.single()
+    {
+        abilities.cancel(ability);
+    }
+}
+
+/// the `TaskCompleted` of the first child runs before the root's `ChildSettled`, so the root judges
+/// its children after the cancel already ended the ability
+#[test]
+fn a_root_sequence_starts_no_next_child_after_the_ability_ended() {
+    let mut app = test_app(|| {
+        bsn! {
+            Composite::Sequence
+            Tasks [
+                #A
+                @task::<InstantTask>(NoData)
+                --
+                #B
+                @task::<LongTask>(NoData)
+            ]
+        }
+    });
+    app.add_observer(cancel_when_a_completes);
+    app.update();
+
+    let owner = spawned_actor(&mut app);
+    let ability = grant(&mut app);
+    app.update();
+    try_activate(&mut app, owner);
+    app.update();
+
+    let b = task_named(&mut app, "B");
+    assert!(
+        in_state::<AbilityMachine>(&mut app, ability, AbilityState::Recovery),
+        "the listener cancelled the ability while its first child settled"
+    );
+    assert!(
+        !app.world().resource::<Starts>().0.contains(&b),
+        "a settle reaching an ended ability must not start the next child"
+    );
+    assert!(!in_state::<TaskMachine>(&mut app, b, TaskState::Running));
 }
 
 /// without the pause the stopped wait still ran out and asked a Stopped task to complete

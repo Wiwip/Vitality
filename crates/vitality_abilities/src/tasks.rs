@@ -1,4 +1,4 @@
-use crate::ability_state::{AbilityEvent, AbilityMachine};
+use crate::ability_state::{AbilityEvent, AbilityMachine, AbilityState};
 use crate::system_param::Abilities;
 use crate::task_states::{TaskEvent, TaskMachine, TaskState};
 use crate::{Ability, AbilityOf};
@@ -11,7 +11,7 @@ use bevy_log::{debug, error, warn};
 use bevy_reflect::prelude::Reflect;
 use bevy_scene::{Scene, bsn, on};
 use bevy_time::{Time, Timer, TimerMode, Virtual};
-use hfsm_bevy::{MachineEvent, MachineInstance, MachineQuery};
+use hfsm_bevy::{MachineDefinition, MachineEvent, MachineInstance, MachineQuery};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -406,6 +406,9 @@ pub(crate) fn on_child_settled(
     // Cast is read only: the task machine query below reads it too
     mut nodes: Query<JudgeItem>,
     task_machines: MachineQuery<TaskMachine>,
+    // MachineQuery<AbilityMachine> would pull AbilitySystemParam, which owns a MachineQuery<TaskMachine>
+    ability_states: Query<&'static MachineInstance<AbilityMachine>>,
+    ability_defs: Res<MachineDefinition<AbilityMachine>>,
     mut commands: Commands,
 ) {
     let ChildSettled {
@@ -452,6 +455,13 @@ pub(crate) fn on_child_settled(
 
     match kind {
         Composite::Sequence => {
+            // the check above leaves the ability to its own machine: an ended root starts no child
+            let active = ability_states
+                .get(parent)
+                .is_ok_and(|instance| ability_defs.is_in_state(instance, AbilityState::Active));
+            if is_ability && !active {
+                return;
+            }
             if let Some(next) = children.get(progress.next).copied() {
                 progress.next += 1;
                 start_child(&mut commands, next, cast.0);
