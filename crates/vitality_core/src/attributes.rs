@@ -252,6 +252,7 @@ macro_rules! attribute_impl {
             $crate::bevy_ecs::prelude::FromTemplate,
             $crate::bevy_derive::Deref,
         )]
+        #[component(summary_tick)]
         #[reflect(Component, AccessAttribute)]
         pub struct $StructName {
             pub base_value: $ValueType,

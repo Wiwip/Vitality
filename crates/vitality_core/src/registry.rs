@@ -6,6 +6,7 @@ use crate::context::ActorExprContext;
 use crate::modifier::Calc;
 use crate::util::pretty_type_name;
 use crate::value::AttributeValue;
+use bevy_ecs::change_detection::Tick;
 use bevy_ecs::component::ComponentId;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::{FilteredEntityMut, FilteredEntityRef, World};
@@ -727,13 +728,37 @@ type BaseScanQuery<T> = QueryState<(Entity, &'static T), Changed<T>>;
 #[derive(Resource)]
 struct BaseScanState<T: Attribute> {
     carriers: BaseScanQuery<T>,
+    component: ComponentId,
+}
+
+/// a summary tick is the latest change written to any row of a dense column, so a column whose summary
+/// is not newer than `last_run` cannot yield one entity and the whole scan is skipped; only components
+/// derived with `#[component(summary_tick)]` have one, see `attribute_impl!`
+fn anything_written(world: &World, component: ComponentId, last_run: Tick, this_run: Tick) -> bool {
+    world.storages().tables.iter().any(|table| {
+        table
+            .get_summary_tick(component)
+            .is_some_and(|tick| tick.get().is_newer_than(last_run, this_run))
+    })
 }
 
 /// marks `T` dirty where its base moved since the last scan, actor or not; an unchanged base costs a compare
 fn base_write_scan<T: Attribute>(world: &mut World, id: AttrId, out: &mut Vec<(Entity, AttrId)>) {
     if !world.contains_resource::<BaseScanState<T>>() {
         let carriers = world.query_filtered();
-        world.insert_resource(BaseScanState::<T> { carriers });
+        let component = world.register_component::<T>();
+        world.insert_resource(BaseScanState::<T> {
+            carriers,
+            component,
+        });
+    }
+    if <T as Component>::HAS_SUMMARY_TICK {
+        // the same pair of ticks the Changed filter is about to compare against
+        let (last_run, this_run) = (world.last_change_tick(), world.change_tick());
+        let component = world.resource::<BaseScanState<T>>().component;
+        if !anything_written(world, component, last_run, this_run) {
+            return;
+        }
     }
     world.resource_scope(|world, mut state: Mut<BaseScanState<T>>| {
         for (entity, attribute) in state.carriers.iter(world) {
