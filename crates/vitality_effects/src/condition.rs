@@ -108,6 +108,14 @@ fn decide(
         return None;
     };
 
+    // nothing can flip without a tag rule, a condition or the marker, so this row owes no actor lookup
+    if effect.blocked_by_tags.is_empty()
+        && effect.activate_conditions.is_empty()
+        && status.is_none()
+    {
+        return None;
+    }
+
     let Ok(target_actor_ref) = parents.get(target.0) else {
         error!(
             "Effect {} has no target entity {}.",
