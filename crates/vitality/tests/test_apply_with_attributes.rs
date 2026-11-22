@@ -1,8 +1,4 @@
-//! An apply whose target carries the attribute the effect moves: it folds, and nothing is said.
-//!
-//! Its own binary because the `warn_once!` in `ApplyEffectEvent::context` is one record per call
-//! site per binary: sharing it with the cell that expects the record would let whichever cell ran
-//! second pass without the warn ever being printed.
+//! An apply whose target carries the attribute folds and says nothing; own binary for the one `warn_once!`.
 
 mod gameplay;
 

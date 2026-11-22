@@ -1,10 +1,6 @@
 #![allow(dead_code)]
 
-//! P-12: what an expression costs by shape. The same sums of attributes evaluated three ways:
-//! through `Arc<dyn Expr>` (what modifiers store), through the concrete node type (what a
-//! monomorphic resolver would call), and as `HashMap<TypeId, f64>` lookups (the usual typemap
-//! alternative to attributes-as-components). Node counts are 1, 3 and 7: one leaf, `a + b`, and
-//! `(a + b) + (c + d)`.
+//! P-12: what an expression costs by shape: the same 1, 3, 7-node sums through dyn, concrete and typemap.
 
 use crate::common::{Attr0, Attr1, Attr2, Attr3, WorldSpec, actor_entities};
 use bevy::prelude::*;

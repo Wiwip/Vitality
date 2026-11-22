@@ -1,8 +1,4 @@
-//! The base write of an attribute the actor does not carry: dropped, and it says so.
-//!
-//! The cell sits apart from `test_modify_base.rs`, which owns the same `warn_once!` call site in
-//! `modify_base`: that flag fires once for the whole binary, so two cells writing a missing
-//! attribute would race for the one record.
+//! The base write of an attribute the actor lacks: dropped, and it says so; own binary for `warn_once!`.
 
 mod gameplay;
 
@@ -55,8 +51,7 @@ fn a_clamp_bound_to_an_attribute_the_actor_lacks_is_dropped_with_a_warn() {
 
     let bare = logs.run(|| {
         let mut app = app();
-        // a tag-only effect: applying one is what marks every attribute of the actor, so the
-        // resolve pass reaches the clamp of an attribute the actor never carried
+        // a tag-only apply marks every attribute, so the resolve reaches a clamp never carried
         let burn = effect(
             &mut app,
             EffectBuilder::permanent().with_tag::<Burning>().build(),

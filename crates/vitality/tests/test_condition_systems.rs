@@ -151,8 +151,7 @@ fn test_attribute_condition() {
     assert!(opt_inactive.is_none());
 }
 
-/// the same gated buff on an actor that starts outside the range, so the marker lands before anything
-/// else touches the definition
+/// the same gated buff on an actor starting outside the range, so the marker lands before anything else
 fn prepare_stale_actor(mut ctx: Vitality, registry: Registry) {
     let actor_template = ctx.add_actor(
         ActorBuilder::new()
@@ -165,8 +164,7 @@ fn prepare_stale_actor(mut ctx: Vitality, registry: Registry) {
     ctx.spawn_actor_from_handle(&actor_template);
 }
 
-/// clearing the conditions of a loaded definition is not enough to reactivate the row it marked: the
-/// fast path only skips an unmarked row, so the marker has to survive to the removal branch
+/// clearing conditions is not enough: the fast path only skips an unmarked row, so the marker must survive
 #[test]
 fn test_dropping_conditions_clears_a_stale_inactive_marker() {
     let mut app = App::new();
@@ -231,8 +229,7 @@ fn test_dropping_conditions_clears_a_stale_inactive_marker() {
     );
 }
 
-/// flipping an effect off changes the fold without writing any attribute of the target, so only the
-/// flip's own mark repaints it
+/// flipping an effect off folds without writing the target's attributes, so only the flip's mark repaints
 #[test]
 fn test_condition_deactivation_repaints_target() {
     let mut app = App::new();

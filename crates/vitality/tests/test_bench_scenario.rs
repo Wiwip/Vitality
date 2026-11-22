@@ -1,5 +1,4 @@
-//! Guards for the bench harness the gate never builds: the share each `scenario/*` workload moves,
-//! the three sums of the `expr` ladder, and the `#[path]` wiring that keeps the support modules live.
+//! Guards for the bench harness the gate never builds: the shares, the expr sums, the `#[path]` wiring.
 
 #[path = "../benches/support/common.rs"]
 mod common;
@@ -58,9 +57,7 @@ fn write_workloads_touch_the_share_their_id_names() {
     }
 }
 
-/// `World::trigger` runs its observers inline, so a `drive` that triggered instead of queueing has
-/// already paid for the tag test, the condition eval and the stacking decision before the sample starts.
-/// Nothing else builds this harness: an apply workload that applies nothing would still run a green tick.
+/// `World::trigger` runs inline, so a `drive` that triggered instead of queueing pre-paid the apply
 #[test]
 fn drive_queues_the_applies_and_tick_dispatches_them() {
     for (workload, applies) in [
@@ -97,9 +94,7 @@ fn drive_queues_the_applies_and_tick_dispatches_them() {
     }
 }
 
-/// A ticker that never fires inside the sample measures the periodic path not at all, so both halves are
-/// pinned. Attr9 base moves only from a fire: the three effects the build applies fold onto current
-/// values and the re-apply lands on the existing row, so nothing else here writes that base.
+/// a ticker that never fires in the sample measures nothing, so Attr9 base (fire-only) pins both halves
 #[test]
 fn dot_actors_carry_ticker_rows_and_the_ticker_fires_in_the_window() {
     let mut world = build_in(Workload::Dot, ACTORS);

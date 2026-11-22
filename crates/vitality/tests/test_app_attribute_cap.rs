@@ -1,5 +1,4 @@
-//! The app-level attribute rules, asserted at the facade: the cap sentence, the short-name
-//! collision hint, and what an attribute registered outside `build` gets.
+//! The app-level attribute rules at the facade: the cap sentence, the collision hint, late registration.
 
 mod gameplay;
 
@@ -86,8 +85,7 @@ mod game_b {
     vitality::attribute!(Mana, f32);
 }
 
-/// called, not passed to `add_plugins`: two values of type `fn(&mut App)` carry one plugin type id,
-/// so bevy rejects the second before either attribute is registered
+/// called, not passed to `add_plugins`: two `fn(&mut App)` values share one plugin type id
 fn app_of_crates(game: &[fn(&mut App)]) -> App {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
@@ -106,8 +104,7 @@ fn two_crates_sharing_a_short_name_are_told_to_rename_one() {
     ]);
 }
 
-/// The wiring contract's first rule from the bad side: an attribute registered in `Plugin::finish`
-/// is never registered at all, and everything downstream of it stays silent.
+/// The wiring contract's first rule from the bad side: a `Plugin::finish` registration never happens
 mod late_registration {
 
     use crate::gameplay::*;
@@ -183,8 +180,7 @@ mod late_registration {
     }
 }
 
-/// The instant half of the same rule, from the bad side: the write is deferred, and the queue it
-/// rides only exists for a registered attribute.
+/// The instant half of the same rule: the queue the deferred write rides needs a registered attribute
 mod unregistered_instant {
 
     use crate::gameplay::*;

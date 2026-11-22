@@ -1,8 +1,6 @@
 #![allow(dead_code)]
 
-//! World generator shared by the bench target and by the bench guard tests, kept free of criterion so
-//! the gate can include it. Every random choice comes from [`seed_rng`], so a [`WorldSpec`] always
-//! rebuilds the same world, and [`WorldSpec::shape_id`] is the label any number taken from it carries.
+//! World generator for the bench and its guards, criterion-free; every random choice comes from [`seed_rng`].
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
@@ -153,8 +151,7 @@ pub struct WorldSpec {
     pub effects_per_actor: usize,
     pub modifiers_per_effect: usize,
     pub actors: usize,
-    /// Share of the actors the shape is built dirty on. It is a label, not an input: [`build_app_with`]
-    /// hands back a world the spawn observers made dirty on every attribute and nothing clears them.
+    /// Share of the actors built dirty: a label, not an input, as nothing clears the spawn marks.
     pub dirty_fraction: f32,
     /// Share of the effects built as periodic instead of permanent.
     pub ticking_fraction: f32,
@@ -196,8 +193,7 @@ fn percent(fraction: f32) -> u32 {
     (fraction.clamp(0.0, 1.0) * 100.0).round() as u32
 }
 
-/// What the world was built from, kept as a resource so a test can check the resolution against
-/// the plan rather than against itself.
+/// What the world was built from, as a resource so a test can check resolution against the plan.
 #[derive(Resource)]
 pub struct HarnessWorld {
     pub spec: WorldSpec,
@@ -229,9 +225,7 @@ pub fn seed_rng() -> StdRng {
     StdRng::seed_from_u64(SEED)
 }
 
-/// Builds the world and runs `Startup`, so the app holds live actors with their attributes and their
-/// effect instances. It is not a settled world: `spawn` flushes its commands inline and the bundle
-/// insert marks every attribute it carries, so nothing has resolved yet.
+/// Builds the world and runs `Startup`; not settled — nothing has resolved yet, only the spawn marks.
 pub fn build_app_with(spec: &WorldSpec, attrs: &'static [AttrSpec]) -> App {
     build_app_at(spec, attrs)
 }
@@ -250,8 +244,7 @@ pub fn build_app_at(spec: &WorldSpec, attrs: &'static [AttrSpec]) -> App {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
     for attr in attrs {
-        // Called, not `add_plugins`: every `fn(&mut App)` pointer shares one TypeId, so bevy would
-        // reject the second attribute as a duplicate plugin.
+        // Called, not `add_plugins`: every `fn(&mut App)` shares one TypeId, so bevy rejects the second.
         (attr.register)(&mut app);
     }
     // A headless update lasts microseconds, so with the real clock FixedUpdate never runs.
@@ -318,14 +311,12 @@ pub fn tick(app: &mut App) {
     app.update();
 }
 
-/// One `FixedUpdate` on a bare `World`: `Time` is never advanced, so tickers run on the delta the last
-/// [`tick`] charged.
+/// One `FixedUpdate` on a bare `World`: `Time` never advances, so tickers run on the last delta.
 pub fn run_fixed_tick(world: &mut World) {
     world.run_schedule(FixedUpdate);
 }
 
-/// The actors this world spawned, excluding the global-effect actor. Sorted so the order is the same
-/// whatever order the archetypes happen to be walked in.
+/// The actors this world spawned, minus the global-effect actor, sorted so archetype order cannot shift it.
 pub fn actor_entities(world: &mut World) -> Vec<Entity> {
     let mut query = world.query_filtered::<Entity, With<Actor>>();
     let mut actors: Vec<Entity> = query.iter(world).collect();

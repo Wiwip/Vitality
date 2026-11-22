@@ -1,5 +1,4 @@
-//! Drives the ability and task machines headless: MinimalPlugins only, so no display, bevy_ui or
-//! asset files are needed. `AttributesPlugin` brings `AbilityPlugin`, which installs both machines.
+//! Drives the ability and task machines headless: MinimalPlugins only, `AttributesPlugin` installs both.
 
 use std::time::Duration;
 
@@ -317,8 +316,7 @@ fn ability_walks_ready_active_recovery_ready() {
         "entering Recovery arms the cooldown timer"
     );
 
-    // a headless update lasts microseconds, so each iteration is handed a fixed timestep as a manual
-    // delta or `StateTimer` would never tick; their count comes from the ability's own cooldown
+    // a headless update lasts microseconds, so each iteration gets a fixed delta; the count is the cooldown
     let timestep = app.world().resource::<Time<Fixed>>().timestep();
     let updates = Duration::from_secs_f32(COOLDOWN)
         .div_duration_f64(timestep)
@@ -348,8 +346,7 @@ fn ability_walks_ready_active_recovery_ready() {
     );
 }
 
-/// The ability is a `Parallel` root by default: it ends once every subtask completed, and the last
-/// completion is what drives ChildSettled -> on_child_settled -> EndAbility.
+/// The default `Parallel` root ends on the last completion, via ChildSettled -> on_child_settled.
 #[test]
 fn a_parallel_root_ends_the_ability_on_the_last_task_completion() {
     let mut app = test_app(mixed_tasks);
@@ -418,8 +415,7 @@ fn machine_definition_is_installed_before_the_first_update() {
         .run_system_once(register_ability)
         .expect("the registry is a resource, so registering needs no update");
 
-    // a stand-in `GlobalActor` covers the `Add<Actor>` observer, which unwraps a global actor that
-    // only `PreStartup` creates, and goes away before the update
+    // a stand-in `GlobalActor` covers the `Add<Actor>` observer, which unwraps one only `PreStartup` makes
     let global_actor = app.world_mut().spawn(GlobalActor).id();
     let handle = app
         .world_mut()
@@ -488,8 +484,7 @@ fn recovery_entries(app: &App) -> usize {
         .count()
 }
 
-/// both settles land in one update, so each asks the ability to end at the command flush and both
-/// find the machine still Active; a Race root settles on either one
+/// a Race root settles on either one, so both asks find the machine still Active at the flush
 #[test]
 fn two_settles_in_one_update_enter_recovery_once() {
     let mut app = test_app(|| {
@@ -636,8 +631,7 @@ fn complete(app: &mut App, task: Entity) {
     app.update();
 }
 
-/// A completed sequence means its whole subtree is done, so the root never ends on a sibling while
-/// a nested task still runs; under the old design `Late` ended the ability and stopped `Nested`.
+/// a completed sequence means its subtree is done, so the root never ends on a sibling mid-branch
 #[test]
 fn parallel_waits_for_the_whole_subtree() {
     let (mut app, ability) = cast(|| {
@@ -740,8 +734,7 @@ fn a_sequence_of_waits_ends_after_the_last_one() {
     ));
 }
 
-/// A composite starts its block as it starts itself, and nested composites do the same, so the
-/// whole subtree is live while the branch above it still runs.
+/// A composite starts its block as it starts itself, so the whole subtree is live with it
 #[test]
 fn parallel_starts_every_child_at_once() {
     let (mut app, ability) = cast(|| {

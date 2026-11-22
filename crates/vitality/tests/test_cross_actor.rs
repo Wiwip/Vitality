@@ -274,8 +274,7 @@ fn a_cross_actor_effect_is_wired_from_its_source_to_its_target() {
     );
 }
 
-/// One buffed actor out of sixteen: an apply or a resolve that leaks across actors, or that only
-/// reaches the first actor of the world, fails here rather than in a bench.
+/// One buffed actor out of sixteen: a leak across actors or a first-actor-only write fails here.
 #[test]
 fn only_the_actor_an_effect_lands_on_moves() {
     let mut app = app();
@@ -358,12 +357,10 @@ fn a_periodic_source_modifier_writes_its_caster() {
     );
 }
 
-/// A persistent modifier is folded into the actor that carries the effect, so a `Source` one still
-/// writes the target; what it owes is the apply-time warning, not a silent write.
+/// A persistent modifier folded into its carrier still writes the target, hence the apply-time warn.
 #[test]
 fn a_persistent_source_modifier_writes_the_target_and_says_so() {
-    // warn_once! is per call site for the whole binary and the spawn_order cell applies the same
-    // routing, so the assertion reads what the binary captured, whichever cell tripped the site
+    // warn_once! is per call site and the spawn_order cell shares it, so read what the binary captured
     let logs = Logs::of_binary();
     let mut app = app();
     let caster = spawn(&mut app, hero_def().with::<Power>(25.0));
@@ -419,8 +416,7 @@ fn a_persistent_source_modifier_writes_the_target_and_says_so() {
     );
 }
 
-/// The instant write names an actor this effect has none of, so nothing moves: the effect holder is
-/// neither its source nor its target.
+/// The instant write names an actor this effect has none of, so nothing moves.
 #[test]
 fn an_instant_effect_subject_modifier_is_dropped_with_a_warn() {
     let logs = Logs::of_binary();
@@ -457,8 +453,7 @@ fn an_instant_effect_subject_modifier_is_dropped_with_a_warn() {
     );
 }
 
-/// The resolver is parallel *across* actors only, so rebuilding the same world with the actors
-/// spawned in the opposite order has to land on the same numbers, tick by tick and not just settled.
+/// The resolver is parallel *across* actors only, so reversed spawn order must match tick by tick.
 mod spawn_order {
 
     use crate::gameplay::*;
@@ -474,8 +469,7 @@ mod spawn_order {
 
     const ACTORS: [&str; 3] = ["alpha", "beta", "gamma"];
 
-    /// three cross-actor hops plus the clamp hop into alpha.Health, which is more than one pass settles,
-    /// so eight ticks leaves room
+    /// three cross-actor hops plus the clamp hop take more than one pass, so eight ticks leaves room
     const TICKS: usize = 8;
 
     type Reads = [(&'static str, for<'a> fn(&'a App, Entity) -> f32); 10];
@@ -520,8 +514,7 @@ mod spawn_order {
     }
 
     fn world(order: [&'static str; 3]) -> (App, BTreeMap<&'static str, Entity>) {
-        // this scenario folds a permanent Source modifier too, so it is a second trip of that one
-        // warn_once! call site: install the capture before anything can fire
+        // folds a permanent Source modifier too: a second trip of that warn_once! site, capture first
         let _logs = Logs::of_binary();
         let mut app = app();
         let mut by_id = BTreeMap::new();
@@ -652,8 +645,7 @@ mod spawn_order {
             visit_order(&backward_ids),
         );
 
-        // both worlds have run the same number of updates by here, so comparing only the settled vectors
-        // would let one world resolve an actor a tick later and pass
+        // settled-only would let one world resolve an actor a tick later and pass
         let mut left = values(&forward, &forward_ids);
         let mut right = values(&backward, &backward_ids);
         for tick in 1..=TICKS {

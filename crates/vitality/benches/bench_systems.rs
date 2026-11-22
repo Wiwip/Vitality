@@ -1,10 +1,4 @@
-//! The only bench target (`[[bench]] name = "bench_systems", harness = false`): cargo turns any other
-//! top-level `benches/*.rs` into a `harness = true` target that cannot link, so shared code lives in
-//! `benches/support/`, pulled in below with `#[path]`. Add a group to `resolver_benches`, never a file
-//! next to this one, and remember the gate compiles tests and never bench targets.
-//!
-//! A bench id is `<group>/<WorldSpec::shape_id()>`, so a number never travels without the shape it came
-//! from, and `common::build_label` says which feature build measured it.
+//! The only bench target: any other benches/*.rs gets a harness that cannot link, so code lives in support/.
 
 #[path = "support/common.rs"]
 mod common;

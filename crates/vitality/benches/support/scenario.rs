@@ -1,8 +1,6 @@
 #![allow(dead_code)]
 
-//! Game-shaped workloads for the scaling question: does a tick stay inside budget at thousands of
-//! actors? Every workload drives the library only through what a game would touch (base writes,
-//! effect application and expiry, spawns), so the same id measures any resolver behind it.
+//! Game-shaped workloads for the scaling question, driven only through what a game would touch.
 
 use crate::common::{
     ATTRIBUTE_POOL, WorldSpec, actor_entities, build_app_at, build_label, seed_rng, tick,
@@ -407,8 +405,7 @@ impl ScenarioWorld {
         picked
     }
 
-    /// Queues one self-targeted apply per actor: `World::trigger` dispatches its observers inline, so
-    /// only a command-queue trigger leaves the tag test, condition eval and stacking for `tick` to time.
+    /// Queues one self-targeted apply per actor: only a command-queue trigger leaves the work for `tick`.
     fn queue_apply(&mut self, handle: &Handle<EffectDef>, targets: &[Entity]) {
         let world = self.app.world_mut();
         let mut commands = world.commands();
@@ -421,11 +418,7 @@ impl ScenarioWorld {
         }
     }
 
-    /// The timed unit: one fixed tick, preceded by the flush that decides *where* this tick's input
-    /// lands. bevy drains the command queue after every exclusive system and `resolve_system` is one, so
-    /// the applies land either way and deleting this flush keeps every guard green; what the flush pins is
-    /// the place — the input is in before any of the tick's systems run, not mid-tick at whatever
-    /// exclusive system drains the queue first. Realism, not a measurement boundary.
+    /// the flush pins where the input lands (in before any of the tick's systems); realism, not a boundary
     pub fn tick(&mut self) {
         self.app.world_mut().flush();
         tick(&mut self.app);

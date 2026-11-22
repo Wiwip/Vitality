@@ -142,8 +142,7 @@ fn refresh_policy_reapplies_fire_effect_applied() {
     assert_eq!(applied[1].effect, Some(held[0]));
 }
 
-/// The guard sits below the `Instant` branch, and an instant application spawns no entity of its
-/// own, so the ordering only bites while the target still carries an instance of the handle.
+/// The guard sits below the `Instant` branch, so the ordering only bites while an instance is carried
 #[test]
 fn instant_effect_with_a_stacking_policy_applies_but_never_stacks() {
     let mut app = app();

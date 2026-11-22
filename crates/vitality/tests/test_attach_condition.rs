@@ -55,8 +55,7 @@ fn a_failed_attach_if_spawns_nothing_and_is_never_re_rolled() {
         "only the tag rules fire EffectBlocked"
     );
 
-    // Immune arrives after the miss, then three intervals on, while a late attach would still be
-    // alive: the gate is read at apply, so nothing may attach on a later tick
+    // the gate is read at apply, so a late-but-alive attach must not land: Immune arrives after the miss
     app.world_mut().entity_mut(hero).insert(Immune);
     ticks(&mut app, ticks_for(DURATION - PERIOD));
     assert_eq!(
@@ -126,8 +125,7 @@ fn attach_if_leaves_an_instant_effect_ungated_where_active_while_gates_it() {
         assert_eq!(applied[0].effect, None);
     }
 
-    // same definition, active_while: the instant branch does read activate_conditions, and a miss
-    // returns before the modifiers and before EffectApplied. No entity exists, so no EffectInactive.
+    // same definition, active_while: the instant branch reads activate_conditions, a miss returns early
     {
         let mut app = app();
         let hero = spawn(&mut app, hero_def());

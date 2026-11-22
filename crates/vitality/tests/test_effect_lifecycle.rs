@@ -288,8 +288,7 @@ fn a_fire_due_on_the_expiry_tick_beats_the_expiry() {
         0
     );
 
-    // the fire lands because apply_all_periodic_effects is ordered ahead of tick_effect_durations,
-    // and that edge is only visible in the graph: running a schedule moves its systems out of it
+    // the order edge is only visible in the graph: running a schedule moves its systems out of it
     let built = gameplay::app();
     let schedule = built
         .world()

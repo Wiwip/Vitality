@@ -366,7 +366,7 @@ fn a_target_that_is_gone_fails_with_a_reason() {
     );
 }
 
-// gated on a component: HasComponent is the only condition this schema has, an attribute value cannot gate an ability
+// HasComponent is the only condition this schema has, so an attribute value cannot gate an ability
 #[test]
 fn an_unmet_activation_condition_fails_with_a_reason() {
     let mut app = app();

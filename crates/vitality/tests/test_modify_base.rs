@@ -1,6 +1,4 @@
-//! `Vitality::modify_base`, the base-write entry point: every op lands on the base, the current
-//! value follows in one fixed tick, a read of an attribute the actor lacks is zero, and a write to
-//! one it lacks is dropped with a warn.
+//! `Vitality::modify_base`: ops hit the base, current follows in one tick; missing reads zero, writes warn.
 
 mod gameplay;
 
@@ -110,8 +108,7 @@ fn modify_base_on_an_attribute_the_actor_does_not_carry_changes_nothing() {
     );
 }
 
-/// A NaN base write is a write like any other: it lands, and the dependents recomputed from it land
-/// on NaN too while an attribute that does not read the source stays finite.
+/// A NaN base write is a write like any other: it lands and reaches the attributes that read it.
 #[test]
 fn a_nan_base_write_lands_and_reaches_the_attributes_that_read_it() {
     let mut app = app();
@@ -186,8 +183,7 @@ mod typed_fold {
     }
 }
 
-/// A live self-targeted modifier (`source == target == owner`) does not follow a base write to the
-/// attribute it reads: what decides it is the write's cadence and the registration order, not density.
+/// A live self-targeted modifier does not follow a base write; cadence and registration order decide.
 mod self_buff_base_write {
 
     use crate::common::{
@@ -286,8 +282,7 @@ mod self_buff_base_write {
     }
 }
 
-/// The missing-attribute fallback: a `T::src()` read of an attribute the actor lacks reads zero.
-/// `warn_once!` is per call site, so one warning covers both actors and every tick of the run.
+/// A `T::src()` read of an attribute the actor lacks reads zero; `warn_once!` is per call site.
 mod missing_attribute {
 
     use crate::gameplay::*;
@@ -366,8 +361,7 @@ mod missing_attribute {
     }
 }
 
-/// The other end of the deferral: an instant write lands a tick after the apply, so an actor that
-/// died in the frame of the apply can be gone by then. The projectile case — hit, apply, despawn.
+/// An instant write lands a tick after the apply, so an actor that died on that frame can be gone.
 mod despawned_actor {
 
     use crate::gameplay::*;
@@ -392,8 +386,7 @@ mod despawned_actor {
                     .modify::<Health>(5.0, ModOp::Sub, EffectSubject::Target)
                     .build(),
             );
-            // the collision applies the damage and a later system of the same frame kills the
-            // projectile, still ahead of the deferred write in the next FixedUpdate
+            // damage and kill both land in the frame, still ahead of the deferred write next FixedUpdate
             app.add_systems(
                 Update,
                 (

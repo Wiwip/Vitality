@@ -1,11 +1,5 @@
 #![allow(dead_code)]
-//! Log capture for the cells that pin a warning. `fmt::layer()` only prints the level, so a cell
-//! matching message text cannot tell `warn!` from `debug!`: these records keep `meta.level()`.
-//!
-//! A thread-local subscriber alone cannot hold under bevy's `multi_threaded`: the systems that warn
-//! run on task-pool threads that never see it. So [`Scope::run`] keeps the thread-local subscriber
-//! (which keeps a cell's records its own on the thread it runs the app from) and one process-wide
-//! registry catches the records fired on pool threads and copies them to every capture alive.
+//! Log capture for cells that pin a warning: keeps the level; pool threads go through a process registry.
 
 use bevy::log::tracing::field::{Field, Visit};
 use bevy::log::tracing::subscriber::{set_global_default, with_default};
@@ -19,8 +13,7 @@ static SCOPED: OnceLock<Mutex<Vec<Logs>>> = OnceLock::new();
 
 static INSTALL: OnceLock<()> = OnceLock::new();
 
-/// every record of the whole test binary: `warn_once!` is per call site, so when two cells of one
-/// binary spawn the same modifier only the first sees the record, and this is what it captured
+/// every record of the whole binary: `warn_once!` is per call site, so only the first cell sees it
 static BINARY: OnceLock<Logs> = OnceLock::new();
 
 #[derive(Clone, Default)]
@@ -33,8 +26,7 @@ impl Logs {
         BINARY.get_or_init(Logs::default).clone()
     }
 
-    /// a cell's own buffer, readable as [`Logs`]. Keep it alive for the whole cell, assertions
-    /// included: [`Scope::run`] wraps the cell body and the capture is dropped with the guard.
+    /// a cell's own buffer; keep it alive past the cell body, as the capture drops with the guard
     pub fn scoped() -> Scope {
         install();
         let logs = Logs::default();
@@ -79,8 +71,7 @@ pub struct Scope {
 }
 
 impl Scope {
-    /// runs the cell body with this capture installed on the calling thread and registered with the
-    /// process-wide registry for the records that arrive on bevy's task-pool threads
+    /// installs this capture on the calling thread and in the registry for the pool-thread records
     pub fn run<T>(&self, f: impl FnOnce() -> T) -> T {
         let subscriber = Registry::default().with(Recorder(self.logs.clone()));
         with_default(subscriber, f)
@@ -108,8 +99,7 @@ fn scoped() -> &'static Mutex<Vec<Logs>> {
     SCOPED.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-/// an app that installs bevy's LogPlugin owns the global subscriber already, so the first install
-/// wins and a lost race only means those records go to that plugin's output
+/// bevy's LogPlugin owns the global subscriber, so the first install wins and a loss is harmless
 fn install() {
     INSTALL.get_or_init(|| {
         let _ = set_global_default(Registry::default().with(Fanout));

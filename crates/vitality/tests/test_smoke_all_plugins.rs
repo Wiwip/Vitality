@@ -1,5 +1,4 @@
-//! Runs effects and abilities together in one app, so any system access conflict between the
-//! plugins shows up when the schedules are built and run.
+//! Effects and abilities together in one app, so a system access conflict shows up when schedules build.
 
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;

@@ -62,8 +62,7 @@ fn health_follows_a_lowered_computed_limit() {
     );
 }
 
-/// a computed limit's edge is found mid-tick, after the walk had passed the attribute it governs,
-/// so that attribute is walked again and settles on the real limit
+/// a computed limit's edge is found mid-tick, after its attribute was walked, so it is walked again
 #[test]
 fn a_clamp_edge_found_mid_tick_re_resolves_the_attribute_it_governs() {
     let mut app = app();
@@ -142,8 +141,7 @@ fn damage_below_zero_stops_at_the_min() {
     assert_eq!(current::<Health>(&app, hero), 0.0);
 }
 
-/// A limit whose expression closes a cycle is refused at registration instead of reaching the
-/// startup-class cycle panic from inside a tick.
+/// A limit whose expression closes a cycle is refused at registration, not from inside a tick.
 #[test]
 fn a_clamp_limit_that_closes_a_cycle_is_refused_rather_than_panicking_the_tick() {
     let logs = Logs::of_binary();
@@ -155,8 +153,7 @@ fn a_clamp_limit_that_closes_a_cycle_is_refused_rather_than_panicking_the_tick()
             .with::<Armor>(50.0)
             // a bare limit is known at spawn, so Armor -> Power is already in the graph
             .clamp::<Power>(0.0, Armor::src())
-            // a computed limit reports Power on its first pass, inside the tick, and that edge
-            // would close Armor -> Power -> Armor
+            // a computed limit reports Power on its first pass, so it would close Armor -> Power -> Armor
             .clamp::<Armor>(0.0, Power::src() * 2.0),
     );
     ticks(&mut app, 2);

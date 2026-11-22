@@ -1,5 +1,4 @@
-//! What one registered attribute costs the app, in structural counts (scheduled nodes, observers,
-//! resources, components) rather than durations. The bounds are one-sided: getting cheaper never goes red.
+//! What one registered attribute costs the app, in structural counts, not durations; one-sided bounds.
 
 #[path = "../benches/support/common.rs"]
 mod common;
@@ -15,11 +14,7 @@ const WIDE: usize = 22;
 const STEP: usize = WIDE - NARROW;
 
 const SYSTEMS_PER_ATTR_BASELINE: usize = 0;
-/// nine per attribute: the four ids `AttributeRegistry::register` takes (`T`,
-/// `AttributeDependents<T>`, `Clamp<T>`, `ClampBounds<T>`), bevy's own
-/// `Messages<ApplyAttributeModifierMessage<T>>`, and the first-use
-/// `BaseScanState<T>`/`ApplyState<T>`/`PeriodicState<T>` resources plus the `AttributeModifier<T>`
-/// id the last of those queries registers. Only the first five exist at rest.
+/// five at rest: the four ids `register` takes plus bevy's `Messages<ApplyAttributeModifierMessage<T>>`
 const COMPONENTS_PER_ATTR_BASELINE: usize = 5;
 
 /// a node added at plugin build time is a +1 here, where the slope above still reads 0
@@ -41,20 +36,14 @@ fn dag_app(attributes: usize) -> App {
 /// exact, both directions: a fourth once-per-app node `EffectsPlugin` would add is a +1 here
 const DAG_SYSTEMS_BASELINE: usize = 43;
 
-/// an observer is not a schedule node, so only this counter can see one; 13 since the task
-/// judge became two observers, one that starts a composite and one that settles it
+/// not a schedule node, so only this counter sees one; 13 since the task judge became two observers
 const DAG_OBSERVERS_BASELINE: usize = 13;
 
-/// the per-attribute query states the collapsed nodes only install on first use, so an at-rest
-/// counter cannot see them. The periodic applier is the odd one: its per-attribute state appears for
-/// an attribute that has a fire, so a world where nothing ticks carries three resources per
-/// attribute plus the once-per-app `PeriodicPass` the collapsed node installs and the `DefNames`
-/// a def file resolves its attribute and tag names through (vitality_effects/src/def_file.rs).
+/// an at-rest counter cannot see the first-use states; the fixed part is `PeriodicPass` plus `DefNames`
 const DAG_TICK_RESOURCES_BASELINE: usize = 67;
 const DAG_TICK_RESOURCES_PER_ATTRIBUTE: usize = 3;
 
-/// exact, so a component the DAG branch starts registering per attribute is red here; 143 since the
-/// composite task tree, whose node components and events replaced `Complete` and the old notification
+/// exact, so a new per-attribute component is red here; 143 since the composite task tree landed
 const DAG_TICK_COMPONENTS_BASELINE: usize = 143;
 const DAG_TICK_COMPONENTS_PER_ATTRIBUTE: usize = 7;
 
@@ -152,8 +141,7 @@ fn registration_cost_per_attribute_is_pinned() {
     );
 }
 
-/// counted over the whole app, exact, and again after a tick: a slope-only read missed a node parked
-/// in `PreUpdate`, and at-rest counters cannot see state the nodes install on first use
+/// also counted after a tick, as a slope-only read missed a node parked in `PreUpdate`
 #[test]
 fn dag_registration_cost_per_attribute_is_pinned() {
     let narrow = measure_dag(NARROW);
@@ -256,8 +244,7 @@ struct DagTickCounters {
     components: usize,
 }
 
-/// `FixedTimesteps(1)` makes the second `update` exactly one fixed tick: the first primes bevy's
-/// clock, whose delta is zero, so it runs none
+/// `FixedTimesteps(1)` makes the second `update` one tick: the first primes bevy's zero-delta clock
 fn measure_dag_tick(attributes: usize) -> DagTickCounters {
     let mut app = dag_app(attributes);
     // counted after the insert, so only the tick's own state can widen the gap the guard reads
@@ -302,8 +289,7 @@ fn measure_dag(attributes: usize) -> DagCounters {
     counters
 }
 
-/// `ActorRead::get` — the call `Attribute::at()` resolves to — hands back the attribute it is asked
-/// for, for every attribute of the pool, on every actor of the world.
+/// `ActorRead::get` (what `Attribute::at()` resolves to) hands back the attribute it is asked for
 mod leaf_view_read {
 
     use crate::common::{

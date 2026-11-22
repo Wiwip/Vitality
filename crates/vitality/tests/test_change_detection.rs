@@ -63,8 +63,7 @@ fn a_live_modifier_marking_health_changed_fires_once_and_stops() {
     );
 }
 
-/// `modify_base` writes the base itself, so the write is what marks `Health`, and a write that leaves
-/// the value where it was resolves to nothing — no second mark, no idle tick carrying one
+/// `modify_base` writes the base, so the write marks `Health`; a no-op write resolves to nothing
 #[test]
 fn a_base_write_that_changes_nothing_marks_nothing_after_the_tick_it_lands() {
     let mut app = probe_app();
