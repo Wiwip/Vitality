@@ -181,6 +181,27 @@ fn a_sub_tick_periodic_effect_fires_nothing_after_its_expiry() {
 }
 
 #[test]
+fn a_zero_interval_periodic_effect_fires_once_per_tick() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def().with::<Health>(0.0));
+    let drip = effect(
+        &mut app,
+        EffectBuilder::every_second_permanently(0.0)
+            .modify::<Health>(1.0, ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+
+    apply(&mut app, hero, hero, &drip);
+    ticks(&mut app, 3);
+
+    assert_eq!(
+        base::<Health>(&app, hero),
+        3.0,
+        "a tick holds no whole interval of 0 s, so a zero interval still owes exactly one fire a tick"
+    );
+}
+
+#[test]
 fn periodic_effect_with_a_duration_stops_firing() {
     let mut app = app();
     let hero = spawn(&mut app, hero_def().with::<Health>(0.0));

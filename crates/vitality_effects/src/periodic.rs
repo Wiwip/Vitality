@@ -44,6 +44,14 @@ type PeriodicEffectRow<'w, 's> = (
     Option<&'w EffectInactive>,
 );
 
+/// a zero-length interval divides nothing, so the timer answers `u32::MAX` fires: billions of writes
+fn fires_this_tick(ticker: &EffectTicker) -> u32 {
+    match ticker.duration().as_nanos() {
+        0 => 1,
+        _ => ticker.times_finished_this_tick(),
+    }
+}
+
 /// Fires owed at or before the expiry; this node runs before the duration is ticked.
 fn fires_before_expiry(ticker: &EffectTicker, duration: &EffectDuration) -> u32 {
     let interval = ticker.duration().as_nanos();
@@ -51,8 +59,8 @@ fn fires_before_expiry(ticker: &EffectTicker, duration: &EffectDuration) -> u32 
         duration.duration().as_nanos().checked_div(interval),
         duration.elapsed().as_nanos().checked_div(interval),
     ) else {
-        // no interval to count in, which is the ticker's own fire-everything case
-        return ticker.times_finished_this_tick();
+        // no interval to count in, so the ticker's own count is all there is
+        return fires_this_tick(ticker);
     };
     let owed = at_expiry.saturating_sub(at_tick_start);
     ticker
@@ -142,7 +150,7 @@ impl PeriodicPass {
             // an interval under one tick is owed more than one write, and the timer says how many
             let fires = match duration {
                 Some(duration) => fires_before_expiry(timer, duration),
-                None => timer.times_finished_this_tick(),
+                None => fires_this_tick(timer),
             };
             for _ in 0..fires {
                 for children in owned_modifiers.iter() {
