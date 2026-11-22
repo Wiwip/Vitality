@@ -76,15 +76,15 @@ fn apply_burn(mut vitality: Vitality, hero: Single<Entity, With<Hero>>) {
 }
 ```
 
-Attributes are components: read them with `Query<&Health>`, react with `Changed<Health>` or `On<CurrentValueChanged<Health>>`. `Effects` applies, finds and removes effects by entity, definition, tag or source and edits stacks; `Abilities` grants, activates, cancels and revokes.
+Attributes are components: `Query<&Health>`, `Changed<Health>`, `On<CurrentValueChanged<Health>>`. `Effects` applies, finds and removes effects by entity, definition, tag or source and edits stacks; `Abilities` grants, activates, cancels and revokes.
 
-The events that follow the change: `EffectApplied`, `EffectRemoved` (with a reason), `EffectStacksChanged`, `AbilityActivated`, `AbilityActivationFailed` (with an `ActivationError`), `AbilityEnded`. `EffectBlocked` fires only on a tag rule — a failed `attach_if` or `active_while` fires no event at all.
+Events: `EffectApplied`, `EffectRemoved` (reason), `EffectStacksChanged`, `AbilityActivated`, `AbilityActivationFailed` (`ActivationError`), `AbilityEnded`. `EffectBlocked` means a tag rule; a failed `attach_if` or `active_while` fires nothing.
 
-The attribute pipeline (the `EffectsSet` chain) runs on `FixedUpdate`, so a headless app needs a `TimeUpdateStrategy` that advances time; ability timers stay on the frame clock — `handles_wait_task_timers` runs in `PreUpdate`, and the cooldown is a `StateTimer` entry you read with `cooldown_remaining`.
+`EffectsSet` runs on `FixedUpdate`: headless apps need a time-advancing `TimeUpdateStrategy`. Ability timers use the frame clock (`handles_wait_task_timers`, `PreUpdate`); the cooldown reads through `cooldown_remaining`.
 
 ## Def files
 
-The declarative half of an effect or an ability: `effect_def_from_file` and `ability_def_from_file` read a def off disk, `effect_def_from_str` and `ability_def_from_str` the same text out of a bundle. Every line is `key = value`, `#` starts a comment and runs to the end of its line, and a key may repeat where the def holds a list.
+`effect_def_from_file` and `ability_def_from_file` read a def off disk; `effect_def_from_str` and `ability_def_from_str` the same text from a bundle. Every line is `key = value`, `#` comments to end of line, a key may repeat where the def holds a list.
 
 ```text
 name = Regeneration
@@ -92,37 +92,31 @@ policy = every 1.0 for 12.0
 modifier = Health add 2 target
 ```
 
-An effect file holds `name`, `policy`, `tag`, `requires`, `blocked_by`, `cleanses` and `modifier`, and no `policy` means a permanent effect.
+Effect keys: `name`, `policy`, `tag`, `requires`, `blocked_by`, `cleanses`, `modifier`. Ability keys: `name`, `cooldown`, `tag`, `activation_owned`, `activation_requires`, `activation_blocked_by`, `blocks`, `cancels`.
 
-`policy` is `instant`, `permanent`, `for <seconds>`, `every <seconds>` or `every <seconds> for <seconds>`; `modifier` is `<attribute> <op> <value> <who>`, the op and the who spelled as the `ModOp` and `EffectSubject` variant names.
+`policy` is `instant`, `permanent`, `for <seconds>`, `every <seconds>`, `every <seconds> for <seconds>`; absent means permanent. `modifier` is `<attribute> <op> <value> <who>` — op and who are `ModOp`/`EffectSubject` variant names.
 
-An ability file holds `name`, `cooldown`, `tag`, `activation_owned`, `activation_requires`, `activation_blocked_by`, `blocks` and `cancels`.
+A file only names what `DefNames` holds: `init_attribute::<T>()` for an attribute, `DefNames::tag::<T>()` for a tag, both as the short type name. Anything else fails its line (``line 2: no tag `Frost` ``), pinned with the loads in `crates/vitality/tests/test_def_file_load.rs`.
 
-A file can only name what the app put in `DefNames`: `init_attribute::<T>()` adds the attribute, you add a tag yourself with `DefNames::tag::<T>()`, and both are spelled as the short type name.
-
-Anything else fails its line — ``line 2: no tag `Frost`: a def file only names tags the app put in DefNames`` — and `crates/vitality/tests/test_def_file_load.rs` pins the loads and those errors.
-
-Costs, expressions, clamps, task scenes and observers stay Rust: an ability's cost, a clamp or a `Power::src()` read cannot come out of a file.
+Costs, expressions, clamps, task scenes and observers stay Rust.
 
 ## Your own number type
 
-An attribute folds in its own property type: `(base + Σadd − Σsub) × (1 + Σincrease) × Πmul`, one operation at a time, a stacked `Mul` as `powi(stacks)`, so a type that rounds differently from `f64` or runs past it gets its own arithmetic back. Any primitive number works as is.
+An attribute folds in its own property type: `(base + Σadd − Σsub) × (1 + Σincrease) × Πmul`, one operation at a time, a stacked `Mul` as `powi(stacks)`. Any primitive number works as is.
 
-A host type implements `AttributeValue` (`zero`, `one`, `add`, `sub`, `mul`, `powi`, `from_f64`, `to_f64`), derives `Reflect`, and calls `property_number!(MyType)` so its values can be expression literals.
+Implement `AttributeValue` (`zero`, `one`, `add`, `sub`, `mul`, `powi`, `from_f64`, `to_f64`), derive `Reflect`, call `property_number!(MyType)` for expression literals; `attribute!(Gold, MyType)` and `EffectBuilder::modify::<Gold>(..)` take it, clamps included.
 
-Then `attribute!(Gold, MyType)` and `EffectBuilder::modify::<Gold>(MyType::..., ..)` take it directly, and literals, attribute reads and clamps stay in the type.
-
-Two limits: expression arithmetic (`A::src() + B::src()`) comes from express-it and needs `num_traits::Num`, and def files and the debug overlay read through `to_f64`, so those are lossy past `f64`. `crates/vitality/tests/test_property_types.rs` is a worked example.
+Expression arithmetic (`A::src() + B::src()`) needs `num_traits::Num`; def files and the debug overlay read through `to_f64`, so lossy past it. Worked example: `crates/vitality/tests/test_property_types.rs`.
 
 ## Wiring your own plugin
 
-The contract, with what each break looks like from inside an app and the test that pins it, is the `vitality` crate-level doc:
+What each break looks like in an app (contract: the `vitality` crate-level doc):
 
-- Register attributes with `vitality::init_attribute::<T>()` in `Plugin::build`: `App::update()` never calls `App::finish`, so a registration made in `Plugin::finish` never runs and that attribute fires no value-changed events — a permanent effect on it silently applies no modifiers, an instant one drops its queued write with a warn naming the attribute.
-- `AttributesPlugin` owns the registry the attribute is written into, so it comes before anything that calls `init_attribute`; that one panics at build.
-- The 128-attribute cap is one counter for the whole app, not one per crate, and vitality's own `Stacks` attribute uses a slot, so an app gets 127 game attributes and the 128th is the one refused, by name.
-- `AttrId` is a registration index, so it moves when plugin order moves. Persist the attribute's name, never the id — and keep names unique across crates, because the name is the type's short name and a duplicate panics at build.
-- Add `EffectsPlugin`: its `build` installs the apply-path nodes (`resolve_system`, `apply_all_modifier_events`, `scan_base_writes`, `apply_all_periodic_effects`) and `init_effect_attribute` installs none, so an app that skips it never applies anything — nothing listens for the apply event. Adding it after build changes nothing.
+- Register attributes with `vitality::init_attribute::<T>()` in `Plugin::build`: `App::update()` never calls `finish`, so registering there fires no value-changed events — a permanent effect applies no modifiers, an instant one warns and drops its write.
+- `AttributesPlugin` owns the registry: it precedes anything calling `init_attribute`, which panics at build.
+- The 128-attribute cap counts the app, not each crate, and `Stacks` takes a slot: 127 game attributes, the 128th refused by name.
+- `AttrId` is a registration index and moves with plugin order: persist the name, never the id. A duplicate short name panics at build.
+- Add `EffectsPlugin`: its `build` installs the apply-path nodes (`resolve_system`, `apply_all_modifier_events`, `scan_base_writes`, `apply_all_periodic_effects`) and `init_effect_attribute` installs none — skip it and nothing listens for the apply event. Adding it after build changes nothing.
 
 ## Performance
 
@@ -140,6 +134,6 @@ cargo bench --offline --locked -p vitality --bench bench_systems              # 
 cargo bench --offline --locked -p vitality --bench bench_systems -- scenario  # one group
 ```
 
-Exactly one `--`: everything after it goes to criterion, and a second one turns a filtered run into the whole suite. Criterion matches that filter as a regex against the full id, and the id carries the shape it came from — `Workload::ALL` names the workload and `scenario_id` builds the id, both in `benches/support/scenario.rs`.
+Exactly one `--`: everything after it goes to criterion; a second one runs the whole suite. The filter is a regex against the full id, which carries its shape (`Workload::ALL`, `scenario_id` in `benches/support/scenario.rs`).
 
-`VITALITY_SCENARIO_ACTORS=10000` runs one size and `--features multi_threaded` is the `storm` figure. Read `/proc/loadavg` before and after the run and report anything under ~10 % as directional. The gate never builds bench targets, so `--no-run` is how you check that they compile.
+`VITALITY_SCENARIO_ACTORS=10000` sets the size; `--features multi_threaded` gives the `storm` figure. Check `/proc/loadavg` before and after; under ~10 % is directional. The gate never builds benches — compile-check with `--no-run`.
