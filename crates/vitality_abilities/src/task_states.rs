@@ -204,4 +204,3 @@ impl MachineState<TaskMachine> for FailedState {
         ctx.external.settle(ctx.task_id, Settled::Failed);
     }
 }
-

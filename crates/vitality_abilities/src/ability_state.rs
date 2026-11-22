@@ -381,4 +381,3 @@ impl MachineState<AbilityMachine> for RecoveryState {
         }
     }
 }
-
