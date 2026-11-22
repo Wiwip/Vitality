@@ -117,6 +117,41 @@ fn refresh_policy_restarts_the_duration() {
     assert_eq!(current::<Power>(&app, hero), 10.0);
 }
 
+/// 0.3 s is 19.2 of the harness' 1/64 s ticks, so the ticker finishes on ticks 20, 39, 58, 77 and
+/// 97, and the refresh after 36 ticks moves the expiry to tick 101: five fires, the last of them
+/// four ticks short of the new expiry.
+const FIRES_BY_THE_REFRESHED_EXPIRY: f32 = 5.0;
+
+#[test]
+fn a_refresh_keeps_the_fire_due_before_the_refreshed_expiry() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def().with::<Health>(0.0));
+    let drip = effect(
+        &mut app,
+        EffectBuilder::every_second_for_duration(0.3, 1.0)
+            .modify::<Health>(1.0, ModOp::Add, EffectSubject::Target)
+            .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
+            .build(),
+    );
+
+    apply(&mut app, hero, hero, &drip);
+    ticks(&mut app, ticks_for(0.5625));
+    apply(&mut app, hero, hero, &drip);
+    ticks(&mut app, ticks_for(2.0));
+
+    assert_eq!(
+        base::<Health>(&app, hero),
+        FIRES_BY_THE_REFRESHED_EXPIRY,
+        "the refresh restarts the duration but not the ticker, so the cap has to count the owed \
+         fires off the ticker's own phase and not off the duration's elapsed time",
+    );
+    assert_eq!(
+        with_effects(&mut app, move |e| e.on(hero)).len(),
+        0,
+        "the refreshed duration still expires"
+    );
+}
+
 #[test]
 fn refresh_policy_reapplies_fire_effect_applied() {
     let mut app = app();

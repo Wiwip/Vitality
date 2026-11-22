@@ -8,7 +8,9 @@ use crate::{
 use bevy_ecs::prelude::*;
 use bevy_ecs::resource::IsResource;
 use bevy_platform::collections::HashMap;
+use bevy_time::Time;
 use std::any::TypeId;
+use std::time::Duration;
 use tracing::warn;
 use vitality_core::attributes::Attribute;
 use vitality_core::store::Assets;
@@ -53,16 +55,17 @@ fn fires_this_tick(ticker: &EffectTicker) -> u32 {
 }
 
 /// Fires owed at or before the expiry; this node runs before the duration is ticked.
-fn fires_before_expiry(ticker: &EffectTicker, duration: &EffectDuration) -> u32 {
-    let interval = ticker.duration().as_nanos();
-    let (Some(at_expiry), Some(at_tick_start)) = (
-        duration.duration().as_nanos().checked_div(interval),
-        duration.elapsed().as_nanos().checked_div(interval),
-    ) else {
+fn fires_before_expiry(ticker: &EffectTicker, duration: &EffectDuration, step: Duration) -> u32 {
+    let interval = ticker.duration().as_nanos() as i128;
+    if interval == 0 {
         // no interval to count in, so the ticker's own count is all there is
         return fires_this_tick(ticker);
-    };
-    let owed = at_expiry.saturating_sub(at_tick_start);
+    }
+    // a duration refresh restarts the duration but not the ticker, and the ticker is the one step
+    // ahead here, so the phase has to come off the ticker and walk back onto the duration's clock
+    let phase =
+        (ticker.elapsed().as_nanos() as i128 - step.as_nanos() as i128).rem_euclid(interval);
+    let owed = (duration.remaining().as_nanos() as i128 + phase) / interval;
     ticker
         .times_finished_this_tick()
         .min(u32::try_from(owed).unwrap_or(u32::MAX))
@@ -108,6 +111,10 @@ impl PeriodicPass {
         let Some(assets) = world.get_resource::<Assets<EffectDef>>() else {
             return;
         };
+        // the clock both timers are ticked by, so the expiry and the ticker's phase stay comparable
+        let step = world
+            .get_resource::<Time>()
+            .map_or(Duration::ZERO, |time| time.delta());
         // get_manual reads the cached archetypes, so refresh them the way a system param would
         self.actors.update_archetypes(world);
         self.effects.update_archetypes(world);
@@ -149,7 +156,7 @@ impl PeriodicPass {
 
             // an interval under one tick is owed more than one write, and the timer says how many
             let fires = match duration {
-                Some(duration) => fires_before_expiry(timer, duration),
+                Some(duration) => fires_before_expiry(timer, duration, step),
                 None => fires_this_tick(timer),
             };
             for _ in 0..fires {
