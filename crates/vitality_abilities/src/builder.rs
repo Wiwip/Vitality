@@ -1,3 +1,4 @@
+use crate::AbilityOf;
 use crate::context::{AbilityExprContext, AbilityExprContextMut, AbilityExprSchema};
 use crate::definition::AbilityDef;
 use bevy_ecs::prelude::*;
@@ -178,14 +179,26 @@ impl AbilityBuilder {
         observer: impl IntoObserverSystem<E, M> + Clone + Sync + 'static,
     ) -> Self {
         self.triggers.push(EntityActions::new(
-            move |actor_commands: &mut EntityCommands| {
-                let mut observer = Observer::new(observer.clone());
-                observer.watch_entity(actor_commands.id());
+            move |ability_commands: &mut EntityCommands| {
+                let observer = observer.clone();
+                ability_commands.queue(move |mut ability: EntityWorldMut| {
+                    let ability_id = ability.id();
+                    let Some(caster) = ability.get::<AbilityOf>().map(|owner| owner.0) else {
+                        warn!("[{ability_id}] Ability has no caster: its trigger watches nothing.");
+                        return;
+                    };
+                    let mut observer = Observer::new(observer);
+                    observer.watch_entity(caster);
 
-                actor_commands.commands().spawn((
-                    observer,
-                    Name::new(format!("On<{}>", pretty_type_name::<E>())),
-                ));
+                    // it watches the caster but belongs to the ability, so revoke takes it along
+                    ability.world_scope(|world| {
+                        world.spawn((
+                            ChildOf(ability_id),
+                            observer,
+                            Name::new(format!("On<{}>", pretty_type_name::<E>())),
+                        ));
+                    });
+                });
             },
         ));
         self

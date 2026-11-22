@@ -744,3 +744,46 @@ fn revoke_removes_the_ability() {
     });
     assert_eq!(left, None);
 }
+
+/// a caster event an `add_trigger` watches, like an on-hit riposte
+#[derive(EntityEvent, Clone)]
+struct Struck {
+    #[event_target]
+    pub target: Entity,
+}
+
+#[derive(Resource, Default)]
+struct Ripostes(pub u32);
+
+#[test]
+fn trigger_of_a_revoked_ability_never_fires() {
+    let mut app = app();
+    app.insert_resource(Ripostes::default());
+    let riposte = ability(
+        &mut app,
+        AbilityBuilder::new()
+            .add_trigger(|_: On<Struck>, mut ripostes: ResMut<Ripostes>| ripostes.0 += 1)
+            .build(),
+    );
+    let caster = caster_with(&mut app, &[&riposte]);
+
+    app.world_mut().trigger(Struck { target: caster });
+    ticks(&mut app, 1);
+    assert_eq!(
+        app.world().resource::<Ripostes>().0,
+        1,
+        "granted, the trigger answers the event on its caster"
+    );
+
+    let handle = riposte.clone();
+    assert!(with_abilities(&mut app, move |a| a.revoke(caster, &handle)));
+    ticks(&mut app, 1);
+
+    app.world_mut().trigger(Struck { target: caster });
+    ticks(&mut app, 1);
+    assert_eq!(
+        app.world().resource::<Ripostes>().0,
+        1,
+        "the revoked ability's trigger entity has to go with the ability"
+    );
+}
