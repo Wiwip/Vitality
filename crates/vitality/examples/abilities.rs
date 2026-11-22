@@ -144,8 +144,6 @@ impl AbilityTask for TestAbilityTask {
 #[query_data(mutable)]
 struct TaskContext {
     entity: Entity,
-    //health: Read<Health>,
-    //damage: Read<Damage>,
 }
 
 #[derive(SystemParam)]

@@ -60,7 +60,6 @@ fn main() {
             init_attribute::<Armour>,
             init_attribute::<MagicPower>,
         ))
-        //.add_plugins((EguiPlugin::default(), WorldInspectorPlugin::default()))
         .add_plugins(ActorInspectorPlugin)
         .add_systems(
             Startup,
@@ -108,7 +107,6 @@ struct EffectsDatabase {
 }
 
 fn setup_effects(mut commands: Commands, mut ctx: Vitality) {
-    // Attack Power effect
     let ap_buff = ctx.add_effect(
         Effect::permanent()
             .name("AttackPower Buff".into())
@@ -117,31 +115,22 @@ fn setup_effects(mut commands: Commands, mut ctx: Vitality) {
             .build(),
     );
 
-    // Magic Power effect
     let mp_buff = ctx.add_effect(
         Effect::permanent()
             .name("MagicPower Buff".into())
             .modify::<MagicPower>(Mana::src(), ModOp::Add, EffectSubject::Target)
             .modify::<MagicPower>(5u32, ModOp::Add, EffectSubject::Target)
-            //.activate_while(IsAttributeWithinBounds::<Health>::new(..=500, Who::Source))
-            /*.with_stacking_policy(EffectStackingPolicy::Add {
-                count: 1,
-                max_stack: 10,
-            })*/
             .build(),
     );
 
-    // Effect 1 - Passive Max Health Boost
     let hp_buff = ctx.add_effect(
         Effect::permanent()
             .name("MaxHealth Increase".into())
             .modify::<MaxHealth>(50u32, ModOp::Add, EffectSubject::Target)
-            //.modify::<ManaPool>(Health::source_expr(), ModOp::Add, Who::Target)
             .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
             .build(),
     );
 
-    // Effect 2 - Periodic Health Regen
     let regen = ctx.add_effect(
         Effect::permanent_ticking(1.0)
             .name("Regen".into())
@@ -149,15 +138,6 @@ fn setup_effects(mut commands: Commands, mut ctx: Vitality) {
             .modify::<Mana>(ManaRegen::src(), ModOp::Add, EffectSubject::Target)
             .build(),
     );
-
-    /*let global_effect = ctx.add_effect(
-        Effect::permanent()
-            .name("Global Armour".into())
-            .modify::<Armour>(10.0f32, ModOp::Add, Who::Target)
-            .build(),
-    );*/
-
-    //ctx.add_global_effect(global_effect);
 
     commands.insert_resource(EffectsDatabase {
         ap_buff,
@@ -229,17 +209,14 @@ fn setup_actor(mut ctx: Vitality, abilities: Res<AbilityDatabase>) {
         .with::<Strength>(12)
         .with::<Agility>(7)
         .with::<Intelligence>(1)
-        // Health
         .with::<Health>(85)
         .with::<MaxHealth>(100)
         .with::<HealthRegen>(2)
         .clamp::<Health>(0, MaxHealth::src())
-        // Mana
         .with::<Mana>(30u32)
         .with::<ManaPool>(60)
         .with::<ManaRegen>(4)
         .clamp::<Mana>(0, ManaPool::src())
-        // Misc
         .with::<MagicPower>(1)
         .with::<AttackPower>(10)
         .with::<Armour>(0.10)
@@ -265,7 +242,6 @@ fn apply_effects(
     ctx.apply_effect_to_self(player_entity, &efx.hp_buff);
     ctx.apply_effect_to_self(player_entity, &efx.hp_regen);
 
-    // Should have two stacks
     ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
     ctx.apply_effect_to_self(player_entity, &efx.mp_buff);
 }
