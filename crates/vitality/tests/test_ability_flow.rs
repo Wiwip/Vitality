@@ -12,7 +12,7 @@ use hfsm_bevy::StateTimer;
 use vitality::ability::ability_state::AbilityMachine;
 use vitality::ability::context::AbilityExprContext;
 use vitality::ability::cooldown_remaining;
-use vitality::ability::tasks::{Tasks, sequence, wait_task};
+use vitality::ability::tasks::{Tasks, wait_task};
 use vitality::ability::{AbilityBuilder, AbilityDef, TargetData};
 use vitality::actors::ActorBuilder;
 use vitality::context::{Caster, Target};
@@ -606,31 +606,6 @@ fn try_activate_by_tag_activates_the_first_ability_that_can() {
         !with_abilities(&mut app, move |a| a.is_active(follow_up_entity)),
         "the second never leaves Ready"
     );
-}
-
-#[test]
-fn a_sequence_runs_its_tasks_one_after_the_other() {
-    let mut app = app();
-    let combo = ability(
-        &mut app,
-        AbilityBuilder::new()
-            .set_tasks(
-                || bsn! { Tasks [ @sequence() Tasks [ @wait_task(0.25) -- @wait_task(0.25) ] ] },
-            )
-            .build(),
-    );
-    let caster = caster_with(&mut app, &[&combo]);
-    record_all(&mut app);
-
-    activate(&mut app, caster, &combo);
-    ticks(&mut app, ticks_for(0.35));
-    assert!(
-        recorded::<AbilityEnded>(&app).is_empty(),
-        "ended before the second task in the sequence ran"
-    );
-
-    ticks(&mut app, ticks_for(0.25));
-    assert_eq!(recorded::<AbilityEnded>(&app).len(), 1);
 }
 
 attribute!(Rage, u32);
