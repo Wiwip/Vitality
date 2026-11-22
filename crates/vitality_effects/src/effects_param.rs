@@ -92,14 +92,9 @@ impl Effects<'_, '_> {
 
     /// Takes `count` stacks off an effect, removing it when none are left.
     pub fn remove_stacks(&mut self, effect: Entity, count: u32) {
-        let Some(current) = self.stacks(effect) else {
-            return;
-        };
-        if count >= current {
-            self.remove(effect);
+        if self.effects.get(effect).is_err() {
             return;
         }
-        let left = current - count;
         self.commands.queue(move |world: &mut World| {
             let mut state = SystemState::<(
                 Query<&mut Stacks, With<Effect>>,
@@ -109,7 +104,17 @@ impl Effects<'_, '_> {
             let Ok((mut stacks, targets, mut commands)) = state.get_mut(world) else {
                 return;
             };
-            if let Some((old, new)) = set_stacks(effect, left, &mut stacks) {
+            // the count is read here so removals queued in the same system add up
+            let Some(left) = stacks
+                .get(effect)
+                .ok()
+                .map(|stacks| stacks.current_value().saturating_sub(count))
+            else {
+                return;
+            };
+            if left == 0 {
+                remove_effect(&mut commands, effect, EffectRemovalReason::Removed);
+            } else if let Some((old, new)) = set_stacks(effect, left, &mut stacks) {
                 notify_stacks_changed(effect, old, new, &targets, &mut commands);
             }
             state.apply(world);

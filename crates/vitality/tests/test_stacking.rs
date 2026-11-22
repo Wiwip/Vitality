@@ -77,6 +77,37 @@ fn removing_stacks_lowers_the_value_and_the_last_stack_removes_the_effect() {
 }
 
 #[test]
+fn two_removals_in_one_system_both_count() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    let buff = effect(
+        &mut app,
+        power_buff(EffectStackingPolicy::Add {
+            count: 1,
+            max_stack: 5,
+        }),
+    );
+    for _ in 0..3 {
+        apply(&mut app, hero, hero, &buff);
+        ticks(&mut app, 1);
+    }
+    let effect_entity = with_effects(&mut app, move |e| e.on(hero))[0];
+
+    with_effects(&mut app, move |e| {
+        e.remove_stacks(effect_entity, 1);
+        e.remove_stacks(effect_entity, 1);
+    });
+    ticks(&mut app, 1);
+
+    assert_eq!(
+        with_effects(&mut app, move |e| e.stacks(effect_entity)),
+        Some(1),
+        "each removal takes its own stack off"
+    );
+    assert_eq!(current::<Power>(&app, hero), 15.0);
+}
+
+#[test]
 fn none_policy_applies_independent_copies() {
     let mut app = app();
     let hero = spawn(&mut app, hero_def());
