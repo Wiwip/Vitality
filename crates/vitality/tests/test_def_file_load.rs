@@ -220,6 +220,18 @@ fn a_def_file_line_the_loader_cannot_use_fails_naming_its_line() {
             2,
             "Health add target",
         ),
+        (
+            "negative-duration.effect",
+            "name = Doom\npolicy = for -1\n",
+            2,
+            "-1",
+        ),
+        (
+            "nan-interval.effect",
+            "name = Chaos\npolicy = every nan\n",
+            2,
+            "nan",
+        ),
     ];
     for (file, body, line, bad) in cases {
         let path = def_file("line-error", file, body);

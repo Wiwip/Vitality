@@ -227,8 +227,21 @@ fn policy_builder(line: usize, spec: &str) -> Result<EffectBuilder, DefFileError
     };
     let mut words = spec.split_whitespace();
     let seconds = |word: &str, what: &str| {
-        word.parse::<f32>()
-            .map_err(|_| DefFileError::line(line, format!("`{word}` is not {what} in seconds")))
+        let value = word
+            .parse::<f32>()
+            .map_err(|_| DefFileError::line(line, format!("`{word}` is not {what} in seconds")))?;
+        if value.is_finite() && value >= 0.0 {
+            Ok(value)
+        } else {
+            // a negative, NaN or infinite count panics Duration::from_secs_f32 inside bevy
+            Err(DefFileError::line(
+                line,
+                format!(
+                    "`{word}` is not {what} in seconds, which has to be a finite number of 0 or \
+                     more"
+                ),
+            ))
+        }
     };
     let builder = match (words.next(), words.next(), words.next(), words.next()) {
         (Some("instant"), None, None, None) => EffectBuilder::instant(),

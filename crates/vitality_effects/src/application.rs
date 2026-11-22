@@ -51,21 +51,24 @@ impl EffectApplicationPolicy {
     }
 
     pub fn for_seconds(duration: f32) -> Self {
+        let method = "EffectApplicationPolicy::for_seconds";
         Self::Temporary {
-            duration: Timer::from_seconds(duration, TimerMode::Once),
+            duration: Timer::from_seconds(checked_seconds(method, duration), TimerMode::Once),
         }
     }
 
     pub fn every_seconds(interval: f32) -> Self {
+        let method = "EffectApplicationPolicy::every_seconds";
         Self::Periodic {
-            interval: Timer::from_seconds(interval, TimerMode::Repeating),
+            interval: Timer::from_seconds(checked_seconds(method, interval), TimerMode::Repeating),
         }
     }
 
     pub fn every_seconds_for_duration(interval: f32, duration: f32) -> Self {
+        let method = "EffectApplicationPolicy::every_seconds_for_duration";
         Self::PeriodicTemporary {
-            interval: Timer::from_seconds(interval, TimerMode::Repeating),
-            duration: Timer::from_seconds(duration, TimerMode::Once),
+            interval: Timer::from_seconds(checked_seconds(method, interval), TimerMode::Repeating),
+            duration: Timer::from_seconds(checked_seconds(method, duration), TimerMode::Once),
         }
     }
 
@@ -104,6 +107,13 @@ impl EffectApplicationPolicy {
 
         (duration, period)
     }
+}
+
+fn checked_seconds(method: &str, seconds: f32) -> f32 {
+    if !seconds.is_finite() || seconds < 0.0 {
+        panic!("`{method}` needs a finite number of seconds of 0 or more, got {seconds}");
+    }
+    seconds
 }
 
 #[derive(EntityEvent)]
