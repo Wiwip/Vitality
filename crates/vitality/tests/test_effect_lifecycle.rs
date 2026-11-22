@@ -453,6 +453,54 @@ fn a_gated_off_periodic_effect_pauses_its_duration() {
     );
 }
 
+/// the gate closes one tick after a fire and opens again mid-interval, with the ticker frozen part way
+#[test]
+fn a_reactivated_periodic_effect_waits_for_its_interval_again() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def().with::<Health>(0.0));
+    let dot = effect(
+        &mut app,
+        EffectBuilder::every_second_permanently(PERIOD)
+            .modify::<Health>(1.0, ModOp::Add, EffectSubject::Target)
+            .active_while(HasComponent::<Immune>::target())
+            .build(),
+    );
+
+    with_vitality(&mut app, move |v| v.grant_tag::<Immune>(hero));
+    apply(&mut app, hero, hero, &dot);
+    ticks(&mut app, ticks_for(PERIOD));
+    assert_eq!(
+        base::<Health>(&app, hero),
+        1.0,
+        "the gate is open, so the first interval is owed"
+    );
+
+    with_vitality(&mut app, move |v| v.revoke_tag::<Immune>(hero));
+    ticks(&mut app, 4);
+    let owed = base::<Health>(&app, hero);
+    with_vitality(&mut app, move |v| v.grant_tag::<Immune>(hero));
+    ticks(&mut app, 1);
+    assert_eq!(
+        base::<Health>(&app, hero),
+        owed,
+        "the re-activation tick owes a fire its ticker never counted"
+    );
+
+    ticks(&mut app, ticks_for(PERIOD) - 4);
+    assert_eq!(
+        base::<Health>(&app, hero),
+        owed,
+        "a paused window is no interval"
+    );
+
+    ticks(&mut app, 6);
+    assert_eq!(
+        base::<Health>(&app, hero),
+        owed + 1.0,
+        "the open ticker owes its next fire once the interval is paid"
+    );
+}
+
 /// read off the schedule's declared dependencies, not off an execution order
 fn ordered_before(schedule: &bevy::ecs::schedule::Schedule, from: &str, to: &str) -> bool {
     let graph = schedule.graph();
