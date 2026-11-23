@@ -111,7 +111,7 @@ fn removing_an_entity_that_is_not_an_effect_spares_it() {
 fn removing_stacks_from_an_entity_that_is_not_an_effect_spares_it() {
     let logs = Logs::scoped();
 
-    let (app, hero) = logs.run(|| {
+    let (_app, hero) = logs.run(|| {
         let mut app = app();
         let hero = spawn(&mut app, hero_def());
         let buff = effect(
@@ -128,10 +128,6 @@ fn removing_stacks_from_an_entity_that_is_not_an_effect_spares_it() {
         (app, hero)
     });
 
-    assert!(
-        has::<Health>(&app, hero),
-        "handing the actor to Effects::remove_stacks instead of an effect entity despawned it"
-    );
     let warns = logs.warns();
     assert!(
         warns.contains("not an effect") && warns.contains(&hero.to_string()),

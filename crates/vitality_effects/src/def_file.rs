@@ -126,13 +126,12 @@ pub fn def_fields(source: &str) -> Result<Vec<(usize, SmolStr, String)>, DefFile
     Ok(fields)
 }
 
-/// a def holds one of a scalar key, so a repeat is the usual paste of two defs into one;
-/// the ability files share this
-pub fn scalar_field<T>(
-    slot: &mut Option<(usize, T)>,
+/// a def holds one of a scalar key, so a repeat is the usual paste of two defs into one
+pub fn scalar_field(
+    slot: &mut Option<(usize, String)>,
     line: usize,
     key: &str,
-    value: T,
+    value: String,
 ) -> Result<(), DefFileError> {
     if let Some((first, _)) = slot {
         return Err(DefFileError::line(
