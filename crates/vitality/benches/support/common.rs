@@ -310,11 +310,6 @@ pub fn tick(app: &mut App) {
     app.update();
 }
 
-/// One `FixedUpdate` on a bare `World`: `Time` never advances, so tickers run on the last delta.
-pub fn run_fixed_tick(world: &mut World) {
-    world.run_schedule(FixedUpdate);
-}
-
 /// The actors this world spawned, minus the global-effect actor, sorted so archetype order cannot shift it.
 pub fn actor_entities(world: &mut World) -> Vec<Entity> {
     let mut query = world.query_filtered::<Entity, With<Actor>>();
