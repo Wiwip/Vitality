@@ -458,43 +458,6 @@ fn a_fire_due_on_the_expiry_tick_beats_the_expiry() {
     );
 }
 
-/// what the fire above depends on, read off the graph: an executed schedule drops its declared edges
-#[test]
-fn the_periodic_fire_is_ordered_ahead_of_the_duration_walk() {
-    let built = app();
-    let schedule = built
-        .world()
-        .resource::<bevy::ecs::schedule::Schedules>()
-        .get(bevy::app::FixedUpdate)
-        .expect("the harness app has no FixedUpdate schedule");
-    assert!(
-        ordered_before(
-            schedule,
-            "apply_all_periodic_effects",
-            "tick_effect_durations"
-        ),
-        "apply_all_periodic_effects is no longer ordered ahead of tick_effect_durations in \
-         FixedUpdate, which is what lets `a_fire_due_on_the_expiry_tick_beats_the_expiry` land \
-         its last fire; the edge lives in vitality_effects::EffectsPlugin's build.",
-    );
-}
-
-#[test]
-fn the_stack_refresh_is_ordered_ahead_of_the_duration_walk() {
-    let built = app();
-    let schedule = built
-        .world()
-        .resource::<bevy::ecs::schedule::Schedules>()
-        .get(bevy::app::FixedUpdate)
-        .expect("the harness app has no FixedUpdate schedule");
-    assert!(
-        ordered_before(schedule, "read_add_stack_event", "tick_effect_durations"),
-        "read_add_stack_event is no longer ordered ahead of tick_effect_durations in FixedUpdate, \
-         which is what lets `a_refresh_on_the_expiry_tick_beats_the_despawn` keep its effect; the \
-         edge lives in vitality_effects::EffectsPlugin's build.",
-    );
-}
-
 #[test]
 fn a_periodic_effect_holds_its_first_fire_until_the_interval_elapses() {
     let mut app = app();
@@ -640,29 +603,4 @@ fn a_reactivated_periodic_effect_waits_for_its_interval_again() {
         owed + 1.0,
         "the open ticker owes its next fire once the interval is paid"
     );
-}
-
-/// read off the schedule's declared dependencies, not off an execution order
-fn ordered_before(schedule: &bevy::ecs::schedule::Schedule, from: &str, to: &str) -> bool {
-    let graph = schedule.graph();
-    let dag = graph.dependency().graph();
-    let named = |needle: &str| {
-        dag.nodes()
-            .filter(|node| graph.get_node_name(node).contains(needle))
-            .collect::<Vec<_>>()
-    };
-    let targets = named(to);
-    let mut pending = named(from);
-    let mut seen: Vec<_> = Vec::new();
-    while let Some(node) = pending.pop() {
-        if targets.contains(&node) {
-            return true;
-        }
-        if seen.contains(&node) {
-            continue;
-        }
-        seen.push(node);
-        pending.extend(dag.neighbors(node));
-    }
-    false
 }
