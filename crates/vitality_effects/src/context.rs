@@ -5,9 +5,6 @@ use vitality_core::context::{ActorProvider, ActorProviderMut, Source, Target};
 
 pub struct EffectRole;
 
-/*********************************************************
- * Effect
- *********************************************************/
 pub struct EffectExprSchema;
 impl Context for EffectExprSchema {
     type ContextItem<'w, 's> = EffectExprContext<'w, 's>;

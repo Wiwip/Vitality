@@ -5,9 +5,6 @@ use vitality_core::context::{ActorProvider, ActorProviderMut, Caster, Source, Ta
 
 pub struct AbilityRole;
 
-/*********************************************************
- * Ability
- *********************************************************/
 pub struct AbilityExprSchema;
 impl Context for AbilityExprSchema {
     type ContextItem<'w, 's> = AbilityExprContext<'w, 's>;
