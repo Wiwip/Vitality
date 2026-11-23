@@ -23,7 +23,7 @@ impl Logs {
     /// see [`Logs::of_binary`]
     pub fn of_binary() -> Self {
         install();
-        BINARY.get_or_init(Logs::default).clone()
+        BINARY.get().expect("install opens the buffer").clone()
     }
 
     /// a cell's own buffer; keep it alive past the cell body, as the capture drops with the guard
@@ -102,6 +102,8 @@ fn scoped() -> &'static Mutex<Vec<Logs>> {
 /// bevy's LogPlugin owns the global subscriber, so the first install wins and a loss is harmless
 fn install() {
     INSTALL.get_or_init(|| {
+        // open the buffer before the subscriber exists, or the records between the two are lost for good
+        BINARY.get_or_init(Logs::default);
         let _ = set_global_default(Registry::default().with(Fanout));
     });
 }
