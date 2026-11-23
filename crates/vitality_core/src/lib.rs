@@ -12,7 +12,7 @@ use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 use tracing::{debug, trace};
 
-/// `warn!` once per call site: a system that runs every tick says a thing a single time.
+/// `warn!` once per call site per monomorphization: a generic fn latches once per instantiation (so per attribute), a plain one once per process.
 #[macro_export]
 macro_rules! warn_once {
     ($($arg:tt)+) => {{
