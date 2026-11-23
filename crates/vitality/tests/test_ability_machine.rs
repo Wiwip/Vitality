@@ -578,6 +578,33 @@ fn activating_a_token_the_actor_never_got_warns_with_the_token_and_the_actor() {
     );
 }
 
+/// a host's input code hands over a token the app never registered, which is a mistake to report, not to die on
+#[test]
+fn activating_a_token_nothing_registered_warns_and_the_update_survives() {
+    let logs = logs::Logs::scoped();
+
+    let actor = logs.run(|| {
+        let mut app = test_app(|| bsn! { Tasks [ @task::<LongTask>(NoData) ] });
+        app.update();
+        let actor = spawned_actor(&mut app);
+        let fireball = AbilityToken::new_static("Fireball");
+        app.add_systems(Update, move |mut abilities: Abilities| {
+            abilities.try_activate_by_token(actor, &fireball, TargetData::SelfCast)
+        });
+        app.update();
+        actor
+    });
+
+    let warns = logs.warns();
+    assert!(
+        warns.contains("Fireball")
+            && warns.contains(&actor.to_string())
+            && warns.contains("add_ability"),
+        "an unregistered token has to warn at WARN level and name the token, the actor and how \
+         to register it, got: {warns}"
+    );
+}
+
 /// the entities a `Tasks` relationship holds, empty for a task that owns none
 fn children(app: &App, parent: Entity) -> Vec<Entity> {
     app.world()

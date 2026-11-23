@@ -77,8 +77,8 @@ impl<'w, 's> Abilities<'w, 's> {
     }
 
     pub fn get_ability_entity(&self, actor: Entity, token: &AbilityToken) -> Option<Entity> {
-        let handle = self.get_ability_from_token(token);
-        self.get_ability_entity_by_handle(actor, &handle)
+        let handle = self.registry.ability_registry.try_get(token)?;
+        self.get_ability_entity_by_handle(actor, handle)
     }
 
     pub fn get_ability_entity_by_handle(
@@ -125,7 +125,14 @@ impl<'w, 's> Abilities<'w, 's> {
         token: &AbilityToken,
         target_data: TargetData,
     ) {
-        let handle = self.get_ability_from_token(token);
+        let Some(handle) = self.registry.ability_registry.try_get(token) else {
+            warn!(
+                "{entity} cannot activate {token}: nothing registered that token, so that \
+                 activation is dropped; add it with RegistryMut::add_ability"
+            );
+            return;
+        };
+        let handle = handle.clone();
         if self.try_activate(entity, &handle, target_data) {
             return;
         }
