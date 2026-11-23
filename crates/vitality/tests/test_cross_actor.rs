@@ -360,7 +360,7 @@ fn a_periodic_source_modifier_writes_its_caster() {
 /// A persistent modifier folded into its carrier still writes the target, hence the apply-time warn.
 #[test]
 fn a_persistent_source_modifier_writes_the_target_and_says_so() {
-    // warn_once! is per call site and the spawn_order cell shares it, so read what the binary captured
+    // the fold refusal latches for the whole process, so this cell matches text and never a count
     let logs = Logs::of_binary();
     let mut app = app();
     let caster = spawn(&mut app, hero_def().with::<Power>(25.0));
@@ -408,11 +408,27 @@ fn a_persistent_source_modifier_writes_the_target_and_says_so() {
         "and it has to print the actor the folded write really lands on: {described}"
     );
 
+    // a second folded attribute, and a carrier of its own so `effects.on(target)` still names one effect
+    let bystander = spawn(&mut app, hero_def());
+    let hex = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Power>(Power::src(), ModOp::Add, EffectSubject::Source)
+            .build(),
+    );
+    apply(&mut app, caster, bystander, &hex);
+    ticks(&mut app, SETTLE);
+
     let warns = logs.warns();
+    let folded: Vec<&str> = warns
+        .lines()
+        .filter(|line| line.contains("folds every modifier"))
+        .collect();
     assert!(
-        warns.contains("Mod<Armor>") && warns.contains("folds every modifier"),
-        "the routing the modifier refuses to advertise in its name it owes out loud, at warn \
-         level, got: {warns}"
+        folded.iter().any(|line| line.contains("Mod<Armor>"))
+            && folded.iter().any(|line| line.contains("Mod<Power>")),
+        "the routing the modifier refuses to advertise in its name it owes out loud, one warn line \
+         per folded attribute, got: {folded:?}"
     );
 }
 
@@ -514,7 +530,7 @@ mod spawn_order {
     }
 
     fn world(order: [&'static str; 3]) -> (App, BTreeMap<&'static str, Entity>) {
-        // folds a permanent Source modifier too: a second trip of that warn_once! site, capture first
+        // folds a permanent Source modifier too: a second attribute through that routing latch, capture first
         let _logs = Logs::of_binary();
         let mut app = app();
         let mut by_id = BTreeMap::new();

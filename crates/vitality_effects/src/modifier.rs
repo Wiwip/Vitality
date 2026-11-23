@@ -12,8 +12,9 @@ use bevy_reflect::{Reflect, reflect_trait};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::any::TypeId;
+use std::collections::HashSet;
 use std::fmt::{Debug, Display, Formatter};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use tracing::{error, warn};
 use vitality_core::attributes::record_dependencies;
 use vitality_core::modifier::Calc;
@@ -97,6 +98,18 @@ where
     }
 }
 
+/// refused (attribute, subject) routings: `warn_once!` latches per call site, so a second attribute folded the same way would stay silent
+static REFUSED_ROUTINGS: OnceLock<Mutex<HashSet<(TypeId, EffectSubject)>>> = OnceLock::new();
+
+/// true the first time this pair is refused, whatever app or actor brings it
+fn first_refusal(attribute: TypeId, subject: EffectSubject) -> bool {
+    REFUSED_ROUTINGS
+        .get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .insert((attribute, subject))
+}
+
 impl<T> Modifier for AttributeModifier<T>
 where
     T: Attribute,
@@ -178,8 +191,8 @@ where
             op: modifier.operation,
             who: self.who,
         };
-        if folds_into_holder {
-            warn_once!(
+        if folds_into_holder && first_refusal(TypeId::of::<T>(), self.who) {
+            warn!(
                 "Modifier {shown} names {} but a persistent effect folds every modifier into the \
                  actor that carries it, so this one writes the effect's target",
                 self.who,
@@ -439,7 +452,7 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Reflect, Serialize, Deserialize)]
 pub enum EffectSubject {
     Target,
     Source,
