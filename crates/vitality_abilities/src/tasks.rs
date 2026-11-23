@@ -400,7 +400,7 @@ type JudgeItem = (
     Has<Ability>,
 );
 
-/// The only place a composite judges its children; it reads its own tally, not their states.
+/// The only place a composite judges its children; the tally picks the next child and when they run out.
 pub(crate) fn on_child_settled(
     trigger: On<ChildSettled>,
     // Cast is read only: the task machine query below reads it too
