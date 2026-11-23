@@ -392,13 +392,27 @@ impl<T: Attribute> Clamp<T> {
 
     pub fn apply(&self, value: T::Property) -> T::Property {
         if !self.ready {
-            value
-        } else if value < self.min_limit {
+            return value;
+        }
+        if self.min_limit > self.max_limit {
+            crate::warn_once!(
+                "{} is clamped between min {} and max {}, which is inverted: every value lands on \
+                 the max, swap the two limits to bound it from below",
+                pretty_type_name::<T>(),
+                self.min_limit,
+                self.max_limit,
+            );
+        }
+        // comparisons rather than max/min, so a NaN value still falls through both bounds untouched
+        let raised = if value < self.min_limit {
             self.min_limit
-        } else if value > self.max_limit {
-            self.max_limit
         } else {
             value
+        };
+        if raised > self.max_limit {
+            self.max_limit
+        } else {
+            raised
         }
     }
 }

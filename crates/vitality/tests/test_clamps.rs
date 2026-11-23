@@ -108,6 +108,29 @@ fn a_clamp_edge_found_mid_tick_re_resolves_the_attribute_it_governs() {
     );
 }
 
+/// a min above the max is legal input (`clamp` takes any two expressions), so the clamp has to land on the max
+#[test]
+fn an_inverted_clamp_lands_on_the_max_and_says_so() {
+    let logs = Logs::of_binary();
+    let mut app = app();
+    let hero = spawn(
+        &mut app,
+        hero_def()
+            .with::<Health>(150.0)
+            .clamp::<Health>(200.0, 100.0),
+    );
+    ticks(&mut app, 2);
+
+    assert_eq!(current::<Health>(&app, hero), 100.0, "above the max");
+    assert_eq!(base::<Health>(&app, hero), 100.0, "the base is clamped too");
+
+    let warns = logs.warns();
+    assert!(
+        warns.contains("Health") && warns.contains("200") && warns.contains("100"),
+        "the inverted limits have to be named with the attribute: {warns}"
+    );
+}
+
 #[test]
 fn a_buff_cannot_push_current_past_the_max() {
     let mut app = app();
