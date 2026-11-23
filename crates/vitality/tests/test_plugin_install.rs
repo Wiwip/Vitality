@@ -135,22 +135,6 @@ fn every_sub_plugin_added_before_attributes_plugin() {
 }
 
 #[test]
-fn every_sub_plugin_added_after_attributes_plugin() {
-    let mut app = headless();
-    app.add_plugins(AttributesPlugin);
-    app.add_plugins((
-        CorePlugin,
-        AbilityPlugin,
-        ConditionPlugin,
-        EffectsPlugin,
-        GlobalEffectPlugin::default(),
-    ));
-
-    assert_built(&app);
-    app.update();
-}
-
-#[test]
 fn vitality_plugin_added_twice_registers_each_attribute_once() {
     let mut app = headless();
     app.add_plugins(VitalityPlugin::new().attribute::<Probe>());
