@@ -790,3 +790,36 @@ fn trigger_of_a_revoked_ability_never_fires() {
         "the revoked ability's trigger entity has to go with the ability"
     );
 }
+
+#[test]
+fn revoke_takes_the_task_scene_observers_with_it() {
+    let mut app = app();
+    let hold = ability(
+        &mut app,
+        AbilityBuilder::new()
+            .set_tasks(|| bsn! { Tasks [ @wait_task(1.0) ] })
+            .build(),
+    );
+    let caster = caster_with(&mut app, &[]);
+    let before = app.world().entities().count_spawned();
+
+    let granted = hold.clone();
+    with_abilities(&mut app, move |a| {
+        a.grant_ability(&granted, caster)
+            .expect("an actor can be granted an ability")
+    });
+    ticks(&mut app, 1);
+    assert!(
+        app.world().entities().count_spawned() > before,
+        "the grant spawns the task scene"
+    );
+
+    let handle = hold.clone();
+    assert!(with_abilities(&mut app, move |a| a.revoke(caster, &handle)));
+    ticks(&mut app, 1);
+    assert_eq!(
+        app.world().entities().count_spawned(),
+        before,
+        "revoke has to take the task scene's observers along"
+    );
+}
