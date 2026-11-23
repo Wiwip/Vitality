@@ -465,6 +465,16 @@ impl AttributeRegistry {
         if let Some(info) = self.infos.iter_mut().find(|info| info.type_id == attribute) {
             info.fold_modifier = fold;
             self.revision += 1;
+        } else {
+            // the latch lives per monomorphization, so each attribute says this once on its own
+            warn_once!(
+                "{} is not registered, so every modifier of it folds into nothing for the app's \
+                 whole life: register the attribute first, with init_core_attribute::<{}>() or \
+                 vitality::init_attribute::<{}>()",
+                pretty_type_name::<T>(),
+                pretty_type_name::<T>(),
+                pretty_type_name::<T>(),
+            );
         }
     }
 

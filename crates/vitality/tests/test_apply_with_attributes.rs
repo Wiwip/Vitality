@@ -1,4 +1,5 @@
-//! An apply whose target carries the attribute folds and says nothing; own binary for the one `warn_once!`.
+//! An apply whose target carries the attribute folds and says nothing, and an effect half installed
+//! on its own; own binary for the `warn_once!`s.
 
 mod gameplay;
 
@@ -6,6 +7,7 @@ mod gameplay;
 mod logs;
 
 use crate::logs::Logs;
+use bevy::prelude::*;
 use gameplay::*;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
@@ -38,6 +40,25 @@ fn an_apply_to_an_entity_carrying_the_attribute_says_nothing() {
     assert!(
         !warns.contains(&post.to_string()),
         "and nothing is warned about it, got: {}",
+        logs.all()
+    );
+}
+
+#[test]
+fn an_effect_attribute_installed_on_its_own_names_the_core_registration_it_lacks() {
+    let logs = Logs::scoped();
+
+    logs.run(|| {
+        // AttributesPlugin registers Stacks, not Mana: this is the app that skipped init_attribute
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+        vitality::effect::init_effect_attribute::<Mana>(&mut app);
+    });
+
+    let warns = logs.warns();
+    assert!(
+        warns.contains("Mana") && warns.contains("init_core_attribute::<Mana>"),
+        "a fold installing on nothing has to name the attribute and its missing core half, got: {}",
         logs.all()
     );
 }
