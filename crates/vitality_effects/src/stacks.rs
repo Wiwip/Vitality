@@ -13,7 +13,7 @@ use vitality_core::store::Handle;
 pub enum EffectStackingPolicy {
     None, // Each effect is independently added to the entity
     Add { count: u32, max_stack: u32 },
-    RefreshDuration, // The effect overrides previous applications
+    RefreshDuration, // A reapply refreshes the duration of the copy already applied
 }
 attribute_impl!(Stacks, u32);
 
