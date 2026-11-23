@@ -149,7 +149,13 @@ impl MachineState<AbilityMachine> for ReadyState {
                 "[{ability_id}] not activated: its handle holds no AbilityDef in Assets<AbilityDef>; \
                  load the asset before triggering the ability"
             );
-            return EventResult::Ignored;
+            // `can_activate` answers NotGranted for a missing def too; a variant of its own is a public enum change
+            ctx.external.commands.trigger(AbilityActivationFailed {
+                entity: ability_id,
+                caster: source,
+                reason: ActivationError::NotGranted,
+            });
+            return EventResult::Handled;
         };
 
         if let Err(reason) = check_activation(def, &caster_ref, &ability_ref, target_ref) {
