@@ -29,15 +29,6 @@ impl<'s, 'w> Vitality<'w, 's> {
         self.effect_assets.add(effect)
     }
 
-    pub fn apply_effect_to_target(
-        &mut self,
-        target: Entity,
-        source: Entity,
-        handle: &vitality_core::store::Handle<EffectDef>,
-    ) {
-        self.effects.apply(source, target, handle);
-    }
-
     pub fn apply_effect_to_self(
         &mut self,
         source: Entity,

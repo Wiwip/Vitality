@@ -23,7 +23,6 @@ type ClampDependents = HashMap<TypeId, Vec<TypeId>>;
 #[derive(Asset, TypePath)]
 pub struct ActorDef {
     pub name: String,
-    pub description: String,
     pub builder_actions: VecDeque<EntityActions>,
     pub abilities: Vec<Handle<AbilityDef>>,
     pub effects: Vec<vitality_core::store::Handle<EffectDef>>,
@@ -126,7 +125,6 @@ impl ActorBuilder {
         Self {
             actor: ActorDef {
                 name: "Actor".to_string(),
-                description: "".to_string(),
                 builder_actions: Default::default(),
                 abilities: vec![],
                 effects: vec![],
