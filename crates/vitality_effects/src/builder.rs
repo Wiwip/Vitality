@@ -1,5 +1,4 @@
-use crate::EffectTarget;
-use crate::EffectStackingPolicy;
+use crate::{EffectStackingPolicy, EffectTarget};
 use crate::application::EffectApplicationPolicy;
 use crate::conditions::IsAttributeWithinBounds;
 use crate::context::EffectExprSchema;
