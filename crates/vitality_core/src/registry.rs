@@ -551,8 +551,8 @@ impl AttributeRegistry {
     }
 }
 
-/// refused (read, reader) pairs, so every dropped edge names itself once: a `warn_once!` here is per process
-static REFUSED_CLAMPS: OnceLock<Mutex<HashSet<(AttrId, AttrId)>>> = OnceLock::new();
+/// refused (read, reader) type pairs: `warn_once!` is per call site so the latch is manual, and it keys on types because ids are renumbered per app
+static REFUSED_CLAMPS: OnceLock<Mutex<HashSet<(TypeId, TypeId)>>> = OnceLock::new();
 
 /// Limits resolve first; unknown or cyclic edges drop and attributes walked before a new edge come back.
 pub fn add_clamp_edges(
@@ -572,10 +572,10 @@ pub fn add_clamp_edges(
     let mut fresh: Vec<(AttrId, AttrId)> = Vec::new();
     let mut connected = Vec::new();
     for (actor, key, clamped) in reads {
-        let Some(read) = bindings
-            .dependency(&key)
-            .and_then(|binding| registry.id_of(binding.attribute))
-        else {
+        let Some(dependency) = bindings.dependency(&key) else {
+            continue;
+        };
+        let Some(read) = registry.id_of(dependency.attribute) else {
             continue;
         };
         let Some(reader) = registry.id_of(clamped) else {
@@ -586,7 +586,7 @@ pub fn add_clamp_edges(
                 .get_or_init(Mutex::default)
                 .lock()
                 .unwrap_or_else(|err| err.into_inner())
-                .insert((read, reader));
+                .insert((dependency.attribute, clamped));
             if first_refusal {
                 let (read_name, reader_name) = (
                     registry.info(read).name.clone(),

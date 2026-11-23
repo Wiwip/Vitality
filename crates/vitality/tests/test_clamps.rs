@@ -4,9 +4,14 @@ mod gameplay;
 mod logs;
 
 use crate::logs::Logs;
+use bevy::prelude::*;
+use bevy::time::TimeUpdateStrategy;
 use gameplay::*;
+use std::any::TypeId;
+use vitality::actors::ActorBuilder;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
+use vitality_core::registry::{AttrId, AttributeRegistry};
 
 fn clamped_hero() -> vitality::actors::ActorBuilder {
     hero_def().clamp::<Health>(0.0, MaxHealth::src())
@@ -238,6 +243,100 @@ fn a_second_refused_clamp_pair_warns_too() {
         logs.warn_count("a clamp on Mana reads Health"),
         1,
         "the later ticks refuse the same pair in silence: {refused:?}"
+    );
+}
+
+mod game_a {
+    use vitality::prelude::*;
+    vitality::attribute!(Vigor, f32);
+    vitality::attribute!(Reserve, f32);
+    vitality::attribute!(Ward, f32);
+}
+
+mod game_b {
+    use vitality::prelude::*;
+    vitality::attribute!(Constitution, f32);
+    vitality::attribute!(Stockpile, f32);
+    vitality::attribute!(Bulwark, f32);
+}
+
+// one app holding its own three attributes, registered in the same order in both halves of the cell
+fn looped_app<A: Attribute, B: Attribute, C: Attribute>() -> App {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        VitalityPlugin::new()
+            .attribute::<A>()
+            .attribute::<B>()
+            .attribute::<C>(),
+    ));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(STEP));
+    app.update();
+    app
+}
+
+// the refused pair of a_second_refused_clamp_pair_warns_too, over different types
+fn looped_def<
+    A: Attribute<Property = f32>,
+    B: Attribute<Property = f32>,
+    C: Attribute<Property = f32>,
+>() -> ActorBuilder {
+    ActorBuilder::new()
+        .name("Hero")
+        .with::<A>(100.0)
+        .with::<B>(50.0)
+        .with::<C>(10.0)
+        .clamp::<A>(0.0, B::src())
+        .clamp::<B>(0.0, A::src() * 2.0)
+}
+
+fn refused_ids(app: &App, read: TypeId, reader: TypeId) -> (AttrId, AttrId) {
+    let registry = app.world().resource::<AttributeRegistry>();
+    (
+        registry.id_of(read).expect("registered"),
+        registry.id_of(reader).expect("registered"),
+    )
+}
+
+/// the latch keys on the attribute types: a second app hands out the same ids again
+#[test]
+fn a_second_app_in_the_process_warns_about_its_own_refused_pair() {
+    let logs = Logs::of_binary();
+
+    let mut first = looped_app::<game_a::Vigor, game_a::Reserve, game_a::Ward>();
+    spawn(
+        &mut first,
+        looped_def::<game_a::Vigor, game_a::Reserve, game_a::Ward>(),
+    );
+    ticks(&mut first, 2);
+
+    let mut second = looped_app::<game_b::Constitution, game_b::Stockpile, game_b::Bulwark>();
+    spawn(
+        &mut second,
+        looped_def::<game_b::Constitution, game_b::Stockpile, game_b::Bulwark>(),
+    );
+    ticks(&mut second, 2);
+
+    assert_eq!(
+        refused_ids(
+            &first,
+            TypeId::of::<game_a::Vigor>(),
+            TypeId::of::<game_a::Reserve>()
+        ),
+        refused_ids(
+            &second,
+            TypeId::of::<game_b::Constitution>(),
+            TypeId::of::<game_b::Stockpile>()
+        ),
+        "both apps have to hand the refused pair the same two ids, or the cell pins nothing"
+    );
+
+    let warns = logs.warns();
+    assert!(
+        warns.contains("a clamp on Reserve reads Vigor")
+            && warns.contains("a clamp on Stockpile reads Constitution"),
+        "each app's dropped edge has to name its own pair: {warns}"
     );
 }
 
