@@ -143,14 +143,14 @@ impl AbilityBuilder {
 
     pub fn with_cooldown<E: AsExpression<f32, AbilityExprSchema, Target: Copy + 'static>>(
         mut self,
-        cost: E,
+        cooldown: E,
     ) -> Self
     where
         <E as AsExpression<f32, AbilityExprSchema>>::Target:
             express_it::expr::Expr<f32, AbilityExprSchema>,
     {
         let node_expr = express_it::nodes::Node {
-            expr: cost.as_expr(),
+            expr: cooldown.as_expr(),
             _marker: Default::default(),
         };
         self.cooldown = Box::new(node_expr);
