@@ -4,6 +4,7 @@ mod gameplay;
 mod logs;
 
 use crate::logs::Logs;
+use bevy::prelude::*;
 use gameplay::*;
 use vitality::effect::conditions::HasComponent;
 use vitality::effect::modifier::{EffectSubject, ModOp};
@@ -102,6 +103,58 @@ fn removing_an_entity_that_is_not_an_effect_spares_it() {
     assert!(
         warns.contains("not an effect") && warns.contains(&hero.to_string()),
         "the dropped removal has to name the entity and why: {warns}"
+    );
+}
+
+/// a target event an `add_actor_trigger` watches, like an on-hit riposte
+#[derive(EntityEvent, Clone)]
+struct LocalStruck {
+    #[event_target]
+    pub target: Entity,
+}
+
+#[derive(Resource, Default)]
+struct Hits(pub u32);
+
+#[test]
+fn trigger_of_a_removed_effect_never_fires() {
+    let mut app = app();
+    app.insert_resource(Hits::default());
+    let hero = spawn(&mut app, hero_def());
+    let spawned = app.world().entities().count_spawned();
+    let riposte = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .add_actor_trigger(|_: On<LocalStruck>, mut hits: ResMut<Hits>| hits.0 += 1)
+            .build(),
+    );
+
+    apply(&mut app, hero, hero, &riposte);
+    ticks(&mut app, 1);
+
+    app.world_mut().trigger(LocalStruck { target: hero });
+    ticks(&mut app, 1);
+    assert_eq!(
+        app.world().resource::<Hits>().0,
+        1,
+        "applied, the trigger answers the event on its target"
+    );
+
+    let effect_entity = with_effects(&mut app, move |effects| effects.on(hero))[0];
+    with_effects(&mut app, move |effects| effects.remove(effect_entity));
+    ticks(&mut app, 1);
+
+    app.world_mut().trigger(LocalStruck { target: hero });
+    ticks(&mut app, 1);
+    assert_eq!(
+        app.world().resource::<Hits>().0,
+        1,
+        "the removed effect's trigger entity has to go with the effect"
+    );
+    assert_eq!(
+        app.world().entities().count_spawned(),
+        spawned,
+        "removal has to take the effect's trigger entity along"
     );
 }
 

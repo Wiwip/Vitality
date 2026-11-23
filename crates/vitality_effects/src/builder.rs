@@ -1,18 +1,51 @@
+use crate::EffectTarget;
 use crate::EffectStackingPolicy;
 use crate::application::EffectApplicationPolicy;
 use crate::conditions::IsAttributeWithinBounds;
 use crate::context::EffectExprSchema;
 use crate::definition::EffectDef;
 use crate::modifier::{AttributeModifier, Capture, EffectSubject};
-use bevy_ecs::prelude::{Bundle, Component, Entity, EntityCommands, EntityEvent, Name};
+use bevy_ecs::prelude::{
+    Bundle, ChildOf, Component, Entity, EntityCommands, EntityEvent, EntityWorldMut, Name, Observer,
+};
 use bevy_ecs::system::IntoObserverSystem;
 use express_it::expr::{AsExpression, Expr};
 use std::ops::RangeBounds;
 use std::sync::Arc;
+use tracing::warn;
 use vitality_core::attributes::Attribute;
 use vitality_core::modifier::ModOp;
 use vitality_core::mutator::EntityActions;
 use vitality_core::tags::TagSpec;
+use vitality_core::util::pretty_type_name;
+
+/// the observer belongs to the effect, so removal takes it along, while `anchor` says what it watches
+fn effect_trigger<E: EntityEvent, M>(
+    anchor: impl Fn(&EntityWorldMut) -> Option<Entity> + Send + Sync + 'static,
+    observer: impl IntoObserverSystem<E, M> + Clone + Sync + 'static,
+) -> EntityActions {
+    let anchor = Arc::new(anchor);
+    EntityActions::new(move |entity_commands: &mut EntityCommands| {
+        let anchor = anchor.clone();
+        let observer = observer.clone();
+        entity_commands.queue(move |mut effect: EntityWorldMut| {
+            let effect_id = effect.id();
+            let Some(watched) = anchor(&effect) else {
+                warn!("[{effect_id}] Effect has no anchor: its trigger watches nothing.");
+                return;
+            };
+            let mut observer = Observer::new(observer);
+            observer.watch_entity(watched);
+            effect.world_scope(|world| {
+                world.spawn((
+                    ChildOf(effect_id),
+                    observer,
+                    Name::new(format!("On<{}>", pretty_type_name::<E>())),
+                ));
+            });
+        });
+    })
+}
 
 pub struct EffectBuilder {
     def: EffectDef,
@@ -154,11 +187,9 @@ impl EffectBuilder {
         mut self,
         observer: impl IntoObserverSystem<E, M> + Clone + Sync + 'static,
     ) -> Self {
-        self.def.on_effect_triggers.push(EntityActions::new(
-            move |entity_commands: &mut EntityCommands| {
-                entity_commands.observe(observer.clone());
-            },
-        ));
+        self.def
+            .on_effect_triggers
+            .push(effect_trigger(|effect| Some(effect.id()), observer));
         self
     }
 
@@ -166,10 +197,9 @@ impl EffectBuilder {
         mut self,
         observer: impl IntoObserverSystem<E, M> + Clone + Sync + 'static,
     ) -> Self {
-        self.def.on_actor_triggers.push(EntityActions::new(
-            move |entity_commands: &mut EntityCommands| {
-                entity_commands.observe(observer.clone());
-            },
+        self.def.on_actor_triggers.push(effect_trigger(
+            |effect| effect.get::<EffectTarget>().map(|target| target.0),
+            observer,
         ));
         self
     }

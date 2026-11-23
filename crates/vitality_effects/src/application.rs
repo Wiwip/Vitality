@@ -292,7 +292,11 @@ impl ApplyEffectEvent {
         if let Some(ticker) = ticker {
             effect_commands.insert(ticker);
         }
-        for triggers in &effect.on_effect_triggers {
+        for triggers in effect
+            .on_effect_triggers
+            .iter()
+            .chain(&effect.on_actor_triggers)
+        {
             triggers.apply(&mut effect_commands);
         }
 
@@ -315,9 +319,6 @@ impl ApplyEffectEvent {
         let mut target_commands = commands.entity(target);
         for tag in &effect.granted_tags {
             target_commands.queue_silenced(ChangeTag::grant(*tag));
-        }
-        for triggers in &effect.on_actor_triggers {
-            triggers.apply(&mut target_commands);
         }
 
         Some(effect_entity)
