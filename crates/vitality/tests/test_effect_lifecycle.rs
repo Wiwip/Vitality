@@ -604,7 +604,6 @@ fn the_condition_verdict_is_ordered_ahead_of_the_duration_walk() {
     };
     let targets = named("tick_effect_durations");
     let mut pending = named("evaluate_effect_conditions");
-    let mut seen: Vec<_> = Vec::new();
     let ordered = loop {
         let Some(node) = pending.pop() else {
             break false;
@@ -612,10 +611,6 @@ fn the_condition_verdict_is_ordered_ahead_of_the_duration_walk() {
         if targets.contains(&node) {
             break true;
         }
-        if seen.contains(&node) {
-            continue;
-        }
-        seen.push(node);
         pending.extend(dag.neighbors(node));
     };
 
