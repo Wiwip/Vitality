@@ -23,7 +23,7 @@ use vitality_core::warn_once;
 use vitality_core::{AttributeBindings, DepRole};
 
 pub trait Modifier: Send + Sync {
-    /// spawns the modifier onto the effect entity; `commands` already carries the modifier component
+    /// `commands` must name a spawned entity: a dependency on a second actor spawns a proxy pointing at it
     fn spawn_persistent_modifier(
         &self,
         targeting: &EffectTargeting,
