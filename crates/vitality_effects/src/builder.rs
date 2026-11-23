@@ -119,7 +119,7 @@ impl EffectBuilder {
         self
     }
 
-    /// read once at application, unlike [`Self::active_while`], and instant effects never read it at all
+    /// read once at application, unlike [`Self::active_while`], and instant effects never read it at all; the apply has no effect entity yet, so an `Effect` subject reads the source
     ///
     /// # Example
     /// ```

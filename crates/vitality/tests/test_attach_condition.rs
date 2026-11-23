@@ -145,6 +145,57 @@ fn a_failed_attach_if_adds_no_stack_to_an_effect_already_carried() {
 }
 
 #[test]
+fn an_effect_subject_of_attach_if_reads_the_source_because_apply_has_no_effect_entity() {
+    let buff = || {
+        EffectBuilder::permanent()
+            .attach_if(HasComponent::<Immune>::effect())
+            .modify::<Power>(5.0, ModOp::Add, EffectSubject::Target)
+            .build()
+    };
+
+    {
+        let mut app = app();
+        let hero = spawn(&mut app, hero_def().insert(Immune));
+        let carried = effect(&mut app, buff());
+
+        apply(&mut app, hero, hero, &carried);
+        ticks(&mut app, 2);
+
+        let held = with_effects(&mut app, move |e| e.on(hero));
+        assert_eq!(
+            held.len(),
+            1,
+            "at apply the Effect subject reads the source, the only actor in reach"
+        );
+        assert!(
+            !has::<Immune>(&app, held[0]),
+            "the effect entity never carried the tag the attach read through the source"
+        );
+        assert_eq!(
+            current::<Power>(&app, hero),
+            15.0,
+            "the attach survives the walk"
+        );
+    }
+
+    {
+        let mut app = app();
+        let hero = spawn(&mut app, hero_def());
+        let missed = effect(&mut app, buff());
+
+        apply(&mut app, hero, hero, &missed);
+        ticks(&mut app, 2);
+
+        assert_eq!(
+            effects_on(&mut app, hero),
+            0,
+            "a source without the tag misses the same gate"
+        );
+        assert_eq!(current::<Power>(&app, hero), 10.0);
+    }
+}
+
+#[test]
 fn attach_if_leaves_an_instant_effect_ungated_where_active_while_gates_it() {
     // the instant branch never reads attach_conditions, so the miss changes nothing
     {

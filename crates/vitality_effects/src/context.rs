@@ -27,6 +27,7 @@ impl ContextMut for EffectExprSchema {
 pub struct EffectExprContext<'w, 's> {
     pub source_actor: EffectsRef<'w, 's>,
     pub target_actor: Option<EffectsRef<'w, 's>>,
+    /// the effect entity in every eval pass but the apply, where none exists yet and the source stands in
     pub effect_holder: EffectsRef<'w, 's>,
     /// what a [`crate::conditions::ChanceCondition`] draws from
     pub rng: &'w ConditionRng,
