@@ -16,7 +16,7 @@ type EffectInfo = (
     &'static Effect,
     &'static EffectSource,
     Option<&'static EffectTags>,
-    Option<&'static Stacks>,
+    &'static Stacks,
     Option<&'static EffectDuration>,
 );
 
@@ -61,7 +61,7 @@ impl Effects<'_, '_> {
 
     pub fn stacks(&self, effect: Entity) -> Option<u32> {
         let (_, _, _, stacks, _) = self.effects.get(effect).ok()?;
-        Some(stacks.map_or(1, |stacks| stacks.current_value()))
+        Some(stacks.current_value())
     }
 
     pub fn remove(&mut self, effect: Entity) {
