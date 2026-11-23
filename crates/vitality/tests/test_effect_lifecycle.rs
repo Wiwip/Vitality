@@ -106,6 +106,39 @@ fn removing_an_entity_that_is_not_an_effect_spares_it() {
     );
 }
 
+/// `Effects::remove_stacks` takes the same untrusted `Entity`
+#[test]
+fn removing_stacks_from_an_entity_that_is_not_an_effect_spares_it() {
+    let logs = Logs::scoped();
+
+    let (app, hero) = logs.run(|| {
+        let mut app = app();
+        let hero = spawn(&mut app, hero_def());
+        let buff = effect(
+            &mut app,
+            EffectBuilder::permanent()
+                .modify::<Power>(5.0, ModOp::Add, EffectSubject::Target)
+                .build(),
+        );
+        apply(&mut app, hero, hero, &buff);
+        ticks(&mut app, 1);
+
+        with_effects(&mut app, move |effects| effects.remove_stacks(hero, 1));
+        ticks(&mut app, 2);
+        (app, hero)
+    });
+
+    assert!(
+        has::<Health>(&app, hero),
+        "handing the actor to Effects::remove_stacks instead of an effect entity despawned it"
+    );
+    let warns = logs.warns();
+    assert!(
+        warns.contains("not an effect") && warns.contains(&hero.to_string()),
+        "the dropped stack removal has to name the entity and why: {warns}"
+    );
+}
+
 /// a target event an `add_actor_trigger` watches, like an on-hit riposte
 #[derive(EntityEvent, Clone)]
 struct LocalStruck {

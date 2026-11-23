@@ -94,6 +94,10 @@ impl Effects<'_, '_> {
     /// Takes `count` stacks off an effect, removing it when none are left.
     pub fn remove_stacks(&mut self, effect: Entity, count: u32) {
         if self.effects.get(effect).is_err() {
+            warn!(
+                "Effect removal dropped: {effect} is gone or carries no Effect, so it is not \
+                 an effect this runtime spawned"
+            );
             return;
         }
         self.commands.queue(move |world: &mut World| {
