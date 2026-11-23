@@ -126,6 +126,24 @@ pub fn def_fields(source: &str) -> Result<Vec<(usize, SmolStr, String)>, DefFile
     Ok(fields)
 }
 
+/// a def holds one of a scalar key, so a repeat is the usual paste of two defs into one;
+/// the ability files share this
+pub fn scalar_field<T>(
+    slot: &mut Option<(usize, T)>,
+    line: usize,
+    key: &str,
+    value: T,
+) -> Result<(), DefFileError> {
+    if let Some((first, _)) = slot {
+        return Err(DefFileError::line(
+            line,
+            format!("`{key}` is already set on line {first}, and a def file holds one {key}"),
+        ));
+    }
+    *slot = Some((line, value));
+    Ok(())
+}
+
 /// Reads a def file into an [`EffectDef`], resolving every name through `names`.
 ///
 /// ```
@@ -154,8 +172,8 @@ pub fn effect_def_from_str(source: &str, names: &DefNames) -> Result<EffectDef, 
 
     for (line, key, value) in def_fields(source)? {
         match key.as_str() {
-            "name" => name = Some(value),
-            "policy" => policy = Some((line, value)),
+            "name" => scalar_field(&mut name, line, "name", value)?,
+            "policy" => scalar_field(&mut policy, line, "policy", value)?,
             "tag" => tags.push((line, value)),
             "requires" => requires.push((line, value)),
             "blocked_by" => blocked_by.push((line, value)),
@@ -177,7 +195,7 @@ pub fn effect_def_from_str(source: &str, names: &DefNames) -> Result<EffectDef, 
         None => EffectBuilder::permanent(),
         Some((line, spec)) => policy_builder(*line, spec)?,
     };
-    if let Some(name) = name {
+    if let Some((_, name)) = name {
         builder = builder.name(name);
     }
     let mut def = builder.build();

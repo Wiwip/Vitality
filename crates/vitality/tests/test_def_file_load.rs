@@ -197,6 +197,12 @@ fn a_def_file_line_the_loader_cannot_use_fails_naming_its_line() {
             "duration",
         ),
         (
+            "duplicate-name.effect",
+            "name = Aegis\nname = Ward\n",
+            2,
+            "name",
+        ),
+        (
             "unknown-tag.effect",
             "name = Deep Freeze\ntag = Frost\n",
             2,
@@ -270,6 +276,12 @@ fn a_def_file_line_the_loader_cannot_use_fails_naming_its_line() {
     }
 
     let ability_cases = [
+        (
+            "duplicate-cooldown.ability",
+            "cooldown = 1.0\ncooldown = 4.0\n",
+            2,
+            "cooldown",
+        ),
         (
             "huge-cooldown.ability",
             "name = Meteor\ncooldown = 1e30\n",

@@ -9,7 +9,7 @@ use bevy_ecs::prelude::*;
 use std::path::Path;
 use std::time::Duration;
 use vitality_core::mutator::EntityActions;
-use vitality_effects::def_file::def_fields;
+use vitality_effects::def_file::{def_fields, scalar_field};
 
 pub use vitality_effects::def_file::{DefFileError, DefNames};
 
@@ -33,8 +33,8 @@ pub fn ability_def_from_str(source: &str, names: &DefNames) -> Result<AbilityDef
 
     for (line, key, value) in def_fields(source)? {
         match key.as_str() {
-            "name" => name = Some(value),
-            "cooldown" => cooldown = Some((line, value)),
+            "name" => scalar_field(&mut name, line, "name", value)?,
+            "cooldown" => scalar_field(&mut cooldown, line, "cooldown", value)?,
             "tag" => tags.push((line, value)),
             "activation_owned" => owned.push((line, value)),
             "activation_requires" => requires.push((line, value)),
@@ -55,7 +55,7 @@ pub fn ability_def_from_str(source: &str, names: &DefNames) -> Result<AbilityDef
     }
 
     let mut builder = AbilityBuilder::new();
-    if let Some(name) = name {
+    if let Some((_, name)) = name {
         builder = builder.with_name(name);
     }
     if let Some((line, value)) = &cooldown {
