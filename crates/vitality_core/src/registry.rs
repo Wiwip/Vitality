@@ -482,7 +482,9 @@ impl AttributeRegistry {
         kind
     }
 
-    /// `reader` is computed from `read` on the same actor. Returns whether the edge is new.
+    /// `reader` is computed from `read` on the same actor; a self edge is dropped. Returns whether it is new.
+    ///
+    /// A cycle here panics, so guard with `closes_cycle` first, as `add_clamp_edges` does.
     pub fn add_edge(&mut self, read: AttrId, reader: AttrId) -> bool {
         if read == reader || !self.edges.insert((read, reader)) {
             return false;
@@ -493,7 +495,7 @@ impl AttributeRegistry {
         true
     }
 
-    /// Would `read -> reader` close a cycle? a startup error, not a live one; `add_edge` drops self edges
+    /// Would `read -> reader` close a cycle?
     pub fn closes_cycle(&self, read: AttrId, reader: AttrId) -> bool {
         let mut seen = AttrSet::default();
         seen.insert(reader);
