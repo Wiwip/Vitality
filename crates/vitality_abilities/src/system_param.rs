@@ -72,18 +72,6 @@ impl<'w, 's> Abilities<'w, 's> {
         Ok(definition)
     }
 
-    pub fn is_ability_ready(&self, ability_entity: Entity) -> bool {
-        self.machines
-            .is_in_state(ability_entity, AbilityState::Ready)
-            .inspect_err(|err| {
-                warn_once!(
-                    "[{}] AbilityMachine is_in_state failed: {err}",
-                    ability_entity
-                )
-            })
-            .unwrap_or_default()
-    }
-
     pub fn get_ability_from_token(&self, token: &AbilityToken) -> Handle<AbilityDef> {
         self.registry.ability(token)
     }
