@@ -6,7 +6,8 @@ use bevy_log::{error, warn_once};
 use bevy_scene::{CommandsSceneExt, Scene, bsn};
 use bevy_text::TextFont;
 use bevy_ui::{prelude::*, px};
-use ptree::{TreeBuilder, write_tree};
+use ptree::print_config::{ASCII_CHARS_TICK, PrintConfig};
+use ptree::{TreeBuilder, write_tree_with};
 use std::any::TypeId;
 use vitality_abilities::ability_state::AbilityMachine;
 use vitality_abilities::tasks::{Composite, Tasks};
@@ -97,6 +98,14 @@ pub struct ExploreParams<'w, 's> {
     type_registry: Res<'w, AppTypeRegistry>,
 }
 
+// bevy's default font has no box-drawing glyphs, so ptree's utf branches draw as tofu
+fn tree_config() -> PrintConfig {
+    PrintConfig {
+        characters: ASCII_CHARS_TICK.into(),
+        ..Default::default()
+    }
+}
+
 pub fn explore_actors_system(
     actors: ActorQuery<'_, '_>,
     ctx: ExploreParams<'_, '_>,
@@ -144,7 +153,7 @@ pub fn explore_actors_system(
     let tree = builder.build();
     if let Ok(mut text) = debug_overlay.single_mut() {
         let mut w = Vec::new();
-        let _ = write_tree(&tree, &mut w);
+        let _ = write_tree_with(&tree, &mut w, &tree_config());
         let rendered = String::from_utf8(w).unwrap();
         // assigning Text unconditionally change-detects it and bevy re-lays-out the block
         if text.0 != rendered {
