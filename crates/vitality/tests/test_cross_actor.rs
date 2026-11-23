@@ -535,7 +535,7 @@ mod spawn_order {
     }
 
     fn world(order: [&'static str; 3]) -> (App, BTreeMap<&'static str, Entity>) {
-        // folds a permanent Source modifier too: a second attribute through that routing latch, capture first
+        // folds a permanent Source modifier too, so the process buffer has to exist before this app runs
         let _logs = Logs::of_binary();
         let mut app = app();
         let mut by_id = BTreeMap::new();

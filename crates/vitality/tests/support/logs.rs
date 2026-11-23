@@ -13,7 +13,7 @@ static SCOPED: OnceLock<Mutex<Vec<Logs>>> = OnceLock::new();
 
 static INSTALL: OnceLock<()> = OnceLock::new();
 
-/// every record of the whole binary: `warn_once!` is per call site, so only the first cell sees it
+/// every record the global default saw: a [`Scope::run`] shadows it, so nothing fired inside one lands here
 static BINARY: OnceLock<Logs> = OnceLock::new();
 
 #[derive(Clone, Default)]
@@ -26,7 +26,7 @@ impl Logs {
         BINARY.get().expect("install opens the buffer").clone()
     }
 
-    /// a cell's own buffer; keep it alive past the cell body, as the capture drops with the guard
+    /// a cell's buffer plus what the global default saw while it lived; the capture stops when the guard drops
     pub fn scoped() -> Scope {
         install();
         let logs = Logs::default();
@@ -99,7 +99,7 @@ fn scoped() -> &'static Mutex<Vec<Logs>> {
     SCOPED.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-/// bevy's LogPlugin owns the global subscriber, so the first install wins and a loss is harmless
+/// nothing else here sets the global subscriber; a loss would blank every capture in the binary
 fn install() {
     INSTALL.get_or_init(|| {
         // open the buffer before the subscriber exists, or the records between the two are lost for good
