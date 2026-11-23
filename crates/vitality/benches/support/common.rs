@@ -268,7 +268,6 @@ fn prepare_world(mut ctx: Vitality, mut harness: ResMut<HarnessWorld>) {
     for index in 0..spec.effects_per_actor {
         let ticking = rng.random_bool(spec.ticking_fraction as f64);
         let mut effect = if ticking {
-            // ~1 firing every 1-3 ticks once `Time<Fixed>` is advancing.
             EffectBuilder::every_second_permanently(rng.random_range(0.5..1.5))
         } else {
             EffectBuilder::permanent()
