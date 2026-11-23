@@ -14,6 +14,7 @@ use bevy_time::{Time, Timer, TimerMode};
 use hfsm_bevy::{MachineDefinition, MachineEvent, MachineInstance, MachineQuery};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use vitality_effects::checked_seconds;
 
 #[derive(Default, Copy, Clone, Debug, PartialEq)]
 pub enum TaskStatus {
@@ -128,7 +129,10 @@ pub struct WaitTask(Timer);
 
 impl WaitTask {
     pub fn from_secs(seconds: f32) -> Self {
-        let mut timer = Timer::from_seconds(seconds, TimerMode::Once);
+        let mut timer = Timer::from_seconds(
+            checked_seconds("WaitTask::from_secs", seconds),
+            TimerMode::Once,
+        );
         timer.pause();
         Self(timer)
     }

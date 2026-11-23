@@ -102,7 +102,7 @@ impl EffectApplicationPolicy {
     }
 }
 
-fn checked_seconds(method: &str, seconds: f32) -> f32 {
+pub fn checked_seconds(method: &str, seconds: f32) -> f32 {
     // bevy builds the Timer with Duration::from_secs_f32, which panics on anything this rejects
     if Duration::try_from_secs_f32(seconds).is_err() {
         panic!(

@@ -1086,6 +1086,12 @@ fn a_stopped_wait_never_asks_to_complete() {
 }
 
 #[test]
+#[should_panic(expected = "needs a finite number of seconds")]
+fn a_negative_wait_is_refused_by_the_name_that_can_say_so() {
+    let _ = wait_task(-1.0);
+}
+
+#[test]
 fn hold_keeps_the_ability_active_and_fires_task_failed() {
     let (mut app, ability) = cast(|| {
         bsn! {
