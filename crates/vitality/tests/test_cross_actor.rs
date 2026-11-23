@@ -458,14 +458,19 @@ fn an_instant_effect_subject_modifier_is_dropped_with_a_warn() {
 
     // warn_once! is per call site for the whole binary, so this matches text and never a count
     let warns = logs.warns();
+    let dropped: Vec<&str> = warns
+        .lines()
+        .filter(|line| line.contains("names EffectSubject::Effect"))
+        .collect();
     assert!(
-        warns.contains("Mod<Armor>")
-            && warns.contains("EffectSubject::Effect")
-            && warns.contains("instant")
-            && warns.contains("EffectSubject::Target")
-            && warns.contains("persistent"),
+        dropped.iter().any(|line| {
+            line.contains("Mod<Armor>")
+                && line.contains("instant")
+                && line.contains("EffectSubject::Target")
+                && line.contains("persistent")
+        }),
         "the dropped write has to name the modifier, the subject that dropped it and the remedy \
-         to fix it, at warn level, got: {warns}"
+         to fix it, on one line, at warn level: {dropped:?}"
     );
 }
 

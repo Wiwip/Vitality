@@ -194,11 +194,15 @@ fn a_clamp_limit_that_closes_a_cycle_is_refused_rather_than_panicking_the_tick()
     assert_eq!(current::<Armor>(&app, hero), 50.0);
 
     let warns = logs.warns();
+    let refused: Vec<&str> = warns
+        .lines()
+        .filter(|line| line.contains("closes an attribute dependency cycle"))
+        .collect();
     assert!(
-        warns.contains("closes an attribute dependency cycle")
-            && warns.contains("Power")
-            && warns.contains("Armor"),
-        "the refused edge has to name both attributes and why: {warns}"
+        refused
+            .iter()
+            .any(|line| line.contains("Power") && line.contains("Armor")),
+        "the refused edge has to name both attributes and why: {refused:?}"
     );
 
     with_vitality(&mut app, move |v| v.set_base::<Power>(hero, 20.0));
