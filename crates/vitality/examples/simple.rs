@@ -35,9 +35,6 @@ attribute!(AttackPower, u32);
 attribute!(Armour, f32);
 attribute!(MagicPower, u32);
 
-attribute!(TestU32Attribute, u32);
-attribute!(TestU8Attribute, u8);
-
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(LogPlugin {
