@@ -38,7 +38,7 @@ pub struct AttrSpec {
     pub register: fn(&mut App),
     pub type_id: TypeId,
     add_attribute: fn(ActorBuilder, Value) -> ActorBuilder,
-    /// Adds one `ModOp::Add` modifier for `T` with `EffectSubject::Target`.
+    /// Adds one `ModOp::Add` modifier for `T`.
     add_modifier: fn(EffectBuilder, Value, EffectSubject) -> EffectBuilder,
     base_of: fn(&World, Entity) -> Option<f64>,
     current_of: fn(&World, Entity) -> Option<f64>,
