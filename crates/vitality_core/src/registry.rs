@@ -149,6 +149,8 @@ pub type WriteCalcs = fn(&mut ModifierTable, Kind, AttrSet, &ValueBuf);
 /// set by the effects crate, which owns the modifier components
 pub type FoldModifier = fn(&mut ValueBuf, Kind, AttrId, &World, Entity, u32);
 
+pub type BaseWriteScan = fn(&mut World, AttrId, &mut Vec<(Entity, AttrId)>);
+
 /// Spelled out inside the struct it sits over clippy's complexity limit.
 pub type ResolveFn = fn(
     &mut FilteredEntityMut,
@@ -174,7 +176,7 @@ pub struct AttrInfo {
     /// Whether anything would receive this attribute's `CurrentValueChanged` trigger.
     pub has_observers: fn(&World) -> bool,
     /// Entities of this attribute whose base moved since the last scan, for [`scan_base_writes`].
-    pub base_write_scan: fn(&mut World, AttrId, &mut Vec<(Entity, AttrId)>),
+    pub base_write_scan: BaseWriteScan,
     pub fold_modifier: FoldModifier,
 }
 
@@ -780,14 +782,20 @@ fn base_write_scan<T: Attribute>(world: &mut World, id: AttrId, out: &mut Vec<(E
 }
 
 /// one node for every attribute, so the base-write scan adds no schedule node of its own per attribute
-pub fn scan_base_writes(world: &mut World, mut batch: Local<Vec<(Entity, AttrId)>>) {
-    let scans: Vec<_> = world
-        .resource::<AttributeRegistry>()
-        .infos()
-        .iter()
-        .map(|info| (info.id, info.base_write_scan))
-        .collect();
-    for (id, scan) in scans {
+pub fn scan_base_writes(
+    world: &mut World,
+    mut batch: Local<Vec<(Entity, AttrId)>>,
+    mut scans: Local<Vec<(AttrId, BaseWriteScan)>>,
+) {
+    scans.clear();
+    scans.extend(
+        world
+            .resource::<AttributeRegistry>()
+            .infos()
+            .iter()
+            .map(|info| (info.id, info.base_write_scan)),
+    );
+    for &(id, scan) in scans.iter() {
         scan(world, id, &mut batch);
     }
     world.resource::<ResolveQueue>().dirty_batch(&mut batch);
