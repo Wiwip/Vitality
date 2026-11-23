@@ -1,5 +1,9 @@
 mod gameplay;
 
+#[path = "support/logs.rs"]
+mod logs;
+
+use crate::logs::Logs;
 use gameplay::*;
 use vitality::effect::conditions::HasComponent;
 use vitality::effect::modifier::{EffectSubject, ModOp};
@@ -66,6 +70,39 @@ fn permanent_buff_applies_and_removal_reverts_it() {
     let events = recorded::<EffectRemoved>(&app);
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].reason, EffectRemovalReason::Removed);
+}
+
+/// the bare `Entity` of `Effects::remove` is the one removal argument the runtime cannot trust
+#[test]
+fn removing_an_entity_that_is_not_an_effect_spares_it() {
+    let logs = Logs::scoped();
+
+    let (app, hero) = logs.run(|| {
+        let mut app = app();
+        let hero = spawn(&mut app, hero_def());
+        let buff = effect(
+            &mut app,
+            EffectBuilder::permanent()
+                .modify::<Power>(5.0, ModOp::Add, EffectSubject::Target)
+                .build(),
+        );
+        apply(&mut app, hero, hero, &buff);
+        ticks(&mut app, 1);
+
+        with_effects(&mut app, move |effects| effects.remove(hero));
+        ticks(&mut app, 2);
+        (app, hero)
+    });
+
+    assert!(
+        has::<Health>(&app, hero),
+        "handing the actor to Effects::remove instead of an effect entity despawned it"
+    );
+    let warns = logs.warns();
+    assert!(
+        warns.contains("not an effect") && warns.contains(&hero.to_string()),
+        "the dropped removal has to name the entity and why: {warns}"
+    );
 }
 
 #[test]

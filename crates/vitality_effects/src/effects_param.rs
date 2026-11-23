@@ -8,6 +8,7 @@ use crate::{
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{SystemParam, SystemState};
 use std::any::TypeId;
+use tracing::warn;
 use vitality_core::attributes::Attribute;
 use vitality_core::store::Handle;
 
@@ -64,6 +65,13 @@ impl Effects<'_, '_> {
     }
 
     pub fn remove(&mut self, effect: Entity) {
+        if self.effects.get(effect).is_err() {
+            warn!(
+                "Effect removal dropped: {effect} is gone or carries no Effect, so it is not \
+                 an effect this runtime spawned"
+            );
+            return;
+        }
         remove_effect(&mut self.commands, effect, EffectRemovalReason::Removed);
     }
 
