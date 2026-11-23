@@ -81,15 +81,6 @@ impl EffectApplicationPolicy {
         }
     }
 
-    pub fn reset(&mut self) {
-        match self {
-            Self::Temporary { duration } | Self::PeriodicTemporary { duration, .. } => {
-                duration.reset();
-            }
-            _ => {}
-        }
-    }
-
     fn to_bundles(&self) -> (Option<impl Bundle>, Option<impl Bundle>) {
         let duration = match self {
             EffectApplicationPolicy::Temporary { duration } => Some(EffectDuration::new(duration)),

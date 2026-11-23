@@ -1,23 +1,9 @@
 use crate::definition::EffectDef;
 use crate::{EffectApplicationPolicy, EffectBuilder, Stacks};
 use bevy_derive::Deref;
-use bevy_ecs::prelude::{Component, Entity, Event};
+use bevy_ecs::prelude::{Component, Entity};
 use bevy_reflect::Reflect;
 use vitality_core::store::Handle;
-
-pub enum EffectStatus {
-    Active,
-    Inactive,
-}
-
-#[derive(Clone, Copy, Debug, Reflect)]
-pub enum Target {
-    SelfEntity,
-    TargetEntity,
-}
-
-#[derive(Event)]
-pub struct OnEffectStatusChangeEvent(pub EffectStatus);
 
 #[derive(Component, Debug, Default)]
 #[component(storage = "SparseSet")]
