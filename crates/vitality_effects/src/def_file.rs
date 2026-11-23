@@ -263,7 +263,8 @@ fn policy_builder(line: usize, spec: &str) -> Result<EffectBuilder, DefFileError
     Ok(builder)
 }
 
-/// `<attribute> <op> <value> <who>`, spelled like [`ModOp`] and [`EffectSubject`] name themselves.
+/// `<attribute> <op> <value> <who>`: an op of add, sub, mul, increase or set, a who of
+/// target, source or effect.
 fn modifier(names: &DefNames, line: usize, spec: &str) -> Result<Box<dyn Modifier>, DefFileError> {
     let mut words = spec.split_whitespace();
     let (Some(attribute), Some(op), Some(value), Some(who), None) = (

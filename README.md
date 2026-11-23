@@ -94,7 +94,7 @@ modifier = Health add 2 target
 
 Effect keys: `name`, `policy`, `tag`, `requires`, `blocked_by`, `cleanses`, `modifier`. Ability keys: `name`, `cooldown`, `tag`, `activation_owned`, `activation_requires`, `activation_blocked_by`, `blocks`, `cancels`.
 
-`policy` is `instant`, `permanent`, `for <seconds>`, `every <seconds>`, `every <seconds> for <seconds>`; absent means permanent. `modifier` is `<attribute> <op> <value> <who>` — op and who are `ModOp`/`EffectSubject` variant names.
+`policy` is `instant`, `permanent`, `for <seconds>`, `every <seconds>`, `every <seconds> for <seconds>`; absent means permanent. `modifier` is `<attribute> <op> <value> <who>` — op is `add`, `sub`, `mul`, `increase` or `set`, who is `target`, `source` or `effect`.
 
 A file only names what `DefNames` holds: `init_attribute::<T>()` for an attribute, `DefNames::tag::<T>()` for a tag, both as the short type name. Anything else fails its line (``line 2: no tag `Frost` ``), pinned with the loads in `crates/vitality/tests/test_def_file_load.rs`.
 
