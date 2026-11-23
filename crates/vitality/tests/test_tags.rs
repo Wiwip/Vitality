@@ -75,6 +75,7 @@ fn immunity_gained_while_the_effect_runs_removes_it() {
             .build(),
     );
     record::<EffectRemoved>(&mut app);
+    record::<EffectApplied>(&mut app);
 
     apply(&mut app, hero, hero, &burn);
     apply(&mut app, bystander, bystander, &burn);
@@ -105,6 +106,23 @@ fn immunity_gained_while_the_effect_runs_removes_it() {
         "the target that never gained the tag keeps the effect"
     );
     assert_eq!(current::<Armor>(&app, bystander), -2.0);
+
+    with_vitality(&mut app, move |v| v.revoke_tag::<Immune>(hero));
+    ticks(&mut app, 1);
+
+    assert!(
+        with_effects(&mut app, move |e| e.on(hero)).is_empty(),
+        "losing the immunity tag does not bring the effect back"
+    );
+    assert_eq!(current::<Armor>(&app, hero), 0.0);
+    let hero_applied = recorded::<EffectApplied>(&app)
+        .into_iter()
+        .filter(|applied| applied.entity == hero)
+        .count();
+    assert_eq!(
+        hero_applied, 1,
+        "the blocked effect is gone for good, not replayed"
+    );
 }
 
 #[test]

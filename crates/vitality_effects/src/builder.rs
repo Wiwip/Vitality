@@ -250,7 +250,7 @@ impl EffectBuilder {
         self
     }
 
-    /// The target is immune to this effect while it carries `T`.
+    /// A target carrying `T` cannot receive this effect, and one the tag takes off mid-run stays off: revoking `T` does not bring it back.
     pub fn blocked_by_tag<T: Component + Default>(mut self) -> Self {
         self.def.blocked_by_tags.push(TagSpec::of::<T>());
         self
