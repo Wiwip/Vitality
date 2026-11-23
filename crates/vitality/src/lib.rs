@@ -72,7 +72,7 @@ use vitality_effects::{
 
 pub use vitality_abilities as ability;
 pub use vitality_core::{
-    AppAttributeBindings, AttributeBindings, AttributeError, BaseValueChanged, CurrentValueChanged,
+    AppAttributeBindings, AttributeBindings, CurrentValueChanged,
     attribute, attribute_impl, attribute_set, attributes, express_it, mutator, store, tag, tags,
 };
 pub use vitality_effects as effect;

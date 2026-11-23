@@ -8,8 +8,6 @@ use bevy_platform::collections::HashMap;
 use bevy_platform::collections::hash_map::Entry;
 use smol_str::SmolStr;
 use std::any::TypeId;
-use std::error::Error;
-use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 use tracing::{debug, trace};
@@ -204,42 +202,9 @@ pub fn init_core_attribute<T: Attribute>(app: &mut App) {
 }
 
 #[derive(EntityEvent, Debug)]
-pub struct BaseValueChanged<T: Attribute> {
-    pub phantom_data: PhantomData<T>,
-    pub old: T::Property,
-    pub new: T::Property,
-    pub entity: Entity,
-}
-
-#[derive(EntityEvent, Debug)]
 pub struct CurrentValueChanged<T: Attribute> {
     pub phantom_data: PhantomData<T>,
     pub old: T::Property,
     pub new: T::Property,
     pub entity: Entity,
 }
-
-#[derive(Clone, Debug)]
-pub enum AttributeError {
-    AttributeNotPresent(TypeId),
-    PhantomQuery,
-}
-
-impl std::fmt::Display for AttributeError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AttributeError::AttributeNotPresent(type_id) => {
-                write!(
-                    f,
-                    "Attribute with TypeId {:?} not present on entity.",
-                    type_id
-                )
-            }
-            AttributeError::PhantomQuery => {
-                write!(f, "Phantom query on entity does not exist.")
-            }
-        }
-    }
-}
-
-impl Error for AttributeError {}
