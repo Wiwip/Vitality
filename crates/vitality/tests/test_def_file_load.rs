@@ -250,6 +250,12 @@ fn a_def_file_line_the_loader_cannot_use_fails_naming_its_line() {
             2,
             "inf",
         ),
+        (
+            "overflow-modifier.effect",
+            "name = Breaker\nmodifier = Health add 1e300 target\n",
+            2,
+            "is not a `Health` value",
+        ),
     ];
     for (file, body, line, bad) in cases {
         let path = def_file("line-error", file, body);

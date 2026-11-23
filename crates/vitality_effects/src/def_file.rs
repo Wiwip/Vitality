@@ -332,6 +332,10 @@ fn new_modifier<T: Attribute>(
     if value.to_f64() != written && !holds_fractions::<T::Property>() {
         return None;
     }
+    // the f64 literal fits but the narrower property does not: 1e300 saturates an f32 to inf
+    if !value.to_f64().is_finite() {
+        return None;
+    }
     Some(Box::new(AttributeModifier::<T>::new(
         value,
         op,
