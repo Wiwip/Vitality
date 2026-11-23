@@ -53,14 +53,18 @@ struct RecalcState<T: Attribute> {
     modifiers: QueryState<(&'static AttributeModifier<T>, &'static ModifierOf)>,
     effects: QueryState<(&'static EffectSource, &'static EffectTarget)>,
     actors: QueryState<EffectsRef<'static, 'static>>,
+    /// what `actors` was last refreshed for
+    archetypes: usize,
 }
 
 fn recalc<T: Attribute>(world: &mut World, modifier: Entity) -> bool {
     if !world.contains_resource::<RecalcState<T>>() {
+        let archetypes = world.archetypes().len();
         let state = RecalcState::<T> {
             modifiers: world.query(),
             effects: world.query(),
             actors: world.query(),
+            archetypes,
         };
         world.insert_resource(state);
     }
@@ -72,7 +76,12 @@ fn recalc<T: Attribute>(world: &mut World, modifier: Entity) -> bool {
         let effect = of.0;
         let (source, target) = state.effects.get(world, effect).ok()?;
         let (source, target) = (source.0, target.0);
-        state.actors.update_archetypes(world);
+        // query_manual reads the cached archetypes, which only move together with their count
+        let archetypes = world.archetypes().len();
+        if state.archetypes != archetypes {
+            state.actors.update_archetypes(world);
+            state.archetypes = archetypes;
+        }
         let actors = state.actors.query_manual(world);
         let source_ref = actors.get(source).ok()?;
         let target_ref = actors.get(target).ok()?;
