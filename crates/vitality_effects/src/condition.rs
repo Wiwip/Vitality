@@ -4,6 +4,7 @@ use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
 use crate::lifecycle::{EffectRemovalReason, remove_effect};
 use crate::systems::{DirtyMarks, MarkActorDirty};
+use crate::timing::tick_effect_tickers;
 use crate::{Effect, EffectConditional, EffectInactive, EffectSource, EffectTarget};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -27,7 +28,10 @@ impl Plugin for ConditionPlugin {
         }
         app.init_resource::<ConditionRng>().add_systems(
             FixedUpdate,
-            evaluate_effect_conditions.in_set(EffectsSet::Prepare),
+            // the verdict precedes the walks, so a gate closing on a duration's last step freezes it
+            evaluate_effect_conditions
+                .in_set(EffectsSet::Prepare)
+                .before(tick_effect_tickers),
         );
     }
 }

@@ -496,6 +496,27 @@ fn the_stack_refresh_is_ordered_ahead_of_the_duration_walk() {
 }
 
 #[test]
+fn the_condition_verdict_is_ordered_ahead_of_the_duration_walk() {
+    let built = app();
+    let schedule = built
+        .world()
+        .resource::<bevy::ecs::schedule::Schedules>()
+        .get(bevy::app::FixedUpdate)
+        .expect("the harness app has no FixedUpdate schedule");
+    assert!(
+        ordered_before(
+            schedule,
+            "evaluate_effect_conditions",
+            "tick_effect_durations"
+        ),
+        "evaluate_effect_conditions is no longer ordered ahead of tick_effect_durations in \
+         FixedUpdate, which is what lets `a_gate_closing_on_the_tick_the_duration_runs_out_freezes_it` \
+         freeze instead of expiring; the edge is `.before(tick_effect_tickers)`, and the duration \
+         walk follows it through the chain.",
+    );
+}
+
+#[test]
 fn a_periodic_effect_holds_its_first_fire_until_the_interval_elapses() {
     let mut app = app();
     let hero = spawn(&mut app, hero_def().with::<Health>(0.0));
@@ -559,6 +580,38 @@ fn a_gated_off_periodic_effect_pauses_its_duration() {
         base::<Health>(&app, hero),
         1.0,
         "the flag is on, so the ticker that waited out the gate owes its fire"
+    );
+}
+
+#[test]
+fn a_gate_closing_on_the_tick_the_duration_runs_out_freezes_it() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    let buff = effect(
+        &mut app,
+        EffectBuilder::for_seconds(2.0 * STEP.as_secs_f32())
+            .modify::<Power>(5.0, ModOp::Add, EffectSubject::Target)
+            .active_while(HasComponent::<Immune>::target())
+            .build(),
+    );
+    record::<EffectRemoved>(&mut app);
+
+    with_vitality(&mut app, move |v| v.grant_tag::<Immune>(hero));
+    apply(&mut app, hero, hero, &buff);
+    ticks(&mut app, 1);
+
+    with_vitality(&mut app, move |v| v.revoke_tag::<Immune>(hero));
+    ticks(&mut app, 1);
+
+    assert!(
+        recorded::<EffectRemoved>(&app).is_empty(),
+        "the gate closed on the second of the two steps the duration owed, so the effect had to \
+         freeze instead of being reaped `Expired`"
+    );
+    assert_eq!(
+        with_effects(&mut app, move |effects| effects.on(hero).len()),
+        1,
+        "a gated-off effect is held until the gate opens again"
     );
 }
 
