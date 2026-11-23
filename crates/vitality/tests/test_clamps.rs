@@ -205,6 +205,42 @@ fn a_clamp_limit_that_closes_a_cycle_is_refused_rather_than_panicking_the_tick()
     );
 }
 
+/// the refusal latches per refused pair, so a second cycle in the same process still says its name
+#[test]
+fn a_second_refused_clamp_pair_warns_too() {
+    let logs = Logs::of_binary();
+    let mut app = app();
+    spawn(
+        &mut app,
+        hero_def()
+            .clamp::<Health>(0.0, Mana::src())
+            .clamp::<Mana>(0.0, Health::src() * 2.0)
+            .clamp::<MaxHealth>(0.0, Armor::src())
+            .clamp::<Armor>(0.0, MaxHealth::src() * 2.0),
+    );
+    ticks(&mut app, 2);
+
+    let warns = logs.warns();
+    let refused: Vec<&str> = warns
+        .lines()
+        .filter(|line| line.contains("closes an attribute dependency cycle"))
+        .collect();
+    assert!(
+        refused
+            .iter()
+            .any(|line| line.contains("a clamp on Mana reads Health"))
+            && refused
+                .iter()
+                .any(|line| line.contains("a clamp on Armor reads MaxHealth")),
+        "every dropped edge has to name its own pair: {refused:?}"
+    );
+    assert_eq!(
+        logs.warn_count("a clamp on Mana reads Health"),
+        1,
+        "the later ticks refuse the same pair in silence: {refused:?}"
+    );
+}
+
 #[test]
 fn raising_the_max_keeps_health_where_it_was() {
     let mut app = app();

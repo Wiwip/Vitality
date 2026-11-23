@@ -14,7 +14,8 @@ use bevy_platform::collections::{HashMap, HashSet};
 use bevy_reflect::prelude::*;
 use std::any::{Any, TypeId};
 use std::fmt;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
+use tracing::warn;
 
 /// Dense index of a registered attribute.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Reflect)]
@@ -546,6 +547,9 @@ impl AttributeRegistry {
     }
 }
 
+/// refused (read, reader) pairs, so every dropped edge names itself once: a `warn_once!` here is per process
+static REFUSED_CLAMPS: OnceLock<Mutex<HashSet<(AttrId, AttrId)>>> = OnceLock::new();
+
 /// Limits resolve first; unknown or cyclic edges drop and attributes walked before a new edge come back.
 pub fn add_clamp_edges(
     world: &mut World,
@@ -574,15 +578,22 @@ pub fn add_clamp_edges(
             continue;
         };
         if registry.closes_cycle(read, reader) {
-            let (read_name, reader_name) = (
-                registry.info(read).name.clone(),
-                registry.info(reader).name.clone(),
-            );
-            warn_once!(
-                "a clamp on {reader_name} reads {read_name}, which closes an attribute dependency \
-                 cycle: the edge is dropped, so {reader_name} keeps the clamping it had before, \
-                 without {read_name} resolved ahead of it"
-            );
+            let first_refusal = REFUSED_CLAMPS
+                .get_or_init(Mutex::default)
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .insert((read, reader));
+            if first_refusal {
+                let (read_name, reader_name) = (
+                    registry.info(read).name.clone(),
+                    registry.info(reader).name.clone(),
+                );
+                warn!(
+                    "a clamp on {reader_name} reads {read_name}, which closes an attribute dependency \
+                     cycle: the edge is dropped, so {reader_name} keeps the clamping it had before, \
+                     without {read_name} resolved ahead of it"
+                );
+            }
             continue;
         }
         if registry.add_edge(read, reader) {
