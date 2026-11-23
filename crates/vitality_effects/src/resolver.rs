@@ -125,15 +125,18 @@ pub(crate) fn folded_attributes(
     registry: &AttributeRegistry,
 ) -> Option<AttrSet> {
     let mut attrs = AttrSet::default();
-    for modifier in owned.get(effect).ok()?.iter() {
-        let slot = slots.get(modifier).ok()?;
-        // an `Effect` modifier folds onto the effect entity, which this mark does not land on
-        if matches!(slot.who, EffectSubject::Effect) {
-            continue;
-        }
-        // an attribute no app registered owns nothing to mark
-        if let Some(id) = registry.id_of(slot.attribute) {
-            attrs.insert(id);
+    // no `OwnedModifiers` until the first modifier spawns: that is no attributes, not every one
+    if let Ok(modifiers) = owned.get(effect) {
+        for modifier in modifiers.iter() {
+            let slot = slots.get(modifier).ok()?;
+            // an `Effect` modifier folds onto the effect entity, which this mark does not land on
+            if matches!(slot.who, EffectSubject::Effect) {
+                continue;
+            }
+            // an attribute no app registered owns nothing to mark
+            if let Some(id) = registry.id_of(slot.attribute) {
+                attrs.insert(id);
+            }
         }
     }
     Some(attrs)

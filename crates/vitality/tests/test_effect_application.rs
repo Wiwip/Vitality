@@ -14,7 +14,8 @@ use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 use vitality::registry::effect_registry::EffectToken;
 use vitality::registry::{Registry, RegistryMut};
-use vitality::{AttributesPlugin, attribute, init_attribute};
+use vitality::{AttributesPlugin, attribute, init_attribute, tag};
+use vitality_core::registry::ResolveQueue;
 
 attribute!(TestA, f32);
 attribute!(TestB, f64);
@@ -282,4 +283,72 @@ fn test_update_current_values() {
     let attribute = app.world().get::<TestU32>(entity).unwrap();
     assert_eq!(0, attribute.base_value());
     assert_eq!(0, attribute.current_value());
+}
+
+tag!(Chilled);
+
+// draining is the only way to read what the next resolve has lined up for `actor`
+fn queued_for(app: &App, actor: Entity) -> usize {
+    let (pending, dirty) = app.world().resource::<ResolveQueue>().take();
+    pending
+        .iter()
+        .filter(|(entity, _)| *entity == actor)
+        .flat_map(|(_, mark)| mark.dirty.iter().chain(mark.regather.iter()))
+        .count()
+        + dirty.iter().filter(|(entity, _)| *entity == actor).count()
+}
+
+#[test]
+fn test_an_effect_with_no_modifier_marks_no_attribute() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+    app.add_plugins((init_attribute::<TestA>, init_attribute::<TestB>));
+    app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+
+    let hero = app
+        .world_mut()
+        .run_system_once(|mut ctx: Vitality| {
+            ctx.add_spawn_actor(
+                ActorBuilder::new()
+                    .name("TwoAttrs")
+                    .with::<TestA>(1.0)
+                    .with::<TestB>(2.0)
+                    .build(),
+            )
+            .id()
+        })
+        .unwrap();
+    app.update();
+    // the marks the spawn itself left are not what this is about
+    app.world().resource::<ResolveQueue>().take();
+
+    let handle = app
+        .world_mut()
+        .run_system_once(move |mut ctx: Vitality| {
+            ctx.apply_dynamic_effect_to_self(
+                hero,
+                EffectBuilder::permanent().with_tag::<Chilled>().build(),
+            )
+        })
+        .unwrap();
+    assert!(
+        app.world().get::<Chilled>(hero).is_some(),
+        "the apply has to land or the mark says nothing"
+    );
+    assert_eq!(
+        queued_for(&app, hero),
+        0,
+        "an effect carrying no modifier names no attribute to fold"
+    );
+
+    let removed = app
+        .world_mut()
+        .run_system_once(move |mut effects: Effects| effects.remove_by_def(hero, &handle))
+        .unwrap();
+    assert_eq!(removed, 1);
+    assert_eq!(
+        queued_for(&app, hero),
+        0,
+        "removing an effect that never marked an attribute marks none either"
+    );
 }

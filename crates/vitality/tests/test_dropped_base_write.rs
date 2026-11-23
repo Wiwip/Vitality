@@ -8,6 +8,7 @@ mod logs;
 use crate::logs::Logs;
 use gameplay::*;
 use vitality::actors::ActorBuilder;
+use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::{Attribute, EffectBuilder};
 
 #[test]
@@ -51,10 +52,13 @@ fn a_clamp_bound_to_an_attribute_the_actor_lacks_is_dropped_with_a_warn() {
 
     let bare = logs.run(|| {
         let mut app = app();
-        // a tag-only apply marks every attribute, so the resolve reaches a clamp never carried
+        // the clamp only runs when the attribute it bounds resolves, so the effect has to name it
         let burn = effect(
             &mut app,
-            EffectBuilder::permanent().with_tag::<Burning>().build(),
+            EffectBuilder::permanent()
+                .with_tag::<Burning>()
+                .modify::<Health>(-1.0, ModOp::Add, EffectSubject::Target)
+                .build(),
         );
         let bare = spawn(
             &mut app,
