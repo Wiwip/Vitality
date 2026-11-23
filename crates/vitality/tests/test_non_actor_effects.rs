@@ -2,6 +2,7 @@ mod gameplay;
 
 use gameplay::*;
 use vitality::attributes::{Clamp, ManageAttributes};
+use vitality::effect::conditions::HasComponent;
 use vitality::effect::context::EffectRole;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
@@ -109,6 +110,45 @@ fn an_effect_subject_modifier_writes_the_effect_entity() {
         current::<Armor>(&app, hero),
         7.0,
         "the target keeps the Armor it came with: an Effect modifier no longer folds onto it"
+    );
+}
+
+#[test]
+fn an_effect_gated_off_by_active_while_drops_its_own_modifier() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    let buff = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Armor>(5.0, ModOp::Add, EffectSubject::Effect)
+            .active_while(HasComponent::<Immune>::target())
+            .build(),
+    );
+    with_vitality(&mut app, move |v| v.grant_tag::<Immune>(hero));
+
+    apply(&mut app, hero, hero, &buff);
+    ticks(&mut app, 1);
+    let effect_entity = with_effects(&mut app, move |effects| effects.on(hero))[0];
+    assert_eq!(
+        current::<Armor>(&app, effect_entity),
+        5.0,
+        "the gate holds, so the effect folds its own +5"
+    );
+
+    with_vitality(&mut app, move |v| v.revoke_tag::<Immune>(hero));
+    ticks(&mut app, 1);
+    assert_eq!(
+        current::<Armor>(&app, effect_entity),
+        0.0,
+        "a gated-off effect folds nothing, and the entity its `Effect` leg folds onto has to hear that"
+    );
+
+    with_vitality(&mut app, move |v| v.grant_tag::<Immune>(hero));
+    ticks(&mut app, 1);
+    assert_eq!(
+        current::<Armor>(&app, effect_entity),
+        5.0,
+        "the gate reopens, so the +5 is folded again"
     );
 }
 

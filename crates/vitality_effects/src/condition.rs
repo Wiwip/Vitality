@@ -115,6 +115,11 @@ fn apply(commands: &mut Commands, decision: Decision) {
                 entity: target,
                 marks: DirtyMarks::Effect(effect),
             });
+            // an `Effect` modifier folds onto the effect entity, and the target's mark cannot reach it
+            commands.trigger(MarkActorDirty {
+                entity: effect,
+                marks: DirtyMarks::Own(effect),
+            });
         }
         Verdict::BecameInactive => {
             debug!("Effect {effect} is now inactive.");
@@ -122,6 +127,10 @@ fn apply(commands: &mut Commands, decision: Decision) {
             commands.trigger(MarkActorDirty {
                 entity: target,
                 marks: DirtyMarks::Effect(effect),
+            });
+            commands.trigger(MarkActorDirty {
+                entity: effect,
+                marks: DirtyMarks::Own(effect),
             });
         }
     }

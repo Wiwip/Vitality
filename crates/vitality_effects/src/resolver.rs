@@ -124,13 +124,23 @@ pub(crate) fn folded_attributes(
     slots: &Query<&ModifierSlot>,
     registry: &AttributeRegistry,
 ) -> Option<AttrSet> {
+    leg_attributes(effect, owned, slots, registry, false)
+}
+
+/// the attributes of one leg of `effect`: `own` picks the `Effect` subjects, which fold onto the effect entity
+fn leg_attributes(
+    effect: Entity,
+    owned: &Query<&OwnedModifiers>,
+    slots: &Query<&ModifierSlot>,
+    registry: &AttributeRegistry,
+    own: bool,
+) -> Option<AttrSet> {
     let mut attrs = AttrSet::default();
     // no `OwnedModifiers` until the first modifier spawns: that is no attributes, not every one
     if let Ok(modifiers) = owned.get(effect) {
         for modifier in modifiers.iter() {
             let slot = slots.get(modifier).ok()?;
-            // an `Effect` modifier folds onto the effect entity, which this mark does not land on
-            if matches!(slot.who, EffectSubject::Effect) {
+            if matches!(slot.who, EffectSubject::Effect) != own {
                 continue;
             }
             // an attribute no app registered owns nothing to mark
@@ -153,6 +163,7 @@ pub(crate) fn mark_actor_dirty_dag(
     let attrs = match trigger.marks {
         DirtyMarks::Attrs(attrs) => Some(attrs),
         DirtyMarks::Effect(effect) => folded_attributes(effect, &owned, &slots, &registry),
+        DirtyMarks::Own(effect) => leg_attributes(effect, &owned, &slots, &registry, true),
         DirtyMarks::Everything => None,
     };
     match attrs {
