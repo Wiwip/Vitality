@@ -95,8 +95,8 @@ impl Effects<'_, '_> {
     pub fn remove_stacks(&mut self, effect: Entity, count: u32) {
         if self.effects.get(effect).is_err() {
             warn!(
-                "Effect removal dropped: {effect} is gone or carries no Effect, so it is not \
-                 an effect this runtime spawned"
+                "Stack removal dropped: {effect} is gone or carries no Effect, so it has no \
+                 stacks this runtime tracks"
             );
             return;
         }
