@@ -586,6 +586,48 @@ fn a_gate_closing_on_the_tick_the_duration_runs_out_freezes_it() {
     );
 }
 
+/// the freeze above's edge: with it gone the executor still runs the verdict first, so no behavioural cell reddens
+#[test]
+fn the_condition_verdict_is_ordered_ahead_of_the_duration_walk() {
+    let built = app();
+    let schedule = built
+        .world()
+        .resource::<bevy::ecs::schedule::Schedules>()
+        .get(bevy::app::FixedUpdate)
+        .expect("the harness app has no FixedUpdate schedule");
+    let graph = schedule.graph();
+    let dag = graph.dependency().graph();
+    let named = |needle: &str| {
+        dag.nodes()
+            .filter(|node| graph.get_node_name(node).contains(needle))
+            .collect::<Vec<_>>()
+    };
+    let targets = named("tick_effect_durations");
+    let mut pending = named("evaluate_effect_conditions");
+    let mut seen: Vec<_> = Vec::new();
+    let ordered = loop {
+        let Some(node) = pending.pop() else {
+            break false;
+        };
+        if targets.contains(&node) {
+            break true;
+        }
+        if seen.contains(&node) {
+            continue;
+        }
+        seen.push(node);
+        pending.extend(dag.neighbors(node));
+    };
+
+    assert!(
+        ordered,
+        "evaluate_effect_conditions is no longer ordered ahead of tick_effect_durations in \
+         FixedUpdate, which is what lets `a_gate_closing_on_the_tick_the_duration_runs_out_freezes_it` \
+         freeze instead of expiring; the edge is `.before(tick_effect_tickers)`, and the duration \
+         walk follows it through the chain.",
+    );
+}
+
 /// the gate closes one tick after a fire and opens again mid-interval, with the ticker frozen part way
 #[test]
 fn a_reactivated_periodic_effect_waits_for_its_interval_again() {
