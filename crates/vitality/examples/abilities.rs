@@ -1,10 +1,7 @@
-use bevy::ecs::query::QueryData;
-use bevy::ecs::system::SystemParam;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use vitality::ability::tasks::{
-    AbilityItem, AbilityTask, CasterItem, Composite, DebugInstantTask, DebugLongTask, NoData,
-    TaskItem, TaskParam, TaskStatus, Tasks, parallel, sequence, task, wait_task,
+    Composite, DebugInstantTask, DebugLongTask, NoData, Tasks, parallel, sequence, task, wait_task,
 };
 use vitality::ability::{Abilities, AbilityBuilder, ExecuteAbility, TargetData};
 use vitality::actors::ActorBuilder;
@@ -116,40 +113,6 @@ fn apply_effects(mut vitality: Vitality, player: Single<Entity, With<Player>>) {
         .modify::<Health>(10.0, ModOp::Add, EffectSubject::Target)
         .build();
     vitality.apply_dynamic_effect_to_self(*player, effect);
-}
-
-#[allow(unused)]
-struct TestAbilityTask;
-impl AbilityTask for TestAbilityTask {
-    type CasterItem = ();
-    type AbilityItem = ();
-    type TaskItem = TaskContext;
-    type SystemParam = TaskSystemParam<'static, 'static>;
-    type Data = NoData;
-
-    fn activate(
-        _task_id: Entity,
-        _caster: CasterItem<Self>,
-        _ability: AbilityItem<Self>,
-        _task: TaskItem<Self>,
-        _param: &mut TaskParam<Self>,
-    ) -> TaskStatus {
-        println!("[{}] Began AbilityTask", _task.entity);
-
-        TaskStatus::Running
-    }
-}
-
-#[derive(QueryData)]
-#[query_data(mutable)]
-struct TaskContext {
-    entity: Entity,
-}
-
-#[derive(SystemParam)]
-pub struct TaskSystemParam<'w, 's> {
-    _commands: Commands<'w, 's>,
-    _time: Res<'w, Time>,
 }
 
 fn inputs(
