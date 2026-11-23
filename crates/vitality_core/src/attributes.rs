@@ -102,22 +102,6 @@ where
             _marker: Default::default(),
         }
     }
-    fn at_base<Role: 'static, C>() -> AttributeNode<Self, Self::Property, C, Role>
-    where
-        C: Context,
-        for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Role>,
-    {
-        Node {
-            expr: AttributeVar {
-                fetch_fn: |ctx: &C::ContextItem<'_, '_>| match ctx.get_actor().get::<Self>() {
-                    Some(attribute) => attribute.base_value(),
-                    None => missing::<Self, Role>(),
-                },
-                _marker: Default::default(),
-            },
-            _marker: Default::default(),
-        }
-    }
 
     fn add<Role, C>(
         expr: impl AsExpression<Self::Property, C, Target: Copy + Send + Sync + 'static>,
