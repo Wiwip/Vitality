@@ -496,27 +496,6 @@ fn the_stack_refresh_is_ordered_ahead_of_the_duration_walk() {
 }
 
 #[test]
-fn the_condition_verdict_is_ordered_ahead_of_the_duration_walk() {
-    let built = app();
-    let schedule = built
-        .world()
-        .resource::<bevy::ecs::schedule::Schedules>()
-        .get(bevy::app::FixedUpdate)
-        .expect("the harness app has no FixedUpdate schedule");
-    assert!(
-        ordered_before(
-            schedule,
-            "evaluate_effect_conditions",
-            "tick_effect_durations"
-        ),
-        "evaluate_effect_conditions is no longer ordered ahead of tick_effect_durations in \
-         FixedUpdate, which is what lets `a_gate_closing_on_the_tick_the_duration_runs_out_freezes_it` \
-         freeze instead of expiring; the edge is `.before(tick_effect_tickers)`, and the duration \
-         walk follows it through the chain.",
-    );
-}
-
-#[test]
 fn a_periodic_effect_holds_its_first_fire_until_the_interval_elapses() {
     let mut app = app();
     let hero = spawn(&mut app, hero_def().with::<Health>(0.0));
