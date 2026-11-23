@@ -14,7 +14,7 @@ use bevy_platform::collections::{HashMap, HashSet};
 use bevy_reflect::prelude::*;
 use std::any::{Any, TypeId};
 use std::fmt;
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 use tracing::warn;
 
 /// Dense index of a registered attribute.
@@ -370,6 +370,8 @@ pub struct AttributeRegistry {
     by_property: HashMap<TypeId, Kind>,
     kinds: Vec<KindInfo>,
     edges: HashSet<(AttrId, AttrId)>,
+    /// clamp edges refused for closing a cycle, so each warns once per app; not a resolver input, so it never bumps `revision`
+    refused_clamps: HashSet<(AttrId, AttrId)>,
     /// Attributes in dependency order; an edge `a -> b` puts `a` first.
     order: Vec<AttrId>,
     readers: Vec<Vec<AttrId>>,
@@ -560,9 +562,6 @@ impl AttributeRegistry {
     }
 }
 
-/// refused (read, reader) type pairs: `warn_once!` is per call site so the latch is manual, and it keys on types because ids are renumbered per app
-static REFUSED_CLAMPS: OnceLock<Mutex<HashSet<(TypeId, TypeId)>>> = OnceLock::new();
-
 /// Limits resolve first; unknown or cyclic edges drop and attributes walked before a new edge come back.
 pub fn add_clamp_edges(
     world: &mut World,
@@ -591,12 +590,7 @@ pub fn add_clamp_edges(
             continue;
         };
         if registry.closes_cycle(read, reader) {
-            let first_refusal = REFUSED_CLAMPS
-                .get_or_init(Mutex::default)
-                .lock()
-                .unwrap_or_else(|err| err.into_inner())
-                .insert((dependency.attribute, clamped));
-            if first_refusal {
+            if registry.refused_clamps.insert((read, reader)) {
                 let (read_name, reader_name) = (
                     registry.info(read).name.clone(),
                     registry.info(reader).name.clone(),

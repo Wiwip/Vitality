@@ -7,11 +7,9 @@ use crate::logs::Logs;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use gameplay::*;
-use std::any::TypeId;
 use vitality::actors::ActorBuilder;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
-use vitality_core::registry::{AttrId, AttributeRegistry};
 
 fn clamped_hero() -> vitality::actors::ActorBuilder {
     hero_def().clamp::<Health>(0.0, MaxHealth::src())
@@ -263,14 +261,7 @@ mod game_a {
     vitality::attribute!(Ward, f32);
 }
 
-mod game_b {
-    use vitality::prelude::*;
-    vitality::attribute!(Constitution, f32);
-    vitality::attribute!(Stockpile, f32);
-    vitality::attribute!(Bulwark, f32);
-}
-
-// one app holding its own three attributes, registered in the same order in both halves of the cell
+// one app holding its own three attributes, built twice by the cell that wants two of them
 fn looped_app<A: Attribute, B: Attribute, C: Attribute>() -> App {
     let mut app = App::new();
     app.add_plugins((
@@ -301,52 +292,25 @@ fn looped_def<
         .clamp::<B>(0.0, A::src() * 2.0)
 }
 
-fn refused_ids(app: &App, read: TypeId, reader: TypeId) -> (AttrId, AttrId) {
-    let registry = app.world().resource::<AttributeRegistry>();
-    (
-        registry.id_of(read).expect("registered"),
-        registry.id_of(reader).expect("registered"),
-    )
-}
-
-/// the latch keys on the attribute types: a second app hands out the same ids again
+/// the latch sits on the registry, so every app warns about the refused pair it drops for itself
 #[test]
 fn a_second_app_in_the_process_warns_about_its_own_refused_pair() {
     let logs = Logs::of_binary();
 
-    let mut first = looped_app::<game_a::Vigor, game_a::Reserve, game_a::Ward>();
-    spawn(
-        &mut first,
-        looped_def::<game_a::Vigor, game_a::Reserve, game_a::Ward>(),
-    );
-    ticks(&mut first, 2);
-
-    let mut second = looped_app::<game_b::Constitution, game_b::Stockpile, game_b::Bulwark>();
-    spawn(
-        &mut second,
-        looped_def::<game_b::Constitution, game_b::Stockpile, game_b::Bulwark>(),
-    );
-    ticks(&mut second, 2);
+    for _ in 0..2 {
+        let mut app = looped_app::<game_a::Vigor, game_a::Reserve, game_a::Ward>();
+        spawn(
+            &mut app,
+            looped_def::<game_a::Vigor, game_a::Reserve, game_a::Ward>(),
+        );
+        ticks(&mut app, 2);
+    }
 
     assert_eq!(
-        refused_ids(
-            &first,
-            TypeId::of::<game_a::Vigor>(),
-            TypeId::of::<game_a::Reserve>()
-        ),
-        refused_ids(
-            &second,
-            TypeId::of::<game_b::Constitution>(),
-            TypeId::of::<game_b::Stockpile>()
-        ),
-        "both apps have to hand the refused pair the same two ids, or the cell pins nothing"
-    );
-
-    let warns = logs.warns();
-    assert!(
-        warns.contains("a clamp on Reserve reads Vigor")
-            && warns.contains("a clamp on Stockpile reads Constitution"),
-        "each app's dropped edge has to name its own pair: {warns}"
+        logs.warn_count("a clamp on Reserve reads Vigor"),
+        2,
+        "a second app with the same attribute types has to warn for its own dropped edge: {}",
+        logs.warns()
     );
 }
 
