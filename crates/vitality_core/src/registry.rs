@@ -482,7 +482,7 @@ impl AttributeRegistry {
         kind
     }
 
-    /// `reader` is computed from `read` on the same actor. Returns whether it is new.
+    /// `reader` is computed from `read` on the same actor.
     ///
     /// A cycle here panics, so guard with `closes_cycle` first, as `add_clamp_edges` does.
     pub fn add_edge(&mut self, read: AttrId, reader: AttrId) -> bool {
