@@ -63,7 +63,8 @@ pub struct AttributeModifier<T: Attribute> {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
 pub enum Capture {
-    /// Re-evaluated whenever a read attribute changes, in the same tick.
+    /// Re-evaluated whenever a read attribute changes: the same tick when the chain settles inside the
+    /// resolver's pass budget, the next tick when a cross-actor chain runs past it.
     #[default]
     Live,
     /// Evaluated once when the effect is applied.
