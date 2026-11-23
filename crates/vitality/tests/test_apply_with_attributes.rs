@@ -57,7 +57,7 @@ fn an_effect_attribute_installed_on_its_own_names_the_core_registration_it_lacks
 
     let warns = logs.warns();
     assert!(
-        warns.contains("Mana") && warns.contains("init_core_attribute::<Mana>"),
+        warns.contains("init_core_attribute::<Mana>"),
         "a fold installing on nothing has to name the attribute and its missing core half, got: {}",
         logs.all()
     );
