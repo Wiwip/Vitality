@@ -58,7 +58,6 @@ pub fn setup_debug_overlay(mut commands: Commands) {
 }
 
 fn create_overlay() -> impl Scene {
-    println!("Creating overlay");
     bsn! {
         #DebugOverlay
         Node {
@@ -163,7 +162,7 @@ fn list_attributes(
     actor_components: &mut [(String, ComponentId, Option<TypeId>, usize)],
 ) {
     builder.begin_child("Attributes".to_string());
-    for (_, _, type_id, _) in actor_components.iter() {
+    for (name, _, type_id, _) in actor_components.iter() {
         let Some(type_id) = type_id else {
             continue;
         };
@@ -175,11 +174,17 @@ fn list_attributes(
         };
 
         let Some(type_registration) = registry.get(*type_id) else {
-            error!("Failed to get type registration for entity {:?}", *type_id);
+            error!(
+                "attribute walk: no type registration for {:?} / {}",
+                *type_id, name
+            );
             continue;
         };
         let Some(reflect_component) = type_registration.data::<ReflectComponent>() else {
-            error!("No reflect access attribute found");
+            error!(
+                "attribute walk: no ReflectComponent for {:?} / {}",
+                *type_id, name
+            );
             continue;
         };
         let Some(dyn_reflect) = reflect_component.reflect(actor_ref) else {
@@ -359,7 +364,10 @@ fn list_modifiers_for_effect(
             continue;
         };
         let Some(reflect_component) = type_registration.data::<ReflectComponent>() else {
-            error!("No reflect access attribute found");
+            error!(
+                "modifier walk: no ReflectComponent for {:?} / {}",
+                *type_id, name
+            );
             continue;
         };
         let Some(dyn_reflect) = reflect_component.reflect(modifier_ref) else {
