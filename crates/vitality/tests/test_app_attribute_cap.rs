@@ -180,6 +180,58 @@ mod late_registration {
     }
 }
 
+/// The other half of late registration: a registration made while the app ticks moves the registry
+/// out from under the resolver, which copies it for the whole pass loop.
+mod registered_after_the_first_tick {
+
+    use crate::gameplay::*;
+    use bevy::prelude::*;
+    use vitality::CurrentValueChanged;
+    use vitality::effect::modifier::{EffectSubject, ModOp};
+    use vitality::prelude::*;
+
+    attribute!(Late, f32);
+
+    /// the event is not `Clone`, so the harness' `record` cannot hold it
+    #[derive(Resource, Default)]
+    struct Fired(pub usize);
+
+    #[test]
+    fn an_attribute_registered_after_the_first_tick_still_notifies() {
+        let mut app = app();
+        // one real fixed tick: that is what builds the resolver's copy of the registry
+        ticks(&mut app, 1);
+        init_attribute::<Late>(&mut app);
+        app.init_resource::<Fired>();
+        app.add_observer(
+            |_: On<CurrentValueChanged<Late>>, mut fired: ResMut<Fired>| {
+                fired.0 += 1;
+            },
+        );
+
+        // no tick in between: the resolver's first pass after the registration is the one that moves Late
+        let mut def = Some(hero_def().with::<Late>(4.0).build());
+        let hero = with_vitality(&mut app, move |vitality| {
+            vitality.add_spawn_actor(def.take().expect("run once")).id()
+        });
+        let buff = effect(
+            &mut app,
+            EffectBuilder::permanent()
+                .modify::<Late>(5.0, ModOp::Add, EffectSubject::Target)
+                .build(),
+        );
+        apply(&mut app, hero, hero, &buff);
+        ticks(&mut app, 2);
+
+        assert_eq!(current::<Late>(&app, hero), 9.0, "the late attribute folds");
+        assert_eq!(
+            app.world().resource::<Fired>().0,
+            1,
+            "the observer sees the change"
+        );
+    }
+}
+
 /// The instant half of the same rule: the queue the deferred write rides needs a registered attribute
 mod unregistered_instant {
 

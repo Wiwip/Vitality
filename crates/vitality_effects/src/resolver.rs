@@ -714,6 +714,8 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
         .collect();
     // the pair merge is per property kind, so it runs whenever any attribute records at all
     let record = watched.iter().any(|watched| *watched);
+    // a registration since the last tick has to be in the copy the sends index
+    state.sync_plan(world);
     // shared copy, so the merge and the sends read the same tables the passes walk
     let plan = state.plan.clone();
 
