@@ -39,7 +39,7 @@ pub struct Change {
 
 type Slots = Vec<Option<Box<dyn Any + Send + Sync>>>;
 
-/// One typed buffer per [`Kind`]; a wrong downcast is an internal bug, so the generic fns panic.
+/// One typed buffer per [`Kind`]; slots panic on a wrong downcast, the typed reads answer [`None`].
 #[derive(Default)]
 pub struct ValueBuf {
     /// `Vec<Calc<P>>` per kind, dense by [`AttrId`]
