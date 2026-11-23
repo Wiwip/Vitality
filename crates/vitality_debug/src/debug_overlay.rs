@@ -197,7 +197,10 @@ fn list_attributes(
             continue;
         };
         let Some(dyn_reflect) = reflect_component.reflect(actor_ref) else {
-            error!("Failed to reflect entity");
+            error!(
+                "attribute walk: failed to reflect {:?} / {}",
+                *type_id, name
+            );
             continue;
         };
 
@@ -354,10 +357,6 @@ fn list_modifiers_for_effect(
 ) {
     for (name, _, type_id, _) in modifier_components.iter() {
         let Some(type_id) = type_id else {
-            error!(
-                "Failed to get type registration for entity {:?} / {}",
-                *type_id, name
-            );
             continue;
         };
 
@@ -369,7 +368,10 @@ fn list_modifiers_for_effect(
         };
 
         let Some(type_registration) = registry.get(*type_id) else {
-            error!("Failed to get type registration for entity {:?}", *type_id);
+            error!(
+                "modifier walk: no type registration for {:?} / {}",
+                *type_id, name
+            );
             continue;
         };
         let Some(reflect_component) = type_registration.data::<ReflectComponent>() else {
@@ -380,7 +382,7 @@ fn list_modifiers_for_effect(
             continue;
         };
         let Some(dyn_reflect) = reflect_component.reflect(modifier_ref) else {
-            error!("Failed to reflect entity");
+            error!("modifier walk: failed to reflect {:?} / {}", *type_id, name);
             continue;
         };
 
