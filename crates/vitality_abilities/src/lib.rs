@@ -54,7 +54,8 @@ impl Plugin for AbilityPlugin {
             return;
         }
         // the wait runs on the fixed clock like the cooldown and the effect timers, so a wait and a
-        // cooldown of the same length end on the same tick; added first, so it lands before the machines
+        // cooldown of the same length end on the same tick; each only queues a MachineEvent, so the
+        // order the two systems run in does not move that tick
         app.add_systems(FixedUpdate, handles_wait_task_timers);
 
         // add_state_machine inserts the definition and the plugin together, so the definition is never absent
