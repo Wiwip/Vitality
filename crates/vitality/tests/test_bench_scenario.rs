@@ -1,4 +1,4 @@
-//! Guards for the bench harness the gate never builds: the shares, the expr sums, the `#[path]` wiring.
+//! Guards for the bench harness the gate lints but never links: the shares, the expr sums, the `#[path]` wiring.
 
 #[path = "../benches/support/common.rs"]
 mod common;
@@ -243,7 +243,7 @@ fn includer(module: &Path) -> Option<PathBuf> {
         .find(|test| path_attrs(test).iter().any(|included| included == module))
 }
 
-// the gate builds tests, never bench targets: a support module no test includes compiles nowhere
+// the gate lints bench targets but never runs one: only a test that includes a support module executes it
 #[test]
 fn every_support_module_is_declared_and_included() {
     let declared: BTreeSet<PathBuf> = path_attrs(&bench_file()).into_iter().collect();
@@ -273,8 +273,6 @@ fn every_support_module_is_declared_and_included() {
     assert!(
         untested.is_empty(),
         "rule 2 (support modules must be wired): no test includes {untested:?} with a path \
-         attribute (scanned {scanned:?}); the gate compiles tests and never bench targets, so a \
-         support module nothing includes is code that never compiles until `cargo bench --no-run` \
-         says so",
+         attribute (scanned {scanned:?})",
     );
 }

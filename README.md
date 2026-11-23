@@ -138,4 +138,4 @@ cargo bench --offline --locked -p vitality --bench bench_systems -- scenario  # 
 
 Exactly one `--`: everything after it goes to criterion; a second one runs the whole suite. The filter is a regex against the full id, which carries its shape (`Workload::ALL`, `scenario_id` in `benches/support/scenario.rs`).
 
-`VITALITY_SCENARIO_ACTORS=10000` sets the size; `--features multi_threaded` gives the `storm` figure. Check `/proc/loadavg` before and after; under ~10 % is directional. The gate never builds benches — compile-check with `--no-run`.
+`VITALITY_SCENARIO_ACTORS=10000` sets the size; `--features multi_threaded` gives the `storm` figure. Check `/proc/loadavg` before and after; under ~10 % is directional. The gate lints the bench targets but never links or runs one — `cargo bench --no-run` is the link check.
