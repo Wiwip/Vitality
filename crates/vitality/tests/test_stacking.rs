@@ -148,6 +148,38 @@ fn refresh_policy_restarts_the_duration() {
     assert_eq!(current::<Power>(&app, hero), 10.0);
 }
 
+/// two ticks is the shortest duration whose expiry tick a second apply can still land on
+#[test]
+fn a_refresh_on_the_expiry_tick_beats_the_despawn() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    let buff = effect(
+        &mut app,
+        EffectBuilder::for_seconds(2.0 * STEP.as_secs_f32())
+            .modify::<Power>(5.0, ModOp::Add, EffectSubject::Target)
+            .with_stacking_policy(EffectStackingPolicy::RefreshDuration)
+            .build(),
+    );
+    record::<EffectRemoved>(&mut app);
+
+    apply(&mut app, hero, hero, &buff);
+    ticks(&mut app, 1);
+    apply(&mut app, hero, hero, &buff);
+    ticks(&mut app, 1);
+
+    assert_eq!(
+        current::<Power>(&app, hero),
+        15.0,
+        "a reapply landing on the tick the duration runs out on has to refresh the copy before \
+         the duration walk reaps it"
+    );
+    assert_eq!(with_effects(&mut app, move |e| e.on(hero)).len(), 1);
+    assert!(
+        recorded::<EffectRemoved>(&app).is_empty(),
+        "a duration that was refreshed on its last tick did not expire"
+    );
+}
+
 /// 0.3 s is 19.2 of the harness' 1/64 s ticks, so the ticker finishes on ticks 20, 39, 58, 77 and
 /// 97, and the refresh after 36 ticks moves the expiry to tick 101: five fires, the last of them
 /// four ticks short of the new expiry.

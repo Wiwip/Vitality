@@ -79,11 +79,7 @@ impl Plugin for EffectsPlugin {
         // same clock as the resolver and the periodic appliers, so a timer that finishes is seen once
         app.add_systems(
             FixedUpdate,
-            (
-                tick_effect_tickers,
-                tick_effect_durations,
-                read_add_stack_event,
-            )
+            (tick_effect_tickers, tick_effect_durations)
                 .chain()
                 .in_set(EffectsSet::Prepare),
         )
@@ -111,12 +107,20 @@ impl Plugin for EffectsPlugin {
                 .in_set(EffectsSet::UpdateCurrentValues)
                 .before(resolver::resolve_system),
         );
-        // one node for every attribute; the fire on the tick a duration expires must land before the despawn
+        // the fire on the tick a duration expires must land before the despawn
         app.add_systems(
             FixedUpdate,
             apply_all_periodic_effects
                 .in_set(EffectsSet::Prepare)
                 .after(tick_effect_tickers)
+                .before(tick_effect_durations),
+        );
+        // a reapply queued between two fixed steps has to reach its copy before the walk that reaps it
+        app.add_systems(
+            FixedUpdate,
+            read_add_stack_event
+                .in_set(EffectsSet::Prepare)
+                .after(apply_all_periodic_effects)
                 .before(tick_effect_durations),
         );
     }
