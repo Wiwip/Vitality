@@ -1,9 +1,9 @@
-use crate::{EffectStackingPolicy, EffectTarget};
 use crate::application::EffectApplicationPolicy;
 use crate::conditions::IsAttributeWithinBounds;
 use crate::context::EffectExprSchema;
 use crate::definition::EffectDef;
 use crate::modifier::{AttributeModifier, Capture, EffectSubject};
+use crate::{EffectStackingPolicy, EffectTarget};
 use bevy_ecs::prelude::{
     Bundle, ChildOf, Component, Entity, EntityCommands, EntityEvent, EntityWorldMut, Name, Observer,
 };
