@@ -408,7 +408,7 @@ fn a_persistent_source_modifier_writes_the_target_and_says_so() {
         "and it has to print the actor the folded write really lands on: {described}"
     );
 
-    // a second folded attribute, and a carrier of its own so `effects.on(target)` still names one effect
+    // a carrier of its own so `effects.on(target)` still names one effect
     let bystander = spawn(&mut app, hero_def());
     let hex = effect(
         &mut app,
