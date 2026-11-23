@@ -127,6 +127,11 @@ pub(crate) fn notify_stacks_changed(
         entity: target.0,
         marks: DirtyMarks::Effect(effect),
     });
+    // the target's mark only covers the non-`Effect` leg, and the effect entity holds its own
+    commands.trigger(MarkActorDirty {
+        entity: effect,
+        marks: DirtyMarks::Own(effect),
+    });
     commands.trigger(EffectStacksChanged {
         entity: target.0,
         effect,

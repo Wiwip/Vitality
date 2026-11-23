@@ -2,6 +2,7 @@ mod gameplay;
 
 use gameplay::*;
 use vitality::attributes::{Clamp, ManageAttributes};
+use vitality::effect::EffectStackingPolicy;
 use vitality::effect::conditions::HasComponent;
 use vitality::effect::context::EffectRole;
 use vitality::effect::modifier::{EffectSubject, ModOp};
@@ -149,6 +150,44 @@ fn an_effect_gated_off_by_active_while_drops_its_own_modifier() {
         current::<Armor>(&app, effect_entity),
         5.0,
         "the gate reopens, so the +5 is folded again"
+    );
+}
+
+#[test]
+fn a_stacked_effect_scales_its_own_leg_on_the_effect_entity() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    let buff = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Armor>(5.0, ModOp::Add, EffectSubject::Effect)
+            .with_stacking_policy(EffectStackingPolicy::Add {
+                count: 1,
+                max_stack: 3,
+            })
+            .build(),
+    );
+
+    apply(&mut app, hero, hero, &buff);
+    ticks(&mut app, 1);
+    let effect_entity = with_effects(&mut app, move |effects| effects.on(hero))[0];
+    assert_eq!(
+        current::<Armor>(&app, effect_entity),
+        5.0,
+        "one stack folds its own +5 once"
+    );
+
+    apply(&mut app, hero, hero, &buff);
+    ticks(&mut app, 1);
+    assert_eq!(
+        with_effects(&mut app, move |e| e.stacks(effect_entity)),
+        Some(2),
+        "the second apply stacked on the same effect entity"
+    );
+    assert_eq!(
+        current::<Armor>(&app, effect_entity),
+        10.0,
+        "two stacks scale the effect's own leg the same way they scale the target leg"
     );
 }
 
