@@ -107,7 +107,7 @@ impl Plugin for EffectsPlugin {
                 .in_set(EffectsSet::UpdateCurrentValues)
                 .before(resolver::resolve_system),
         );
-        // the fire on the tick a duration expires must land before the despawn
+        // one node for every attribute; the fire on the tick a duration expires must land before the despawn
         app.add_systems(
             FixedUpdate,
             apply_all_periodic_effects
