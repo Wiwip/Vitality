@@ -466,7 +466,7 @@ impl AttributeRegistry {
             info.fold_modifier = fold;
             self.revision += 1;
         } else {
-            warn_once!(
+            warn!(
                 "{} is not registered, so every modifier of it folds into nothing for the app's \
                  whole life: register the attribute first, with init_core_attribute::<{}>() or \
                  vitality::init_attribute::<{}>()",

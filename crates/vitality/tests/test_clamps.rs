@@ -130,9 +130,15 @@ fn an_inverted_clamp_lands_on_the_max_and_says_so() {
     assert_eq!(base::<Health>(&app, hero), 100.0, "the base is clamped too");
 
     let warns = logs.warns();
+    let inverted: Vec<&str> = warns
+        .lines()
+        .filter(|line| line.contains("is clamped between"))
+        .collect();
     assert!(
-        warns.contains("Health") && warns.contains("200") && warns.contains("100"),
-        "the inverted limits have to be named with the attribute: {warns}"
+        inverted
+            .iter()
+            .any(|line| line.contains("Health") && line.contains("200") && line.contains("100")),
+        "the inverted limits have to be named with the attribute on one line: {inverted:?}"
     );
 }
 

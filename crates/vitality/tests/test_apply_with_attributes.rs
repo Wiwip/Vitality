@@ -62,3 +62,27 @@ fn an_effect_attribute_installed_on_its_own_names_the_core_registration_it_lacks
         logs.all()
     );
 }
+
+#[test]
+fn two_effect_attributes_installed_on_their_own_name_both_core_halves_they_lack() {
+    let logs = Logs::scoped();
+
+    logs.run(|| {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+        vitality::effect::init_effect_attribute::<Mana>(&mut app);
+        vitality::effect::init_effect_attribute::<Power>(&mut app);
+    });
+
+    let warns = logs.warns();
+    assert!(
+        warns.contains("init_core_attribute::<Mana>"),
+        "the first unregistered attribute has to warn, got: {}",
+        logs.all()
+    );
+    assert!(
+        warns.contains("init_core_attribute::<Power>"),
+        "and so does the one installed after it, which a process-wide latch would silence, got: {}",
+        logs.all()
+    );
+}
