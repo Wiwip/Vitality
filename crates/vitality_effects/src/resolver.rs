@@ -278,6 +278,8 @@ struct Plan {
     gather: GatherState,
     order: Vec<AttrId>,
     readers: Vec<Vec<AttrId>>,
+    append: Vec<AppendPairs>,
+    notify: Vec<fn(&mut Commands, Entity, Change, &ValueBuf)>,
 }
 
 impl Plan {
@@ -289,6 +291,12 @@ impl Plan {
             readers: (0..registry.len())
                 .map(|i| registry.readers(AttrId(i as u16)).to_vec())
                 .collect(),
+            append: registry
+                .kinds()
+                .iter()
+                .map(|kind| kind.append_pairs)
+                .collect(),
+            notify: registry.infos().iter().map(|info| info.notify).collect(),
         }
     }
 }
@@ -706,17 +714,8 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
         .collect();
     // the pair merge is per property kind, so it runs whenever any attribute records at all
     let record = watched.iter().any(|watched| *watched);
-    let (append, notifies): (Vec<_>, Vec<_>) = {
-        let registry = world.resource::<AttributeRegistry>();
-        (
-            registry
-                .kinds()
-                .iter()
-                .map(|kind| kind.append_pairs)
-                .collect(),
-            registry.infos().iter().map(|info| info.notify).collect(),
-        )
-    };
+    // shared copy, so the merge and the sends read the same tables the passes walk
+    let plan = state.plan.clone();
 
     let mut changes: Vec<(Entity, AttrId, Change)> = Vec::new();
     let mut all_pairs = ValueBuf::default();
@@ -732,7 +731,7 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
         let (pass_changes, pass_clamps) = (changes.len(), clamp_reads.len());
         let mut readers = Vec::new();
         state.merge_threads(
-            &append,
+            &plan.append,
             record,
             &mut changes,
             &mut all_pairs,
@@ -772,7 +771,7 @@ fn resolve_attributes(world: &mut World, state: &mut ResolverState) {
     let mut commands = world.commands();
     for (entity, id, change) in changes {
         if watched[id.index()] {
-            (notifies[id.index()])(&mut commands, entity, change, &all_pairs);
+            (plan.notify[id.index()])(&mut commands, entity, change, &all_pairs);
         }
     }
     world.flush();
