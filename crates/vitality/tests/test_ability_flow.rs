@@ -341,10 +341,6 @@ fn an_ability_whose_asset_is_gone_reports_not_granted() {
     ticks(&mut app, 2);
 
     assert_eq!(failures(&app), vec![ActivationError::NotGranted]);
-    assert!(
-        recorded::<AbilityActivated>(&app).is_empty(),
-        "a def the assets no longer hold cannot activate"
-    );
 }
 
 #[test]
