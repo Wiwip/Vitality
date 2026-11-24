@@ -16,12 +16,11 @@ use std::collections::HashSet;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::{Arc, Mutex, OnceLock};
 use tracing::{error, warn};
-use vitality_core::attributes::record_dependencies;
 use vitality_core::modifier::Calc;
 pub use vitality_core::modifier::ModOp;
 use vitality_core::util::pretty_type_name;
 use vitality_core::warn_once;
-use vitality_core::{AttributeBindings, DepRole};
+use vitality_core::{AttributeBindings, DepBinding, DepRole};
 
 pub trait Modifier: Send + Sync {
     /// `commands` must name a spawned entity: a dependency on a second actor spawns a proxy pointing at it
@@ -123,7 +122,7 @@ where
         fires_on_a_timer: bool,
         commands: &mut EntityCommands,
     ) {
-        let (value, mut deps) = record_dependencies(|| self.expr.eval(ctx));
+        let value = self.expr.eval(ctx);
 
         // an Effect write lands on the effect entity, so that entity has to carry the attribute
         if matches!(self.who, EffectSubject::Effect) {
@@ -143,26 +142,23 @@ where
         let shown = modifier.to_string();
 
         if self.capture == Capture::Live {
-            // express-it reports into a HashSet; sort so the proxy choice is the same every run
-            let mut reported = std::collections::HashSet::new();
-            self.expr.get_dependencies(&mut reported);
-            let mut reported: Vec<TypeId> = reported.into_iter().collect();
-            reported.sort();
-            for key in reported {
-                if !deps.contains(&key) {
-                    deps.push(key);
+            let mut walked = HashSet::new();
+            self.expr.get_dependencies(&mut walked);
+            let mut deps: Vec<DepBinding> = Vec::with_capacity(walked.len());
+            for key in walked {
+                match type_bindings.dependency(&key) {
+                    Some(binding) => deps.push(binding),
+                    None => error!(
+                        "Expression dependency {:?} is not a registered attribute dependency for modifier {}",
+                        key,
+                        pretty_type_name::<T>(),
+                    ),
                 }
             }
+            // the walk is a HashSet, and its order decides which dependency sits on the modifier entity and which needs a proxy
+            deps.sort_by_key(|binding| (binding.attribute, binding.role));
             let mut seen: Vec<(TypeId, Entity)> = Vec::new();
-            for dep in deps {
-                let Some(binding) = type_bindings.dependency(&dep) else {
-                    error!(
-                        "Expression dependency {:?} is not a registered attribute dependency for modifier {}",
-                        dep,
-                        pretty_type_name::<T>(),
-                    );
-                    continue;
-                };
+            for binding in deps {
                 let actor = match binding.role {
                     DepRole::Source | DepRole::Caster => targeting.source(),
                     DepRole::Target => targeting.target(),

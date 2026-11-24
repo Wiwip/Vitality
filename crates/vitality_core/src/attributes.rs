@@ -434,29 +434,6 @@ where
     }
 }
 
-thread_local! {
-    static RECORDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    static RECORDED: std::cell::RefCell<Vec<TypeId>> = const { std::cell::RefCell::new(Vec::new()) };
-}
-
-/// operator nodes don't forward `get_dependencies`, so composite reads are recorded here, in first-read order
-pub fn record_dependencies<R>(f: impl FnOnce() -> R) -> (R, Vec<TypeId>) {
-    let was_recording = RECORDING.replace(true);
-    let out = f();
-    RECORDING.set(was_recording);
-    let deps = RECORDED.with_borrow_mut(std::mem::take);
-    (out, deps)
-}
-
-#[cold]
-fn note_read(key: TypeId) {
-    RECORDED.with_borrow_mut(|deps| {
-        if !deps.contains(&key) {
-            deps.push(key);
-        }
-    });
-}
-
 /// Dependency key of `T` read through `Role`, as reported by [`Expr::get_dependencies`].
 struct DepKey<T, Role>(PhantomData<fn() -> (T, Role)>);
 
@@ -478,9 +455,6 @@ impl<T: 'static, N: 'static, C: Context + 'static, Role: 'static> Expr<N, C>
 {
     #[inline(always)]
     fn eval(&self, ctx: &C::ContextItem<'_, '_>) -> N {
-        if RECORDING.get() {
-            note_read(dep_key::<T, Role>());
-        }
         (self.fetch_fn)(ctx)
     }
 
@@ -550,71 +524,25 @@ mod tests {
     }
 
     #[test]
-    fn recording_a_composite_expression_reports_every_attribute_it_reads() {
+    fn a_composite_expression_forwards_every_attribute_it_reads() {
         let (world, actor) = world_with(3.0, 4.0, 2.0);
         let ctx = ctx(&world, actor);
         let expr = (Attack::src::<ActorExprSchema>() + Defense::src::<ActorExprSchema>())
             * Haste::src::<ActorExprSchema>();
 
-        let (value, deps) = record_dependencies(|| expr.eval(&ctx));
+        assert_eq!(expr.eval(&ctx), 14.0, "the walk leaves the eval alone");
 
-        assert_eq!(value, 14.0, "the recording eval still returns the value");
+        let mut deps = HashSet::new();
+        expr.get_dependencies(&mut deps);
         assert_eq!(
             deps,
-            vec![
+            HashSet::from([
                 dep_key::<Attack, Source>(),
                 dep_key::<Defense, Source>(),
                 dep_key::<Haste, Source>(),
-            ],
-            "a composite reading three attributes has to report one key per (attribute, read role)"
-        );
-
-        let mut forwarded = HashSet::new();
-        expr.get_dependencies(&mut forwarded);
-        assert_eq!(
-            forwarded,
-            HashSet::new(),
-            "express-it's operator nodes still swallow get_dependencies, which is why the capture exists"
-        );
-    }
-
-    #[test]
-    fn a_nested_record_call_drains_the_buffer_and_the_outer_keeps_only_later_reads() {
-        let (world, actor) = world_with(3.0, 4.0, 5.0);
-        let ctx = ctx(&world, actor);
-
-        let (inner, outer) = record_dependencies(|| {
-            Attack::src::<ActorExprSchema>().eval(&ctx);
-            let (_, inner) = record_dependencies(|| Defense::src::<ActorExprSchema>().eval(&ctx));
-            Haste::src::<ActorExprSchema>().eval(&ctx);
-            inner
-        });
-
-        assert_eq!(
-            inner,
-            vec![dep_key::<Attack, Source>(), dep_key::<Defense, Source>()],
-            "the nested call takes the whole buffer, including the read the outer call made before it"
-        );
-        assert_eq!(
-            outer,
-            vec![dep_key::<Haste, Source>()],
-            "the outer call is left with only the read made after the nested one returned"
-        );
-    }
-
-    #[test]
-    fn a_plain_eval_outside_the_call_leaks_nothing_into_the_next_capture() {
-        let (world, actor) = world_with(3.0, 4.0, 5.0);
-        let ctx = ctx(&world, actor);
-        let expr = Attack::src::<ActorExprSchema>() + Defense::src::<ActorExprSchema>();
-
-        expr.eval(&ctx);
-        let (_, leaked) = record_dependencies(|| ());
-
-        assert_eq!(
-            leaked,
-            Vec::<TypeId>::new(),
-            "reads made with recording off must not reach the next capture"
+            ]),
+            "the walk is a may-read superset, one key per (attribute, read role): arithmetic nodes \
+             are exact, `&&`/`||` report both operands because their eval short-circuits"
         );
     }
 
@@ -625,11 +553,9 @@ mod tests {
         bindings.add::<Attack>();
         bindings.add::<Defense>();
 
-        let (world, actor) = world_with(3.0, 4.0, 5.0);
-        let ctx = ctx(&world, actor);
-        let (_, deps) = record_dependencies(|| {
-            (Attack::src::<ActorExprSchema>() + Defense::src::<ActorExprSchema>()).eval(&ctx)
-        });
+        let mut deps = HashSet::new();
+        (Attack::src::<ActorExprSchema>() + Defense::src::<ActorExprSchema>())
+            .get_dependencies(&mut deps);
 
         let resolved: Vec<(TypeId, DepRole)> = deps
             .iter()

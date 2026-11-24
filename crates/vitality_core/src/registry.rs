@@ -1,7 +1,7 @@
 //! Erased per-attribute operations and the type-level dependency DAG the resolver walks.
 
 use crate::CurrentValueChanged;
-use crate::attributes::{Attribute, AttributeDependents, Clamp, ClampBounds, record_dependencies};
+use crate::attributes::{Attribute, AttributeDependents, Clamp, ClampBounds};
 use crate::context::ActorExprContext;
 use crate::modifier::Calc;
 use crate::util::pretty_type_name;
@@ -210,7 +210,7 @@ fn resolve<T: Attribute>(
     let mut clamp: Option<Clamp<T>> = None;
     let bounded = entity.get_by_id(ids.clamp_bounds).is_some();
     if bounded {
-        // a limit only reports the attributes it reads while recording, and one pass per clamp is enough
+        // an unready clamp has to discover its limit reads, and one pass per clamp is enough
         let capture = entity
             .get_by_id(ids.clamp)
             .is_some_and(|clamp| unsafe { !clamp.deref::<Clamp<T>>().ready });
@@ -220,12 +220,17 @@ fn resolve<T: Attribute>(
             let context = ActorExprContext {
                 actor_context: view,
             };
-            let eval = || (bounds.min.eval(&context), bounds.max.eval(&context));
+            let limits = (bounds.min.eval(&context), bounds.max.eval(&context));
+            let mut reads: Vec<TypeId> = Vec::new();
             if capture {
-                record_dependencies(eval)
-            } else {
-                (eval(), Default::default())
+                let mut walked = std::collections::HashSet::new();
+                bounds.min.get_dependencies(&mut walked);
+                bounds.max.get_dependencies(&mut walked);
+                // the walk is a HashSet and the resolver keeps the order it is handed
+                reads.extend(walked);
+                reads.sort();
             }
+            (limits, reads)
         };
         clamp_reads.extend(
             reads
