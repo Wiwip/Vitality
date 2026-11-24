@@ -5,7 +5,7 @@ use crate::{Ability, TargetData};
 use bevy_asset::Assets;
 use bevy_ecs::prelude::*;
 use bevy_ecs::resource::IsResource;
-use bevy_log::debug;
+use bevy_log::{debug, error};
 
 #[derive(EntityEvent)]
 pub struct ActivateAbility {
@@ -69,10 +69,15 @@ pub(crate) fn activate_ability(
         }
     };
 
+    // a failed step keeps what the steps before it wrote and the activation still commits
     for plan in &ability_spec.on_execute {
-        plan.run(&mut context);
+        if let Err(err) = plan.run(&mut context) {
+            error!("[{}] Ability execute plan failed: {err}", trigger.ability);
+        }
     }
 
-    ability_spec.cost_modifiers.run(&mut context);
+    if let Err(err) = ability_spec.cost_modifiers.run(&mut context) {
+        error!("[{}] Ability cost plan failed: {err}", trigger.ability);
+    }
     Ok(())
 }
