@@ -67,9 +67,9 @@ fn health_follows_a_lowered_computed_limit() {
     );
 }
 
-/// a computed limit's edge is found mid-tick, after its attribute was walked, so it is walked again
+/// a def-declared limit is known before the actor exists, so its edge is in the graph for the first resolve
 #[test]
-fn a_clamp_edge_found_mid_tick_re_resolves_the_attribute_it_governs() {
+fn a_declared_limit_clamps_the_first_resolve_of_the_attribute_it_governs() {
     let mut app = app();
     let mut def = Some(
         vitality::actors::ActorBuilder::new()
@@ -88,28 +88,67 @@ fn a_clamp_edge_found_mid_tick_re_resolves_the_attribute_it_governs() {
     assert_eq!(current::<MaxHealth>(&app, hero), 60.0);
     assert_eq!(
         current::<Mana>(&app, hero),
-        50.0,
-        "the first resolve clamped against half of 100, not half of the 60 written the same tick"
-    );
-    assert_eq!(
-        base::<Mana>(&app, hero),
-        50.0,
-        "the missed limit is folded in"
-    );
-
-    ticks(&mut app, 1);
-    assert_eq!(
-        current::<Mana>(&app, hero),
         30.0,
-        "the edge that was new marks Mana again, so the next walk clamps against half of 60"
+        "MaxHealth resolves before Mana, so the first walk clamps against half of the 60 written the same tick"
     );
+    assert_eq!(base::<Mana>(&app, hero), 30.0, "the base is clamped too");
 
     with_vitality(&mut app, move |v| v.set_base::<Mana>(hero, 40.0));
     ticks(&mut app, 1);
     assert_eq!(
         current::<Mana>(&app, hero),
         30.0,
-        "the limit the edge found keeps clamping every later write"
+        "the limit the def declared keeps clamping every later write"
+    );
+}
+
+mod late {
+    use vitality::prelude::*;
+    vitality::attribute!(Tank, f32);
+    vitality::attribute!(Burner, f32);
+}
+
+/// The mid-tick route is what is left for a limit the spawn could not register: the clamp pass reports
+/// the read, the edge lands at the end of the tick, and the attribute it governs comes back next tick.
+#[test]
+fn a_clamp_edge_found_mid_tick_re_resolves_the_attribute_it_governs() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(STEP));
+    app.update();
+
+    let mut def = Some(
+        ActorBuilder::new()
+            .name("Boat")
+            .with::<late::Burner>(80.0)
+            .with::<late::Tank>(100.0)
+            .clamp::<late::Burner>(0.0, late::Tank::src() * 0.5)
+            .build(),
+    );
+    let boat = with_vitality(&mut app, move |v| {
+        v.add_spawn_actor(def.take().expect("spawned once")).id()
+    });
+    // registered after the spawn, Tank first, so nothing orders Tank ahead of Burner yet
+    init_attribute::<late::Tank>(&mut app);
+    init_attribute::<late::Burner>(&mut app);
+    with_vitality(&mut app, move |v| {
+        v.set_base::<late::Tank>(boat, 60.0);
+        v.set_base::<late::Burner>(boat, 70.0);
+    });
+
+    ticks(&mut app, 1);
+    assert_eq!(current::<late::Tank>(&app, boat), 60.0);
+    assert_eq!(
+        current::<late::Burner>(&app, boat),
+        50.0,
+        "Tank is walked after Burner until the edge lands, so this pass clamps 70 against half of 100"
+    );
+
+    ticks(&mut app, 1);
+    assert_eq!(
+        current::<late::Burner>(&app, boat),
+        30.0,
+        "the edge the pass found marks Burner, so the next walk clamps against half of 60"
     );
 }
 

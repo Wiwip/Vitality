@@ -6,7 +6,7 @@ use bevy_log::{debug, warn};
 use bevy_reflect::TypePath;
 use express_it::expr::{AsExpression, Expr};
 use std::any::TypeId;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
 use vitality_abilities::{Ability, AbilityDef, AbilityOf, GrantedAbilities};
 use vitality_core::attributes::{Attribute, Clamp, ClampBounds, ManageAttributes};
@@ -17,8 +17,8 @@ use vitality_effects::definition::EffectDef;
 use vitality_effects::graph::NodeType;
 use vitality_effects::{ApplyEffectEvent, EffectTargeting};
 
-/// Per dependency key read by a clamp: the clamped attributes, so the resolver orders them last.
-type ClampDependents = HashMap<TypeId, Vec<TypeId>>;
+/// `(limit read, clamped attribute)` in declaration order, so a cycle refuses the later clamp, not whichever key a hash map yields first
+type ClampDependents = Vec<(TypeId, TypeId)>;
 
 #[derive(Asset, TypePath)]
 pub struct ActorDef {
@@ -106,7 +106,7 @@ fn register_clamp_edges(world: &mut World, actor: Entity, def: &ActorDef) {
         world,
         def.clamp_dependents
             .iter()
-            .flat_map(|(key, clamped)| clamped.iter().map(move |clamped| (actor, *key, *clamped))),
+            .map(|(key, clamped)| (actor, *key, *clamped)),
     );
 }
 
@@ -167,11 +167,7 @@ impl ActorBuilder {
         min_expr.get_dependencies(&mut deps);
         max_expr.get_dependencies(&mut deps);
         for dep in deps {
-            self.actor
-                .clamp_dependents
-                .entry(dep)
-                .or_default()
-                .push(TypeId::of::<T>());
+            self.actor.clamp_dependents.push((dep, TypeId::of::<T>()));
         }
 
         let bounds = ClampBounds::<T> {
