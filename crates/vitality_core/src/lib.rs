@@ -105,7 +105,7 @@ pub struct AppAttributeBindings {
     pub internal: Arc<RwLock<AttributeBindings>>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum DepRole {
     Source,
     Target,

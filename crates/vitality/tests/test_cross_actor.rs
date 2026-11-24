@@ -95,6 +95,38 @@ fn a_modifier_reading_both_actors_follows_both() {
     assert_eq!(current::<Armor>(&app, target), 25.0);
 }
 
+/// Three reads on one actor: the walk has to wire all three, or a move to two of them goes unnoticed.
+#[test]
+fn a_live_modifier_on_a_three_attribute_composite_follows_every_read() {
+    let mut app = app();
+    let hero = spawn(&mut app, hero_def());
+    let scaling = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Health>(
+                (Power::src() + Armor::src()) * Mana::src() * 0.01,
+                ModOp::Set,
+                EffectSubject::Target,
+            )
+            .build(),
+    );
+    apply(&mut app, hero, hero, &scaling);
+    ticks(&mut app, SETTLE);
+    assert_eq!(current::<Health>(&app, hero), 5.0, "(10 + 0) * 50 * 0.01");
+
+    set_power(&mut app, hero, 20.0);
+    ticks(&mut app, SETTLE);
+    assert_eq!(current::<Health>(&app, hero), 10.0, "(20 + 0) * 50 * 0.01");
+
+    with_vitality(&mut app, move |v| v.set_base::<Mana>(hero, 40.0));
+    ticks(&mut app, SETTLE);
+    assert_eq!(current::<Health>(&app, hero), 8.0, "(20 + 0) * 40 * 0.01");
+
+    with_vitality(&mut app, move |v| v.set_base::<Armor>(hero, 5.0));
+    ticks(&mut app, SETTLE);
+    assert_eq!(current::<Health>(&app, hero), 10.0, "(20 + 5) * 40 * 0.01");
+}
+
 #[test]
 fn a_snapshot_ignores_later_changes() {
     let mut app = app();
