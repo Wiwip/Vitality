@@ -40,7 +40,10 @@ pub use application::*;
 pub use builder::EffectBuilder;
 pub use components::*;
 pub use condition::ConditionPlugin;
-pub use def_file::{DefFileError, DefNames, effect_def_from_file, effect_def_from_str};
+pub use def_file::{
+    DefFileError, DefNames, effect_def_from_file, effect_def_from_ron, effect_def_from_ron_file,
+    effect_def_from_str,
+};
 pub use effects_param::Effects;
 pub use global_effect::*;
 pub use lifecycle::{

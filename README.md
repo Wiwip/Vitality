@@ -96,6 +96,8 @@ Effect keys: `name`, `policy`, `tag`, `requires`, `blocked_by`, `cleanses`, `mod
 
 `policy` is `instant`, `permanent`, `for <seconds>`, `every <seconds>`, `every <seconds> for <seconds>`; absent means permanent. `modifier` is `<attribute> <op> <value> <who>` — op is `add`, `sub`, `mul`, `increase` or `set`, who is `target`, `source` or `effect`.
 
+`effect_def_from_ron` and `ability_def_from_ron` take the same def as RON, and the `_ron_file` wrappers read those off disk: `EffectFile(name: "Regeneration", policy: Every(interval: 1.0, duration: 12.0), modifiers: [Modifier(attribute: "Health", op: Add, value: 2.0, subject: Target)])`. Same fields, same refusals; a failure names the field (`modifiers[0]`, `policy.duration`) where a line file names its line.
+
 A file only names what `DefNames` holds: `init_attribute::<T>()` for an attribute, `DefNames::tag::<T>()` for a tag, both as the short type name. Anything else fails its line (``line 2: no tag `Frost` ``), pinned with the loads in `crates/vitality/tests/test_def_file_load.rs`.
 
 Costs, expressions, clamps, task scenes and observers stay Rust.

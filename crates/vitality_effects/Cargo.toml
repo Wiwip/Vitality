@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 express-it = { workspace = true }
+ron = { workspace = true }
 serde = { workspace = true }
 smol_str = { workspace = true }
 vitality_core = { workspace = true }
