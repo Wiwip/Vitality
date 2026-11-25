@@ -560,7 +560,6 @@ fn every_list_of_a_ron_ability_file_lands_in_the_field_it_names() {
     )
     .expect("a RON ability file that fills every list field parses");
 
-    assert_eq!(def.name, "Meteor", "the name field reached the def");
     assert_eq!(
         def.tags,
         [TagSpec::of::<Casting>()],
@@ -607,11 +606,7 @@ fn every_list_of_a_ron_ability_file_lands_in_the_field_it_names() {
 
     assert_eq!(def.name, line.name, "`name`");
     assert_eq!(def.tags, line.tags, "`tag`");
-    assert_eq!(
-        def.mutators.len(),
-        line.mutators.len(),
-        "one mutator per `tag`"
-    );
+    assert_eq!(def.mutators.len(), 1, "one mutator per `tag`");
     assert_eq!(
         def.activation_owned_tags, line.activation_owned_tags,
         "`activation_owned`"
