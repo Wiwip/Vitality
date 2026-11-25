@@ -4,10 +4,9 @@ use crate::prelude::ActorExprSchema;
 use bevy_ecs::prelude::{Component, Resource};
 use bevy_reflect::Reflect;
 use bevy_reflect::TypePath;
-use express_it::expr::Expr;
+use express_it::expr::{DepKey, Deps, Expr};
 use serde::Serialize;
 use std::any::TypeId;
-use std::collections::HashSet;
 use std::fmt::Formatter;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
@@ -69,11 +68,11 @@ impl<T: Attribute> Expr<bool, EffectExprSchema> for IsAttributeWithinBounds<T> {
         self.bounds.contains(&attribute.val())
     }
 
-    fn get_dependencies(&self, deps: &mut HashSet<TypeId>) {
+    fn get_dependencies(&self, deps: &mut Deps) {
         match self.who {
-            EffectSubject::Target => deps.insert(dep_key::<T, Target>()),
-            EffectSubject::Source => deps.insert(dep_key::<T, Source>()),
-            EffectSubject::Effect => deps.insert(TypeId::of::<T>()),
+            EffectSubject::Target => deps.insert(DepKey::Type(dep_key::<T, Target>())),
+            EffectSubject::Source => deps.insert(DepKey::Type(dep_key::<T, Source>())),
+            EffectSubject::Effect => deps.insert(DepKey::Type(TypeId::of::<T>())),
         };
     }
 }
@@ -206,8 +205,8 @@ impl<C: Component + Reflect> Expr<bool, EffectExprSchema> for HasComponent<C> {
         }
     }
 
-    fn get_dependencies(&self, deps: &mut HashSet<TypeId>) {
-        deps.insert(TypeId::of::<C>());
+    fn get_dependencies(&self, deps: &mut Deps) {
+        deps.insert(DepKey::Type(TypeId::of::<C>()));
     }
 }
 
@@ -220,8 +219,8 @@ impl<C: Component> Expr<bool, ActorExprSchema> for HasComponent<C> {
         }
     }
 
-    fn get_dependencies(&self, deps: &mut HashSet<TypeId>) {
-        deps.insert(TypeId::of::<C>());
+    fn get_dependencies(&self, deps: &mut Deps) {
+        deps.insert(DepKey::Type(TypeId::of::<C>()));
     }
 }
 

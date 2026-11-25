@@ -4,9 +4,8 @@ use crate::definition::AbilityDef;
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::Component;
 use bevy_reflect::Reflect;
-use express_it::expr::Expr;
+use express_it::expr::{DepKey, Deps, Expr};
 use std::any::TypeId;
-use std::collections::HashSet;
 use std::fmt::Formatter;
 use vitality_effects::conditions::HasComponent;
 use vitality_effects::modifier::EffectSubject;
@@ -23,8 +22,8 @@ impl<C: Component + Reflect> Expr<bool, AbilityExprSchema> for HasComponent<C> {
         }
     }
 
-    fn get_dependencies(&self, deps: &mut HashSet<TypeId>) {
-        deps.insert(TypeId::of::<C>());
+    fn get_dependencies(&self, deps: &mut Deps) {
+        deps.insert(DepKey::Type(TypeId::of::<C>()));
     }
 }
 
@@ -49,7 +48,7 @@ impl Expr<bool, AbilityExprSchema> for IsAbility {
 
         ability.handle.id() == self.asset
     }
-    fn get_dependencies(&self, _deps: &mut HashSet<TypeId>) {}
+    fn get_dependencies(&self, _deps: &mut Deps) {}
 }
 
 impl std::fmt::Debug for IsAbility {

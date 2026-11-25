@@ -223,11 +223,15 @@ fn resolve<T: Attribute>(
             let limits = (bounds.min.eval(&context), bounds.max.eval(&context));
             let mut reads: Vec<TypeId> = Vec::new();
             if capture {
-                let mut walked = std::collections::HashSet::new();
+                let mut walked = express_it::expr::Deps::new();
                 bounds.min.get_dependencies(&mut walked);
                 bounds.max.get_dependencies(&mut walked);
-                // the walk is a HashSet and the resolver keeps the order it is handed
-                reads.extend(walked);
+                // only a type key names an attribute an edge can point at, and the walk is a hash set
+                reads.extend(
+                    walked
+                        .iter()
+                        .filter_map(express_it::expr::DepKey::as_type_id),
+                );
                 reads.sort();
             }
             (limits, reads)

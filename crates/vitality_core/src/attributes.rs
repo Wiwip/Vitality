@@ -7,11 +7,10 @@ use bevy_ecs::prelude::{Bundle, Component, Entity};
 use bevy_ecs::reflect::ReflectComponent;
 use bevy_reflect::{GetTypeRegistration, Typed, reflect_trait};
 use bevy_reflect::{Reflect, TypePath};
-use express_it::expr::{AsExpression, Context, ContextMut, Expr};
+use express_it::expr::{AsExpression, Context, ContextMut, DepKey, Deps, Expr};
 use express_it::nodes::Node;
 use express_it::plan::AssignmentStep;
 use std::any::TypeId;
-use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -91,16 +90,13 @@ where
         C: Context,
         for<'a, 'b> C::ContextItem<'a, 'b>: ActorProvider<'a, 'b, Role>,
     {
-        Node {
-            expr: AttributeVar {
-                fetch_fn: |ctx: &C::ContextItem<'_, '_>| match ctx.get_actor().get::<Self>() {
-                    Some(attribute) => attribute.current_value(),
-                    None => missing::<Self, Role>(),
-                },
-                _marker: Default::default(),
+        Node::from_expr(AttributeVar {
+            fetch_fn: |ctx: &C::ContextItem<'_, '_>| match ctx.get_actor().get::<Self>() {
+                Some(attribute) => attribute.current_value(),
+                None => missing::<Self, Role>(),
             },
             _marker: Default::default(),
-        }
+        })
     }
 
     fn add<Role, C>(
@@ -117,8 +113,8 @@ where
     {
         let expr = expr.as_expr();
 
-        AssignmentStep {
-            setter_fn: |ctx: &mut C::ContextItemMut<'_, '_>, expr_val: Self::Property| {
+        AssignmentStep::new(
+            |ctx: &mut C::ContextItemMut<'_, '_>, expr_val: Self::Property| {
                 let actor = ActorProviderMut::<Role>::get_actor_mut(ctx);
                 match actor.get_mut::<Self>() {
                     None => {
@@ -135,9 +131,8 @@ where
                 }
             },
             expr,
-            cache_key: None,
-            _marker: Default::default(),
-        }
+            None,
+        )
     }
 
     fn sub<Role, C>(
@@ -154,8 +149,8 @@ where
     {
         let expr = expr.as_expr();
 
-        AssignmentStep {
-            setter_fn: |ctx: &mut C::ContextItemMut<'_, '_>, expr_val: Self::Property| {
+        AssignmentStep::new(
+            |ctx: &mut C::ContextItemMut<'_, '_>, expr_val: Self::Property| {
                 let actor = ActorProviderMut::<Role>::get_actor_mut(ctx);
                 match actor.get_mut::<Self>() {
                     None => {
@@ -172,9 +167,8 @@ where
                 }
             },
             expr,
-            cache_key: None,
-            _marker: Default::default(),
-        }
+            None,
+        )
     }
 
     fn set<Role, C>(
@@ -191,8 +185,8 @@ where
     {
         let expr = expr.as_expr();
 
-        AssignmentStep {
-            setter_fn: |ctx: &mut C::ContextItemMut<'_, '_>, expr_val: Self::Property| {
+        AssignmentStep::new(
+            |ctx: &mut C::ContextItemMut<'_, '_>, expr_val: Self::Property| {
                 let actor = ActorProviderMut::<Role>::get_actor_mut(ctx);
                 match actor.get_mut::<Self>() {
                     None => {
@@ -206,9 +200,8 @@ where
                 }
             },
             expr,
-            cache_key: None,
-            _marker: Default::default(),
-        }
+            None,
+        )
     }
 }
 
@@ -461,10 +454,10 @@ where
 }
 
 /// Dependency key of `T` read through `Role`, as reported by [`Expr::get_dependencies`].
-struct DepKey<T, Role>(PhantomData<fn() -> (T, Role)>);
+struct AttributeRead<T, Role>(PhantomData<fn() -> (T, Role)>);
 
 pub fn dep_key<T: 'static, Role: 'static>() -> TypeId {
-    TypeId::of::<DepKey<T, Role>>()
+    TypeId::of::<AttributeRead<T, Role>>()
 }
 
 pub struct AttributeVar<T, N, C: Context, Role = Source> {
@@ -484,8 +477,8 @@ impl<T: 'static, N: 'static, C: Context + 'static, Role: 'static> Expr<N, C>
         (self.fetch_fn)(ctx)
     }
 
-    fn get_dependencies(&self, deps: &mut HashSet<TypeId>) {
-        deps.insert(dep_key::<T, Role>());
+    fn get_dependencies(&self, deps: &mut Deps) {
+        deps.insert(DepKey::Type(dep_key::<T, Role>()));
     }
 }
 impl<T, N, C: Context, Role> Copy for AttributeVar<T, N, C, Role> {}
@@ -526,6 +519,7 @@ mod tests {
     use crate::context::{ActorExprContext, ActorExprSchema};
     use crate::{AttributeBindings, DepRole};
     use bevy_ecs::prelude::World;
+    use std::collections::HashSet;
 
     crate::attribute!(Attack);
     crate::attribute!(Defense);
@@ -558,14 +552,13 @@ mod tests {
 
         assert_eq!(expr.eval(&ctx), 14.0, "the walk leaves the eval alone");
 
-        let mut deps = HashSet::new();
-        expr.get_dependencies(&mut deps);
+        let deps = expr.dependencies();
         assert_eq!(
-            deps,
+            deps.iter().collect::<HashSet<DepKey>>(),
             HashSet::from([
-                dep_key::<Attack, Source>(),
-                dep_key::<Defense, Source>(),
-                dep_key::<Haste, Source>(),
+                DepKey::Type(dep_key::<Attack, Source>()),
+                DepKey::Type(dep_key::<Defense, Source>()),
+                DepKey::Type(dep_key::<Haste, Source>()),
             ]),
             "the walk is a may-read superset, one key per (attribute, read role): arithmetic nodes \
              are exact, `&&`/`||` report both operands because their eval short-circuits"
@@ -579,9 +572,10 @@ mod tests {
         bindings.add::<Attack>();
         bindings.add::<Defense>();
 
-        let mut deps = HashSet::new();
-        (Attack::src::<ActorExprSchema>() + Defense::src::<ActorExprSchema>())
-            .get_dependencies(&mut deps);
+        let walked =
+            (Attack::src::<ActorExprSchema>() + Defense::src::<ActorExprSchema>()).dependencies();
+        // an edge can only point at an attribute, so only the type keys the walk reports are bindings
+        let deps: Vec<TypeId> = walked.iter().filter_map(DepKey::as_type_id).collect();
 
         let resolved: Vec<(TypeId, DepRole)> = deps
             .iter()

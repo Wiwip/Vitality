@@ -4,9 +4,9 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::world::CommandQueue;
 use bevy_log::{debug, warn};
 use bevy_reflect::TypePath;
-use express_it::expr::{AsExpression, Expr};
+use express_it::expr::{AsExpression, Deps, Expr};
 use std::any::TypeId;
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use vitality_abilities::{Ability, AbilityDef, AbilityOf, GrantedAbilities};
 use vitality_core::attributes::{Attribute, Clamp, ClampBounds, ManageAttributes};
@@ -163,10 +163,10 @@ impl ActorBuilder {
         let min_expr = min.as_expr();
         let max_expr = max.as_expr();
 
-        let mut deps = HashSet::default();
+        let mut deps = Deps::new();
         min_expr.get_dependencies(&mut deps);
         max_expr.get_dependencies(&mut deps);
-        for dep in deps {
+        for dep in deps.iter().filter_map(express_it::expr::DepKey::as_type_id) {
             self.actor.clamp_dependents.push((dep, TypeId::of::<T>()));
         }
 

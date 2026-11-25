@@ -142,10 +142,15 @@ where
         let shown = modifier.to_string();
 
         if self.capture == Capture::Live {
-            let mut walked = HashSet::new();
+            let mut walked = express_it::expr::Deps::new();
             self.expr.get_dependencies(&mut walked);
-            let mut deps: Vec<DepBinding> = Vec::with_capacity(walked.len());
-            for key in walked {
+            // only a type key names an attribute, so a name key would have no binding to resolve
+            let keys: Vec<TypeId> = walked
+                .iter()
+                .filter_map(express_it::expr::DepKey::as_type_id)
+                .collect();
+            let mut deps: Vec<DepBinding> = Vec::with_capacity(keys.len());
+            for key in keys {
                 match type_bindings.dependency(&key) {
                     Some(binding) => deps.push(binding),
                     None => error!(
@@ -155,7 +160,7 @@ where
                     ),
                 }
             }
-            // the walk is a HashSet, and its order decides which dependency sits on the modifier entity and which needs a proxy
+            // the walk is a hash set, and its order decides which dependency sits on the modifier entity and which needs a proxy
             deps.sort_by_key(|binding| (binding.attribute, binding.role));
             let mut seen: Vec<(TypeId, Entity)> = Vec::new();
             for binding in deps {

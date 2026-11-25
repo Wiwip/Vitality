@@ -77,16 +77,11 @@ impl AbilityBuilder {
     where
         T::Property: std::cmp::PartialOrd + Copy + 'static,
     {
-        let node_expr = express_it::nodes::Node {
-            expr: cost.as_expr(),
-            _marker: Default::default(),
-        };
+        let node_expr = express_it::nodes::Node::from_expr(cost.as_expr());
 
         // paid from the base the setter writes, never current, which would spend the modifiers on top
-        let step = AssignmentStep {
-            setter_fn: |ctx: &mut AbilityExprContextMut, cost: T::Property| match ctx
-                .caster_mut
-                .get_mut::<T>()
+        let step = AssignmentStep::new(
+            |ctx: &mut AbilityExprContextMut, cost: T::Property| match ctx.caster_mut.get_mut::<T>()
             {
                 None => {
                     error!(
@@ -109,10 +104,9 @@ impl AbilityBuilder {
                     attr.set_base_value(<T::Property as AttributeValue>::sub(base, cost))
                 }
             },
-            expr: node_expr,
-            cache_key: None,
-            _marker: std::marker::PhantomData,
-        };
+            node_expr,
+            None,
+        );
 
         // every cost is paid, not just the last one declared
         let plan = std::mem::replace(&mut self.cost_modifiers, Plan::new());
@@ -149,10 +143,7 @@ impl AbilityBuilder {
         <E as AsExpression<f32, AbilityExprSchema>>::Target:
             express_it::expr::Expr<f32, AbilityExprSchema>,
     {
-        let node_expr = express_it::nodes::Node {
-            expr: cooldown.as_expr(),
-            _marker: Default::default(),
-        };
+        let node_expr = express_it::nodes::Node::from_expr(cooldown.as_expr());
         self.cooldown = Box::new(node_expr);
         self
     }
