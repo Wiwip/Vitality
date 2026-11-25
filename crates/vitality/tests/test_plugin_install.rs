@@ -7,6 +7,7 @@ use std::any::TypeId;
 use vitality::ability::AbilityDef;
 use vitality::ability::AbilityPlugin;
 use vitality::actors::ActorDef;
+use vitality::attribute_set;
 use vitality::effect::{ConditionPlugin, EffectsPlugin, GlobalEffectPlugin, GlobalEffects, Stacks};
 use vitality::prelude::*;
 use vitality::registry::ability_registry::AbilityRegistry;
@@ -16,6 +17,7 @@ use vitality_core::CorePlugin;
 use vitality_core::registry::AttributeRegistry;
 
 attribute!(Probe, f32);
+attribute_set! { pub struct SoloSet { Solo: u32 } }
 
 fn headless() -> App {
     let mut app = App::new();
@@ -145,6 +147,22 @@ fn vitality_plugin_added_twice_registers_each_attribute_once() {
         app.world().resource::<AttributeRegistry>().len(),
         2,
         "Stacks plus Probe: the second VitalityPlugin registered nothing again"
+    );
+    app.update();
+}
+
+#[test]
+fn a_set_member_registered_directly_as_well_registers_once() {
+    let mut app = headless();
+    // the member reaches init_attribute through both paths at once
+    app.add_plugins(VitalityPlugin::new().set::<SoloSet>().attribute::<Solo>());
+    app.add_plugins(VitalityPlugin::new().set::<SoloSet>().attribute::<Solo>());
+
+    assert_built(&app);
+    assert_eq!(
+        app.world().resource::<AttributeRegistry>().len(),
+        2,
+        "Stacks plus Solo: the set and the direct registration share one slot"
     );
     app.update();
 }
