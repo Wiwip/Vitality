@@ -688,6 +688,12 @@ fn a_ron_def_the_loader_cannot_use_fails_naming_its_field() {
             "Unexpected field",
             "duration",
         ),
+        (
+            "empty-name.effect.ron",
+            "EffectFile(name: \"\")",
+            "name",
+            "is not a name",
+        ),
     ];
     for (file, source, at, bad) in cases {
         let Err(error) = effect_def_from_ron(source, &names) else {
@@ -724,6 +730,12 @@ fn a_ron_def_the_loader_cannot_use_fails_naming_its_field() {
             "AbilityFile(blocks: [\"Frost\"])",
             "blocks[0]",
             "Frost",
+        ),
+        (
+            "empty-name.ability.ron",
+            "AbilityFile(name: \"\")",
+            "name",
+            "is not a name",
         ),
     ];
     for (file, source, at, bad) in ability_cases {

@@ -382,6 +382,18 @@ pub fn check_seconds(at: &str, written: &str, value: f32, what: &str) -> Result<
     }
 }
 
+/// a name the def can be printed with, asked the same way by both file formats
+pub fn check_name(at: &str, name: &str) -> Result<(), DefFileError> {
+    if name.is_empty() {
+        return Err(error_at(
+            at,
+            "`\"\"` is not a name, which has to hold at least one character that the overlay can \
+             print",
+        ));
+    }
+    Ok(())
+}
+
 fn new_modifier<T: Attribute>(
     written: f64,
     op: ModOp,
@@ -535,6 +547,7 @@ pub fn effect_def_from_ron(source: &str, names: &DefNames) -> Result<EffectDef, 
         Some(policy) => ron_policy(&policy)?,
     };
     if let Some(name) = file.name {
+        check_name("name", &name)?;
         builder = builder.name(name);
     }
     let mut def = builder.build();

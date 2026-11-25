@@ -10,7 +10,9 @@ use bevy_ecs::prelude::*;
 use serde::Deserialize;
 use std::path::Path;
 use vitality_core::mutator::EntityActions;
-use vitality_effects::def_file::{check_seconds, def_field, def_fields, ron_options, scalar_field};
+use vitality_effects::def_file::{
+    check_name, check_seconds, def_field, def_fields, ron_options, scalar_field,
+};
 
 pub use vitality_effects::def_file::{DefFileError, DefNames};
 
@@ -161,6 +163,7 @@ pub fn ability_def_from_ron(source: &str, names: &DefNames) -> Result<AbilityDef
 
     let mut builder = AbilityBuilder::new();
     if let Some(name) = file.name {
+        check_name("name", &name)?;
         builder = builder.with_name(name);
     }
     if let Some(cooldown) = file.cooldown {
