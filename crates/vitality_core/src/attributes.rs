@@ -3,7 +3,7 @@ use crate::util::pretty_type_name;
 use crate::value::AttributeValue;
 use crate::view::{ActorRead, ActorWrite};
 use bevy_ecs::component::Mutable;
-use bevy_ecs::prelude::{Component, Entity};
+use bevy_ecs::prelude::{Bundle, Component, Entity};
 use bevy_ecs::reflect::ReflectComponent;
 use bevy_reflect::{GetTypeRegistration, Typed, reflect_trait};
 use bevy_reflect::{Reflect, TypePath};
@@ -311,24 +311,50 @@ macro_rules! attribute {
     };
 }
 
+/// Called once per attribute of a set, so the caller does the same thing to every member.
+pub trait AttributeVisitor {
+    fn visit<T: Attribute>(&mut self);
+}
+
+/// An `attribute_set!` bundle: its members are known without an instance of it.
+pub trait AttributeSet: Bundle {
+    fn visit_members(visitor: &mut impl AttributeVisitor);
+}
+
 #[macro_export]
 macro_rules! attribute_set {
-    ( $( $Attr:ident : $Ty:ty ),* $(,)? ) => {
+    ( $(#[$meta:meta])* $vis:vis struct $Name:ident { $( $Attr:ident : $Ty:ty ),* $(,)? } ) => {
         $( $crate::attribute_impl!($Attr, $Ty); )*
 
         // the fields and `new`'s params keep the caller's case: macro_rules cannot convert it
         #[allow(non_snake_case)]
-        #[derive($crate::bevy_ecs::prelude::Bundle)]
-        pub struct SetBundle {
-            $( pub $Attr: $Attr, )*
+        $(#[$meta])*
+        #[derive($crate::bevy_ecs::prelude::Bundle, Clone)]
+        $vis struct $Name {
+            $( $vis $Attr: $Attr, )*
         }
 
         #[allow(non_snake_case)]
-        impl SetBundle {
-            pub fn new($( $Attr: $Ty ),*) -> Self {
+        impl $Name {
+            $vis fn new($( $Attr: $Ty ),*) -> Self {
                 Self {
                     $( $Attr: <$Attr as $crate::attributes::Attribute>::new($Attr), )*
                 }
+            }
+        }
+
+        // derived `Default` would need it on the members, which `attribute_impl!` does not give
+        impl ::core::default::Default for $Name {
+            fn default() -> Self {
+                Self {
+                    $( $Attr: <$Attr as $crate::attributes::Attribute>::zeroed(), )*
+                }
+            }
+        }
+
+        impl $crate::attributes::AttributeSet for $Name {
+            fn visit_members(visitor: &mut impl $crate::attributes::AttributeVisitor) {
+                $( visitor.visit::<$Attr>(); )*
             }
         }
     };

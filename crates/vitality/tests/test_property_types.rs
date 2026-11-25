@@ -5,12 +5,12 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use std::time::Duration;
 use vitality::actors::ActorBuilder;
-use vitality::attribute_set;
 use vitality::effect::EffectStackingPolicy;
 use vitality::effect::definition::EffectDef;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 use vitality::store::{Assets, Handle};
+use vitality::{attribute_set, init_attribute_set};
 use vitality_core::value::AttributeValue;
 
 /// mantissa in `[1, 2)` and an unbounded binary exponent, so it outgrows f64
@@ -349,16 +349,13 @@ fn the_first_set_wins() {
     assert_eq!(current::<Weight>(&app, hero), 8.0);
 }
 
-attribute_set! { Reserve: Endless, Ledger: f64 }
+attribute_set! { pub struct Books { Reserve: Endless, Ledger: f64 } }
 
 #[test]
 fn attribute_set_accepts_a_host_type() {
     let mut app = app();
-    app.add_plugins((init_attribute::<Reserve>, init_attribute::<Ledger>));
-    let carrier = app
-        .world_mut()
-        .spawn(SetBundle::new(Endless::one(), 2.0))
-        .id();
+    app.add_plugins(init_attribute_set::<Books>);
+    let carrier = app.world_mut().spawn(Books::new(Endless::one(), 2.0)).id();
     ticks(&mut app, 1);
     let boon = EffectBuilder::permanent()
         .modify::<Reserve>(Endless::new(1.0, 1024), ModOp::Mul, EffectSubject::Target)

@@ -71,6 +71,7 @@ use vitality_effects::{
 };
 
 pub use vitality_abilities as ability;
+pub use vitality_core::attributes::{AttributeSet, AttributeVisitor};
 pub use vitality_core::{
     AppAttributeBindings, AttributeBindings, CurrentValueChanged, attribute, attribute_impl,
     attribute_set, attributes, express_it, mutator, store, tag, tags,
@@ -150,6 +151,11 @@ impl VitalityPlugin {
         self.attributes.push(init_attribute::<T>);
         self
     }
+
+    pub fn set<S: AttributeSet>(mut self) -> Self {
+        self.attributes.push(init_attribute_set::<S>);
+        self
+    }
 }
 
 impl Plugin for VitalityPlugin {
@@ -166,6 +172,19 @@ impl Plugin for VitalityPlugin {
 }
 
 struct AttributeInstalled<T>(std::marker::PhantomData<T>);
+
+struct Registrar<'a>(&'a mut App);
+
+impl AttributeVisitor for Registrar<'_> {
+    fn visit<T: Attribute>(&mut self) {
+        init_attribute::<T>(self.0);
+    }
+}
+
+/// Registers every member of an `attribute_set!` bundle. Safe to call more than once for the same set.
+pub fn init_attribute_set<S: AttributeSet>(app: &mut App) {
+    S::visit_members(&mut Registrar(app));
+}
 
 /// Registers one attribute. Safe to call more than once for the same `T`.
 pub fn init_attribute<T: Attribute>(app: &mut App) {

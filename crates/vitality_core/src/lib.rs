@@ -44,7 +44,9 @@ pub mod view;
 pub use express_it;
 
 pub mod prelude {
-    pub use crate::attributes::{AccessAttribute, Attribute, ReflectAccessAttribute, Setter};
+    pub use crate::attributes::{
+        AccessAttribute, Attribute, AttributeSet, AttributeVisitor, ReflectAccessAttribute, Setter,
+    };
     pub use crate::context::ActorExprSchema;
     pub use crate::modifier::ModOp;
     pub use crate::value::AttributeValue;

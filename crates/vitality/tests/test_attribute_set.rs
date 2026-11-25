@@ -1,36 +1,71 @@
 mod gameplay;
 
+use bevy::prelude::*;
 use gameplay::*;
-use vitality::attribute_set;
+use vitality::actors::ActorBuilder;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
+use vitality::{attribute_set, init_attribute_set};
 
-attribute_set! { Hp: u32, Mp: u32 }
+attribute_set! { pub struct Vitals { Vigour: u32, Focus: u32 } }
+attribute_set! { pub struct Reserves { Ward: u32, Grit: u32 } }
 
 #[test]
-fn a_set_declares_every_member_and_one_bundle_spawned_with_a_value_each() {
+fn a_named_set_registers_its_members_and_is_a_bundle_you_can_build() {
     let mut app = app();
-    app.add_plugins((init_attribute::<Hp>, init_attribute::<Mp>));
-    let carrier = app.world_mut().spawn(SetBundle::new(10, 4)).id();
+    app.add_plugins(VitalityPlugin::new().set::<Vitals>());
+    app.add_plugins(init_attribute_set::<Reserves>);
+
+    let actor = spawn(
+        &mut app,
+        ActorBuilder::new()
+            .name("Warder")
+            .insert(Vitals::new(10, 20))
+            .clamp::<Vigour>(0, Focus::src()),
+    );
+    let carrier = app
+        .world_mut()
+        .spawn(Reserves {
+            Ward: Ward::new(3),
+            ..default()
+        })
+        .id();
     ticks(&mut app, 1);
 
     let blessing = effect(
         &mut app,
         EffectBuilder::permanent()
-            .modify::<Hp>(5, ModOp::Add, EffectSubject::Target)
+            .modify::<Vigour>(20, ModOp::Add, EffectSubject::Target)
             .build(),
     );
-    apply(&mut app, carrier, carrier, &blessing);
+    let boon = effect(
+        &mut app,
+        EffectBuilder::permanent()
+            .modify::<Ward>(5, ModOp::Add, EffectSubject::Target)
+            .build(),
+    );
+    apply(&mut app, actor, actor, &blessing);
+    apply(&mut app, carrier, carrier, &boon);
     ticks(&mut app, 1);
 
     assert_eq!(
-        current::<Hp>(&app, carrier),
-        15,
-        "the bonus folded into the member the set declared reads back through current_value"
+        current::<Vigour>(&app, actor),
+        20,
+        "the member folded 10 + 20 and the clamp stopped it at the sibling member's limit"
     );
     assert_eq!(
-        current::<Mp>(&app, carrier),
-        4,
-        "the member no effect touches keeps the value it was spawned with"
+        current::<Focus>(&app, actor),
+        20,
+        "the member no effect touches keeps the value the bundle was built with"
+    );
+    assert_eq!(
+        current::<Ward>(&app, carrier),
+        8,
+        "the set registered through init_attribute_set folds too"
+    );
+    assert_eq!(
+        current::<Grit>(&app, carrier),
+        0,
+        "a member left out of the struct literal starts zeroed"
     );
 }
