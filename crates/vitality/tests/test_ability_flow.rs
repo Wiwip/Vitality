@@ -5,6 +5,7 @@ mod logs;
 
 use crate::logs::Logs;
 use bevy::prelude::*;
+use express_it::load_cache;
 use express_it::nodes::Node;
 use express_it::plan::Plan;
 use gameplay::*;
@@ -15,7 +16,7 @@ use vitality::ability::cooldown_remaining;
 use vitality::ability::tasks::{Tasks, wait_task};
 use vitality::ability::{AbilityBuilder, AbilityDef, TargetData};
 use vitality::actors::ActorBuilder;
-use vitality::context::{Caster, Target};
+use vitality::context::{Caster, Source, Target};
 use vitality::effect::conditions::HasComponent;
 use vitality::prelude::*;
 
@@ -719,6 +720,105 @@ fn a_plan_reads_the_ground_location() {
         12.5,
         "the plan reads the same ground point the On<ExecuteAbility> observer gets in trigger.target"
     );
+}
+
+#[test]
+fn a_plan_that_fails_midway_keeps_its_writes_and_the_activation() {
+    let logs = Logs::scoped();
+
+    logs.run(|| {
+        let mut app = app();
+        let botched = ability(
+            &mut app,
+            AbilityBuilder::new()
+                .on_execute(
+                    Plan::new()
+                        .step(MaxHealth::add::<Source, _>(5.0))
+                        .step(load_cache!(f32, "never_saved")),
+                )
+                .build(),
+        );
+        let caster = caster_with(&mut app, &[&botched]);
+        record_all(&mut app);
+
+        activate(&mut app, caster, &botched);
+        ticks(&mut app, 2);
+
+        let botched_entity = ability_entity(&mut app, caster, &botched);
+        assert_eq!(
+            base::<MaxHealth>(&app, caster),
+            105.0,
+            "a failed run is not rolled back: the step before the miss keeps its write"
+        );
+        assert_eq!(recorded::<AbilityActivated>(&app).len(), 1);
+        assert_eq!(
+            recorded::<AbilityEnded>(&app).len(),
+            1,
+            "the machine runs to its end whatever the plan did"
+        );
+        assert!(
+            failures(&app).is_empty(),
+            "a failed plan step is a log line, never an activation failure, got: {:?}",
+            failures(&app)
+        );
+
+        let errors = logs.errors();
+        assert_eq!(
+            errors.lines().count(),
+            1,
+            "one error names the failed plan, got: {errors}"
+        );
+        assert!(
+            errors.contains(&format!("{botched_entity}"))
+                && errors.contains("Ability execute plan failed")
+                && errors.contains("never_saved"),
+            "the error has to name the ability entity, the plan and the missing key, got: {errors}"
+        );
+    });
+}
+
+#[test]
+fn a_failing_cost_plan_leaves_what_it_paid_and_commits_the_activation() {
+    let logs = Logs::scoped();
+
+    logs.run(|| {
+        let mut app = app();
+        // the builder only adds typed cost steps, so the miss rides the plan they were pushed onto
+        let mut def = AbilityBuilder::new().with_cost::<Mana>(10.0).build();
+        def.cost_modifiers = def.cost_modifiers.step(load_cache!(f32, "never_saved"));
+        let botched = ability(&mut app, def);
+        let caster = caster_with(&mut app, &[&botched]);
+        record_all(&mut app);
+
+        activate(&mut app, caster, &botched);
+        ticks(&mut app, 2);
+
+        let botched_entity = ability_entity(&mut app, caster, &botched);
+        assert_eq!(
+            base::<Mana>(&app, caster),
+            40.0,
+            "the cost step that ran before the miss keeps its payment"
+        );
+        assert_eq!(
+            recorded::<AbilityActivated>(&app).len(),
+            1,
+            "a cost plan that fails still commits the activation"
+        );
+        assert_eq!(recorded::<AbilityEnded>(&app).len(), 1);
+
+        let errors = logs.errors();
+        assert_eq!(
+            errors.lines().count(),
+            1,
+            "one error names the failed cost plan, got: {errors}"
+        );
+        assert!(
+            errors.contains(&format!("{botched_entity}"))
+                && errors.contains("Ability cost plan failed")
+                && errors.contains("never_saved"),
+            "the error has to name the ability entity, the cost plan and the missing key, got: {errors}"
+        );
+    });
 }
 
 #[test]

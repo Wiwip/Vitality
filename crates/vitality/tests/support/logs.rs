@@ -54,6 +54,11 @@ impl Logs {
         self.render(|level| level == &Level::WARN)
     }
 
+    /// the ERROR records only, which is what tells an `error!` from a `debug!`
+    pub fn errors(&self) -> String {
+        self.render(|level| level == &Level::ERROR)
+    }
+
     fn render(&self, keep: impl Fn(&Level) -> bool) -> String {
         self.0
             .lock()
