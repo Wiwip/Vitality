@@ -4,7 +4,8 @@ mod logs;
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
-use vitality::actors::ActorBuilder;
+use vitality::actors::{Actor, ActorBuilder, ActorDef};
+use vitality::attributes::ManageAttributes;
 use vitality::context::Vitality;
 use vitality::effect::AppliedEffects;
 use vitality::effect::Effect;
@@ -185,6 +186,63 @@ fn test_apply_to_an_entity_with_no_attribute_warns() {
             && warns.contains(&effect.to_string()),
         "an apply to an entity with nothing to fold into has to warn at WARN level and name both \
          the effect and that entity, got: {}",
+        logs.all()
+    );
+}
+
+#[test]
+fn test_spawn_from_an_unloaded_handle_leaves_the_entity_empty() {
+    let logs = logs::Logs::scoped();
+
+    let (mut app, empty) = logs.run(|| {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default(), AttributesPlugin));
+        app.add_plugins(init_attribute::<TestInt>);
+        app.insert_resource(TimeUpdateStrategy::FixedTimesteps(1));
+
+        let handle = app
+            .world_mut()
+            .run_system_once(|mut ctx: Vitality| {
+                ctx.add_actor(ActorBuilder::new().name("UnloadedActor").build())
+            })
+            .unwrap();
+        app.world_mut()
+            .resource_mut::<Assets<ActorDef>>()
+            .remove(handle.id());
+
+        let empty = app
+            .world_mut()
+            .run_system_once(move |mut ctx: Vitality| ctx.spawn_actor_from_handle(&handle).id())
+            .unwrap();
+        app.update();
+
+        (app, empty)
+    });
+
+    assert!(
+        app.world().get_entity(empty).is_ok(),
+        "the entity is left in the world, not despawned with the definition it was told to read"
+    );
+    assert!(
+        app.world().get::<Actor>(empty).is_none(),
+        "an unfilled handle is a mistake the host makes, so it fills nothing rather than crashing"
+    );
+    assert!(app.world().get::<Name>(empty).is_none());
+    let mut actors = app
+        .world_mut()
+        .query_filtered::<Entity, With<ManageAttributes>>();
+    let matched = actors.iter(app.world()).any(|actor| actor == empty);
+    assert!(
+        !matched,
+        "an entity with no attributes is no actor, so the actor query has to skip it"
+    );
+
+    let warns = logs.warns();
+    assert!(
+        warns.contains(&empty.to_string())
+            && warns.contains("no loaded definition")
+            && warns.contains("Load the ActorDef into Assets<ActorDef> before spawning it"),
+        "empty is the only trace, so the WARN has to name that entity and the remedy, got: {}",
         logs.all()
     );
 }
