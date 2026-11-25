@@ -10,6 +10,7 @@ use std::time::Duration;
 use vitality::ability::ability_state::{AbilityMachine, AbilityState};
 use vitality::ability::{
     AbilityDef, TargetData, ability_def_from_file, ability_def_from_ron, ability_def_from_ron_file,
+    ability_def_from_str,
 };
 use vitality::attributes::ReflectAccessAttribute;
 use vitality::effect::modifier::{AttributeModifier, EffectSubject, ModOp, OwnedModifiers};
@@ -17,7 +18,8 @@ use vitality::effect::{
     DefNames, EffectApplicationPolicy, effect_def_from_file, effect_def_from_ron,
     effect_def_from_ron_file, effect_def_from_str,
 };
-use vitality::{attribute, init_attribute};
+use vitality::tags::TagSpec;
+use vitality::{attribute, init_attribute, tag};
 
 /// one scratch dir per test, so a parallel run cannot read another test's file
 fn scratch(test: &str) -> PathBuf {
@@ -38,6 +40,23 @@ fn names() -> DefNames {
     names.tag::<Burning>();
     names.tag::<Casting>();
     names
+}
+
+tag!(Rooted);
+
+/// one tag per list field, so a file that writes a list into the wrong def field cannot pass
+fn list_names() -> DefNames {
+    let mut names = names();
+    names.tag::<Stunned>();
+    names.tag::<Immune>();
+    names.tag::<Magic>();
+    names.tag::<Rooted>();
+    names
+}
+
+/// the tags a def field ended up holding, spelled the way a file spells them
+fn tags_held(tags: &[TagSpec]) -> Vec<String> {
+    tags.iter().map(|tag| (tag.name)()).collect()
 }
 
 fn ability(app: &mut App, def: AbilityDef) -> Handle<AbilityDef> {
@@ -436,6 +455,62 @@ fn a_ron_effect_file_off_disk_loads_the_def_the_line_format_loads() {
     );
 }
 
+/// every list field at once, each with a tag no other field uses, so a swapped list cannot pass
+#[test]
+fn every_list_of_a_ron_effect_file_lands_in_the_field_it_names() {
+    let names = list_names();
+    let def = effect_def_from_ron(
+        "EffectFile(\n    name: \"Cauterize\",\n    policy: For(6.0),\n    tags: [\"Burning\"],\n    requires: [\"Stunned\"],\n    blocked_by: [\"Immune\"],\n    cleanses: [\"Magic\"],\n    modifiers: [Modifier(attribute: \"Health\", op: Add, value: 2.0, subject: Target)],\n)\n",
+        &names,
+    )
+    .expect("a RON effect file that fills every list field parses");
+
+    assert_eq!(
+        def.granted_tags,
+        [TagSpec::of::<Burning>()],
+        "granted_tags holds {:?}",
+        tags_held(&def.granted_tags)
+    );
+    assert_eq!(
+        def.required_tags,
+        [TagSpec::of::<Stunned>()],
+        "required_tags holds {:?}",
+        tags_held(&def.required_tags)
+    );
+    assert_eq!(
+        def.blocked_by_tags,
+        [TagSpec::of::<Immune>()],
+        "blocked_by_tags holds {:?}",
+        tags_held(&def.blocked_by_tags)
+    );
+    assert_eq!(
+        def.cleanses,
+        [TagSpec::of::<Magic>()],
+        "cleanses holds {:?}",
+        tags_held(&def.cleanses)
+    );
+    assert_eq!(def.modifiers.len(), 1, "one `modifiers` entry");
+    assert_eq!(
+        def.application_policy,
+        EffectApplicationPolicy::for_seconds(6.0),
+        "the policy struct is the one the file wrote"
+    );
+
+    // the same file in the line format, so a drift between the two loaders cannot hide
+    let line = effect_def_from_str(
+        "name = Cauterize\npolicy = for 6.0\ntag = Burning\nrequires = Stunned\nblocked_by = Immune\ncleanses = Magic\nmodifier = Health add 2 target\n",
+        &names,
+    )
+    .expect("the line file fills the same def");
+
+    assert_eq!(def.application_policy, line.application_policy, "`policy`");
+    assert_eq!(def.granted_tags, line.granted_tags, "`tag`");
+    assert_eq!(def.required_tags, line.required_tags, "`requires`");
+    assert_eq!(def.blocked_by_tags, line.blocked_by_tags, "`blocked_by`");
+    assert_eq!(def.cleanses, line.cleanses, "`cleanses`");
+    assert_eq!(def.modifiers.len(), line.modifiers.len(), "`modifier`");
+}
+
 /// the `.ron` mirror of `an_ability_file_off_disk_loads_the_def_it_describes`
 #[test]
 fn a_ron_ability_file_off_disk_loads_the_def_the_line_format_loads() {
@@ -473,6 +548,90 @@ fn a_ron_ability_file_off_disk_loads_the_def_the_line_format_loads() {
         .get(AbilityState::Recovery)
         .expect("the cooldown the RON file names arms Recovery");
     assert_eq!(cooldown.duration(), Duration::from_secs_f32(4.0));
+}
+
+/// every list field at once, each with a tag no other field uses, so a swapped list cannot pass
+#[test]
+fn every_list_of_a_ron_ability_file_lands_in_the_field_it_names() {
+    let names = list_names();
+    let def = ability_def_from_ron(
+        "AbilityFile(\n    name: \"Meteor\",\n    cooldown: 4.0,\n    tags: [\"Casting\"],\n    activation_owned: [\"Burning\"],\n    activation_requires: [\"Stunned\"],\n    activation_blocked_by: [\"Immune\"],\n    blocks: [\"Magic\"],\n    cancels: [\"Rooted\"],\n)\n",
+        &names,
+    )
+    .expect("a RON ability file that fills every list field parses");
+
+    assert_eq!(def.name, "Meteor", "the name field reached the def");
+    assert_eq!(
+        def.tags,
+        [TagSpec::of::<Casting>()],
+        "tags holds {:?}",
+        tags_held(&def.tags)
+    );
+    assert_eq!(
+        def.activation_owned_tags,
+        [TagSpec::of::<Burning>()],
+        "activation_owned_tags holds {:?}",
+        tags_held(&def.activation_owned_tags)
+    );
+    assert_eq!(
+        def.activation_requires,
+        [TagSpec::of::<Stunned>()],
+        "activation_requires holds {:?}",
+        tags_held(&def.activation_requires)
+    );
+    assert_eq!(
+        def.activation_blocked_by,
+        [TagSpec::of::<Immune>()],
+        "activation_blocked_by holds {:?}",
+        tags_held(&def.activation_blocked_by)
+    );
+    assert_eq!(
+        def.blocks_abilities_with,
+        [TagSpec::of::<Magic>()],
+        "blocks_abilities_with holds {:?}",
+        tags_held(&def.blocks_abilities_with)
+    );
+    assert_eq!(
+        def.cancels_abilities_with,
+        [TagSpec::of::<Rooted>()],
+        "cancels_abilities_with holds {:?}",
+        tags_held(&def.cancels_abilities_with)
+    );
+
+    // the same file in the line format, including the mutator a `tag` has to come with
+    let line = ability_def_from_str(
+        "name = Meteor\ncooldown = 4.0\ntag = Casting\nactivation_owned = Burning\nactivation_requires = Stunned\nactivation_blocked_by = Immune\nblocks = Magic\ncancels = Rooted\n",
+        &names,
+    )
+    .expect("the line file fills the same def");
+
+    assert_eq!(def.name, line.name, "`name`");
+    assert_eq!(def.tags, line.tags, "`tag`");
+    assert_eq!(
+        def.mutators.len(),
+        line.mutators.len(),
+        "one mutator per `tag`"
+    );
+    assert_eq!(
+        def.activation_owned_tags, line.activation_owned_tags,
+        "`activation_owned`"
+    );
+    assert_eq!(
+        def.activation_requires, line.activation_requires,
+        "`activation_requires`"
+    );
+    assert_eq!(
+        def.activation_blocked_by, line.activation_blocked_by,
+        "`activation_blocked_by`"
+    );
+    assert_eq!(
+        def.blocks_abilities_with, line.blocks_abilities_with,
+        "`blocks`"
+    );
+    assert_eq!(
+        def.cancels_abilities_with, line.cancels_abilities_with,
+        "`cancels`"
+    );
 }
 
 #[test]
@@ -582,4 +741,45 @@ fn a_ron_def_the_loader_cannot_use_fails_naming_its_field() {
             "{file} has to name `{at}` and the `{bad}` it refused, got: {error}"
         );
     }
+}
+
+/// a field a def holds once, refused the way the README promises: a line file names its line
+#[test]
+fn a_field_written_twice_fails_the_line_file_by_number_and_the_ron_file_by_name() {
+    let names = names();
+
+    let Err(error) = effect_def_from_str("name = Aegis\nname = Ward\n", &names) else {
+        panic!("a def holds one name, so a second `name` line cannot load");
+    };
+    let line = error.to_string();
+    assert!(
+        line.starts_with("line 2: ") && line.contains("`name` is already set on line 1"),
+        "a line file has to name the line it refused and the field it repeats, got: {line}"
+    );
+
+    let Err(error) = effect_def_from_ron(r#"EffectFile(name: "Aegis", name: "Ward")"#, &names)
+    else {
+        panic!("a def holds one name, so a second `name` field cannot load");
+    };
+    let ron = error.to_string();
+    assert!(
+        ron.contains("duplicate field named `name`")
+            && ron.contains("EffectFile")
+            && !ron.contains("line "),
+        "a RON file has to name the field it repeats instead of a line, got: {ron}"
+    );
+
+    let Err(error) = ability_def_from_ron(
+        "AbilityFile(tags: [\"Burning\"], tags: [\"Casting\"])",
+        &names,
+    ) else {
+        panic!("an ability def holds one tag list, so a second `tags` field cannot load");
+    };
+    let ron = error.to_string();
+    assert!(
+        ron.contains("duplicate field named `tags`")
+            && ron.contains("AbilityFile")
+            && !ron.contains("line "),
+        "a RON file names a repeated list field the way it names a scalar one, got: {ron}"
+    );
 }
