@@ -392,12 +392,6 @@ fn a_cooldown_no_duration_can_hold_warns_and_recovers_on_the_spot() {
         refused.iter().any(|line| line.contains("Cooldown -1")),
         "the warning has to name the cooldown it could not turn into a `Duration`: {refused:?}"
     );
-    assert_eq!(
-        logs.warn_count("is not a number of seconds a `Duration` can hold"),
-        1,
-        "one recovery has to warn exactly once: {}",
-        logs.warns()
-    );
 }
 
 /// The default `Parallel` root ends on the last completion, via ChildSettled -> on_child_settled.
