@@ -353,6 +353,53 @@ fn ability_walks_ready_active_recovery_ready() {
     );
 }
 
+/// a negative cooldown is legal `with_cooldown` input that no `Duration` can hold, so Recovery says so and rests nothing
+#[test]
+fn a_cooldown_no_duration_can_hold_warns_and_recovers_on_the_spot() {
+    let logs = logs::Logs::scoped();
+
+    let (mut app, ability) = logs.run(|| {
+        let mut app = app_with(-1.0, || bsn! { Tasks [ @task::<LongTask>(NoData) ] });
+        app.update();
+        let owner = spawned_actor(&mut app);
+        let ability = grant(&mut app);
+        app.update();
+        try_activate(&mut app, owner);
+        app.update();
+        app.world_mut().trigger(MachineEvent::<AbilityMachine>::new(
+            ability,
+            AbilityEvent::EndAbility,
+        ));
+        app.update();
+        (app, ability)
+    });
+
+    assert!(
+        in_state::<AbilityMachine>(&mut app, ability, AbilityState::Ready),
+        "a cooldown no `Duration` can hold must not keep the ability in Recovery"
+    );
+    assert!(
+        !cooldown_armed(&app, ability),
+        "the fallback is an immediate recovery, so no cooldown timer is armed"
+    );
+
+    let warns = logs.warns();
+    let refused: Vec<&str> = warns
+        .lines()
+        .filter(|line| line.contains("is not a number of seconds"))
+        .collect();
+    assert!(
+        refused.iter().any(|line| line.contains("Cooldown -1")),
+        "the warning has to name the cooldown it could not turn into a `Duration`: {refused:?}"
+    );
+    assert_eq!(
+        logs.warn_count("is not a number of seconds a `Duration` can hold"),
+        1,
+        "one recovery has to warn exactly once: {}",
+        logs.warns()
+    );
+}
+
 /// The default `Parallel` root ends on the last completion, via ChildSettled -> on_child_settled.
 #[test]
 fn a_parallel_root_ends_the_ability_on_the_last_task_completion() {
