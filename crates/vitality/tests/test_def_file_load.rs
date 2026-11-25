@@ -691,7 +691,13 @@ fn a_ron_def_the_loader_cannot_use_fails_naming_its_field() {
         (
             "empty-name.effect.ron",
             "EffectFile(name: \"\")",
-            "name",
+            "name: ",
+            "`\"\"` is not a name",
+        ),
+        (
+            "blank-name.effect.ron",
+            "EffectFile(name: \"   \")",
+            "name: ",
             "is not a name",
         ),
     ];
@@ -734,8 +740,8 @@ fn a_ron_def_the_loader_cannot_use_fails_naming_its_field() {
         (
             "empty-name.ability.ron",
             "AbilityFile(name: \"\")",
-            "name",
-            "is not a name",
+            "name: ",
+            "`\"\"` is not a name",
         ),
     ];
     for (file, source, at, bad) in ability_cases {

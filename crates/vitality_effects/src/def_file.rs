@@ -382,9 +382,10 @@ pub fn check_seconds(at: &str, written: &str, value: f32, what: &str) -> Result<
     }
 }
 
-/// a name the def can be printed with, asked the same way by both file formats
+/// a name the def can be printed with, the refusal the two RON loaders share; a line file trims
+/// first, so it refuses a blank `name` in [`def_fields`]
 pub fn check_name(at: &str, name: &str) -> Result<(), DefFileError> {
-    if name.is_empty() {
+    if name.trim().is_empty() {
         return Err(error_at(
             at,
             "`\"\"` is not a name, which has to hold at least one character that the overlay can \
