@@ -3,9 +3,9 @@ mod gameplay;
 use bevy::prelude::*;
 use gameplay::*;
 use vitality::actors::ActorBuilder;
+use vitality::attribute_set;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
-use vitality::{attribute_set, init_attribute_set};
 
 attribute_set! { pub struct Vitals { Vigour: u32, Focus: u32 } }
 attribute_set! { pub struct Reserves { Ward: u32, Grit: u32 } }

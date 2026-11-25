@@ -5,12 +5,12 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use std::time::Duration;
 use vitality::actors::ActorBuilder;
+use vitality::attribute_set;
 use vitality::effect::EffectStackingPolicy;
 use vitality::effect::definition::EffectDef;
 use vitality::effect::modifier::{EffectSubject, ModOp};
 use vitality::prelude::*;
 use vitality::store::{Assets, Handle};
-use vitality::{attribute_set, init_attribute_set};
 use vitality_core::value::AttributeValue;
 
 /// mantissa in `[1, 2)` and an unbounded binary exponent, so it outgrows f64

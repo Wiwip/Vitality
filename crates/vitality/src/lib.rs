@@ -89,7 +89,7 @@ pub mod context {
 
 pub mod prelude {
     pub use crate::context::Vitality;
-    pub use crate::{AttributesPlugin, VitalityPlugin, init_attribute};
+    pub use crate::{AttributesPlugin, VitalityPlugin, init_attribute, init_attribute_set};
     pub use vitality_abilities::prelude::*;
     pub use vitality_abilities::{
         Abilities, AbilityActivated, AbilityActivationFailed, AbilityEnded, ActivationError,
