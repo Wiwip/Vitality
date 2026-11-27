@@ -10,6 +10,7 @@ use express_it::nodes::Node;
 use express_it::plan::Plan;
 use gameplay::*;
 use hfsm_bevy::StateTimer;
+use std::time::Duration;
 use vitality::ability::ability_state::AbilityMachine;
 use vitality::ability::context::AbilityExprContext;
 use vitality::ability::cooldown_remaining;
@@ -937,5 +938,37 @@ fn revoke_takes_the_task_scene_observers_with_it() {
         app.world().entities().count_spawned(),
         before,
         "revoke has to take the task scene's observers along"
+    );
+}
+
+/// D-66 kept the accessor public, so the number it reports is pinned, not just that there is one.
+#[test]
+fn cooldown_remaining_counts_a_recovery_down_to_none() {
+    let mut app = app();
+    let bolt = ability(&mut app, AbilityBuilder::new().with_cooldown(0.5).build());
+    let caster = caster_with(&mut app, &[&bolt]);
+
+    activate(&mut app, caster, &bolt);
+    ticks(&mut app, 2);
+    let cast = ability_entity(&mut app, caster, &bolt);
+    let remaining = |app: &App| {
+        cooldown_remaining(
+            app.world()
+                .get::<StateTimer<AbilityMachine>>(cast)
+                .expect("a cast ability carries its machine timer"),
+        )
+    };
+
+    let two_ticks = remaining(&app).expect("a recovery just entered still has cooldown left");
+    assert!(
+        two_ticks > Duration::ZERO && two_ticks <= Duration::from_secs_f32(0.5),
+        "two updates into a 0.5s cooldown it reports {two_ticks:?}"
+    );
+
+    ticks(&mut app, ticks_for(0.5));
+    assert_eq!(
+        remaining(&app),
+        None,
+        "once Recovery is behind it, the accessor reports nothing rather than a spent countdown"
     );
 }
