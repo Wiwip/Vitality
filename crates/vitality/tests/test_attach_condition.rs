@@ -50,11 +50,13 @@ fn a_failed_attach_if_spawns_nothing_and_is_never_re_rolled() {
         0,
         "a failed attach_if is not EffectApplied"
     );
+    let blocked = recorded::<EffectBlocked>(&app);
     assert_eq!(
-        recorded::<EffectBlocked>(&app).len(),
-        0,
-        "only the tag rules fire EffectBlocked"
+        blocked.len(),
+        1,
+        "the failed attach_if reports itself instead of vanishing"
     );
+    assert_eq!(blocked[0].reason, EffectBlockReason::AttachCondition);
 
     // the gate is read at apply, so a late-but-alive attach must not land: Immune arrives after the miss
     app.world_mut().entity_mut(hero).insert(Immune);
@@ -66,7 +68,11 @@ fn a_failed_attach_if_spawns_nothing_and_is_never_re_rolled() {
     );
     assert_eq!(base::<Health>(&app, hero), 0.0);
     assert_eq!(recorded::<EffectApplied>(&app).len(), 0);
-    assert_eq!(recorded::<EffectBlocked>(&app).len(), 0);
+    assert_eq!(
+        recorded::<EffectBlocked>(&app).len(),
+        1,
+        "one refusal at apply, so the gate really is read once"
+    );
 }
 
 #[test]
@@ -251,6 +257,12 @@ fn attach_if_leaves_an_instant_effect_ungated_where_active_while_gates_it() {
         );
         assert_eq!(effects_on(&mut app, hero), 0);
         assert_eq!(recorded::<EffectApplied>(&app).len(), 0);
-        assert_eq!(recorded::<EffectBlocked>(&app).len(), 0);
+        let blocked = recorded::<EffectBlocked>(&app);
+        assert_eq!(
+            blocked.len(),
+            1,
+            "the failed active_while reports itself too"
+        );
+        assert_eq!(blocked[0].reason, EffectBlockReason::ActivationCondition);
     }
 }

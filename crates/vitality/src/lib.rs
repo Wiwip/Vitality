@@ -15,7 +15,7 @@
 //! const TICKS_PER_SECOND: usize = 64;
 //!
 //! let mut app = App::new();
-//! app.add_plugins((MinimalPlugins, AssetPlugin::default(), VitalityPlugin::new()
+//! app.add_plugins((MinimalPlugins, VitalityPlugin::new()
 //!     .attribute::<Health>().attribute::<MaxHealth>().attribute::<Power>()
 //!     .fixed_step(STEP)));
 //! // the first update primes the fixed clock and runs no tick of it
@@ -97,8 +97,8 @@ pub mod prelude {
     pub use vitality_core::tags::{ActorTags, TagSpec};
     pub use vitality_effects::prelude::*;
     pub use vitality_effects::{
-        EffectApplied, EffectBlocked, EffectRemovalReason, EffectRemoved, EffectStacksChanged,
-        Effects,
+        EffectApplied, EffectBlockReason, EffectBlocked, EffectRemovalReason, EffectRemoved,
+        EffectStacksChanged, Effects,
     };
 }
 
@@ -119,6 +119,12 @@ impl Plugin for AttributesPlugin {
     fn build(&self, app: &mut App) {
         if !vitality_core::first_install::<Self>(app) {
             return;
+        }
+        // every def is an asset, and scenes register assets of their own, so this goes first:
+        // without it the first init_asset dies on a resource whose name bevy only prints under
+        // its `debug` feature
+        if !app.is_plugin_added::<bevy_asset::AssetPlugin>() {
+            app.add_plugins(bevy_asset::AssetPlugin::default());
         }
         // abilities and actor defs still use scenes; DefaultPlugins may have added it already
         if !app.is_plugin_added::<bevy_scene::ScenePlugin>() {

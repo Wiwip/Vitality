@@ -47,7 +47,8 @@ pub use def_file::{
 pub use effects_param::Effects;
 pub use global_effect::*;
 pub use lifecycle::{
-    EffectApplied, EffectBlocked, EffectRemovalReason, EffectRemoved, EffectStacksChanged,
+    EffectApplied, EffectBlockReason, EffectBlocked, EffectRemovalReason, EffectRemoved,
+    EffectStacksChanged,
 };
 pub use stacks::*;
 pub use targeting::EffectTargeting;

@@ -102,3 +102,31 @@ fn the_clock_is_left_alone_when_nobody_asks() {
         "no fixed_step, no strategy inserted: a game with its own clock keeps it"
     );
 }
+
+#[test]
+fn a_game_forgetting_asset_plugin_still_runs() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        VitalityPlugin::new()
+            .attribute::<Hp>()
+            .attribute::<MaxHp>()
+            .attribute::<Might>()
+            .fixed_step(STEP),
+    ))
+    .add_systems(Startup, spawn_fighter)
+    .add_systems(Update, light_burn.run_if(run_once));
+    app.update();
+    let mut query = app.world_mut().query_filtered::<Entity, With<Hp>>();
+    let fighter = query.iter(app.world()).next().expect("the actor spawned");
+
+    for _ in 0..400 {
+        app.update();
+    }
+
+    assert_eq!(
+        app.world().get::<Hp>(fighter).unwrap().current_value(),
+        50.0,
+        "the plugin brings the asset world the defs need, so the burn still resolved five times"
+    );
+}

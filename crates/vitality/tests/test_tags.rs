@@ -53,7 +53,9 @@ fn an_immune_target_blocks_the_effect() {
 
     assert_eq!(current::<Armor>(&app, hero), 0.0);
     assert!(!has::<Burning>(&app, hero));
-    assert_eq!(recorded::<EffectBlocked>(&app).len(), 1);
+    let blocked = recorded::<EffectBlocked>(&app);
+    assert_eq!(blocked.len(), 1);
+    assert_eq!(blocked[0].reason, EffectBlockReason::TagRule);
 
     with_vitality(&mut app, move |v| v.revoke_tag::<Immune>(hero));
     apply(&mut app, hero, hero, &burn);

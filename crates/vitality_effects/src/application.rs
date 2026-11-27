@@ -5,7 +5,9 @@ use crate::conditions::ConditionRng;
 use crate::context::EffectExprContext;
 use crate::definition::EffectDef;
 use crate::graph::NodeType;
-use crate::lifecycle::{EffectApplied, EffectBlocked, EffectRemovalReason, remove_effect};
+use crate::lifecycle::{
+    EffectApplied, EffectBlockReason, EffectBlocked, EffectRemovalReason, remove_effect,
+};
 use crate::modifier::ModifierOf;
 use crate::systems::{DirtyMarks, MarkActorDirty};
 use crate::timing::{EffectDuration, EffectTicker};
@@ -361,6 +363,7 @@ pub(crate) fn apply_effect_event_observer(
             entity: target,
             source,
             handle: trigger.handle,
+            reason: EffectBlockReason::TagRule,
         });
         return;
     }
@@ -371,6 +374,12 @@ pub(crate) fn apply_effect_event_observer(
             .iter()
             .all(|condition| condition.eval(&context))
         {
+            commands.trigger(EffectBlocked {
+                entity: target,
+                source,
+                handle: trigger.handle,
+                reason: EffectBlockReason::ActivationCondition,
+            });
             return;
         }
         trigger.cleanse(effect, applied, &ctx.effect_tags, &mut commands);
@@ -399,6 +408,12 @@ pub(crate) fn apply_effect_event_observer(
     }
 
     if !trigger.attach_passes(effect, &context) {
+        commands.trigger(EffectBlocked {
+            entity: target,
+            source,
+            handle: trigger.handle,
+            reason: EffectBlockReason::AttachCondition,
+        });
         return;
     }
 

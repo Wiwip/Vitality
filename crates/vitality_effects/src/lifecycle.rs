@@ -50,11 +50,23 @@ pub struct EffectStacksChanged {
     pub new: u32,
 }
 
+/// Why an apply produced nothing; see [`EffectBlocked`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Reflect)]
+pub enum EffectBlockReason {
+    /// the target lacked a `required_tag` or carried a `blocked_by_tag`
+    TagRule,
+    /// an `attach_if` missed, so the persistent effect never spawned
+    AttachCondition,
+    /// an `active_while` missed, so the instant effect never fired
+    ActivationCondition,
+}
+
 #[derive(EntityEvent, Clone, Debug)]
 pub struct EffectBlocked {
     pub entity: Entity,
     pub source: Entity,
     pub handle: Handle<EffectDef>,
+    pub reason: EffectBlockReason,
 }
 
 /// Removes one effect entity, reporting `reason` through [`EffectRemoved`].
