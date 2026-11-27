@@ -5,20 +5,19 @@
 //! ```
 //! use bevy::ecs::system::RunSystemOnce;
 //! use bevy::prelude::*;
-//! use bevy::time::TimeUpdateStrategy;
 //! use std::time::Duration;
 //! use vitality::{actors::ActorBuilder, attribute, effect::modifier::{EffectSubject, ModOp}, prelude::*, tag};
 //!
 //! attribute!(Health, f32); attribute!(MaxHealth, f32); attribute!(Power, f32); tag!(Burning);
 //!
-//! // bevy's default fixed timestep, so with ManualDuration one update is one tick
+//! // bevy's default fixed timestep, so with fixed_step one update is one tick
 //! const STEP: Duration = Duration::from_micros(15_625);
 //! const TICKS_PER_SECOND: usize = 64;
 //!
 //! let mut app = App::new();
 //! app.add_plugins((MinimalPlugins, AssetPlugin::default(), VitalityPlugin::new()
-//!     .attribute::<Health>().attribute::<MaxHealth>().attribute::<Power>()))
-//!     .insert_resource(TimeUpdateStrategy::ManualDuration(STEP));
+//!     .attribute::<Health>().attribute::<MaxHealth>().attribute::<Power>()
+//!     .fixed_step(STEP)));
 //! // the first update primes the fixed clock and runs no tick of it
 //! app.update();
 //!
@@ -62,6 +61,7 @@
 use crate::actors::ActorDef;
 use bevy_app::prelude::*;
 use bevy_asset::AssetApp;
+use std::time::Duration;
 use vitality_abilities::AbilityPlugin;
 use vitality_core::CorePlugin;
 use vitality_core::attributes::{Attribute, Clamp};
@@ -74,7 +74,7 @@ pub use vitality_abilities as ability;
 pub use vitality_core::attributes::{AttributeSet, AttributeVisitor};
 pub use vitality_core::{
     AppAttributeBindings, AttributeBindings, CurrentValueChanged, attribute, attribute_impl,
-    attribute_set, attributes, express_it, mutator, store, tag, tags,
+    attribute_set, attributes, bevy_time, express_it, mutator, store, tag, tags,
 };
 pub use vitality_effects as effect;
 
@@ -140,6 +140,7 @@ impl Plugin for AttributesPlugin {
 #[derive(Default)]
 pub struct VitalityPlugin {
     attributes: Vec<fn(&mut App)>,
+    fixed_step: Option<Duration>,
 }
 
 impl VitalityPlugin {
@@ -156,6 +157,14 @@ impl VitalityPlugin {
         self.attributes.push(init_attribute_set::<S>);
         self
     }
+
+    /// Runs `FixedUpdate` at `step` per `App::update`, so a headless app or a test needs no
+    /// [`bevy_time::TimeUpdateStrategy`] of its own. Without this the clock is left exactly as
+    /// the app found it, which is what a game with its own clock wants.
+    pub fn fixed_step(mut self, step: Duration) -> Self {
+        self.fixed_step = Some(step);
+        self
+    }
 }
 
 impl Plugin for VitalityPlugin {
@@ -164,6 +173,9 @@ impl Plugin for VitalityPlugin {
     }
 
     fn build(&self, app: &mut App) {
+        if let Some(step) = self.fixed_step {
+            app.insert_resource(bevy_time::TimeUpdateStrategy::ManualDuration(step));
+        }
         app.add_plugins(AttributesPlugin);
         for register in &self.attributes {
             register(app);

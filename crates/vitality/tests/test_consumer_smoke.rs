@@ -1,7 +1,6 @@
 //! what a game sees: the facade on `MinimalPlugins`, public API only, no `gameplay` helper
 
 use bevy::prelude::*;
-use bevy::time::TimeUpdateStrategy;
 use std::time::Duration;
 use vitality::actors::ActorBuilder;
 use vitality::effect::modifier::{EffectSubject, ModOp};
@@ -26,10 +25,10 @@ fn game() -> App {
         VitalityPlugin::new()
             .attribute::<Hp>()
             .attribute::<MaxHp>()
-            .attribute::<Might>(),
+            .attribute::<Might>()
+            // the plugin drives the fixed clock, so a headless app needs no strategy of its own
+            .fixed_step(STEP),
     ))
-    // a headless app drives FixedUpdate itself (README:85)
-    .insert_resource(TimeUpdateStrategy::ManualDuration(STEP))
     .add_systems(Startup, spawn_fighter)
     .add_systems(Update, light_burn.run_if(run_once));
     app
@@ -83,5 +82,23 @@ fn a_burn_drains_the_attribute_and_its_tag_expires_with_it() {
     assert!(
         world.get::<Burn>(fighter).is_none(),
         "the tag went away with the effect that granted it"
+    );
+}
+
+#[test]
+fn the_clock_is_left_alone_when_nobody_asks() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        VitalityPlugin::new().attribute::<Hp>(),
+    ));
+    assert!(
+        matches!(
+            app.world()
+                .resource::<vitality::bevy_time::TimeUpdateStrategy>(),
+            vitality::bevy_time::TimeUpdateStrategy::Automatic
+        ),
+        "no fixed_step, no strategy inserted: a game with its own clock keeps it"
     );
 }

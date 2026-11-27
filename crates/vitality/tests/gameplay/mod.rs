@@ -3,7 +3,6 @@
 
 use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
-use bevy::time::TimeUpdateStrategy;
 use std::time::Duration;
 use vitality::actors::ActorBuilder;
 use vitality::effect::definition::EffectDef;
@@ -23,7 +22,7 @@ tag!(Immune);
 tag!(Magic);
 tag!(Casting);
 
-/// bevy's default fixed timestep, so `ManualDuration(STEP)` gives exactly one fixed tick per update.
+/// bevy's default fixed timestep, so `fixed_step(STEP)` gives exactly one fixed tick per update.
 pub const STEP: Duration = Duration::from_micros(15625);
 
 pub fn app() -> App {
@@ -36,9 +35,9 @@ pub fn app() -> App {
             .attribute::<MaxHealth>()
             .attribute::<Mana>()
             .attribute::<Power>()
-            .attribute::<Armor>(),
+            .attribute::<Armor>()
+            .fixed_step(STEP),
     ));
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(STEP));
     // the fixed clock has no tick in the first update
     app.update();
     app

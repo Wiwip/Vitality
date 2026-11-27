@@ -82,7 +82,7 @@ Attributes are components: `Query<&Health>`, `Changed<Health>`, `On<CurrentValue
 
 Events: `EffectApplied`, `EffectRemoved` (reason), `EffectStacksChanged`, `AbilityActivated`, `AbilityActivationFailed` (`ActivationError`), `AbilityEnded`. `EffectBlocked` means a tag rule. A failed `attach_if` on a persistent apply, or `active_while` on an instant one, is a refusal: no spawn, no event. A persistent `active_while` that misses gates instead: the effect lands applied and stays inactive until it holds (`active_while` in `crates/vitality_effects/src/builder.rs`).
 
-`EffectsSet` runs on `FixedUpdate`: headless apps need a time-advancing `TimeUpdateStrategy`. `handles_wait_task_timers` runs there too, on the fixed clock, so a wait and a cooldown of the same length end on the same tick; the cooldown reads through `cooldown_remaining`.
+`EffectsSet` runs on `FixedUpdate`: a headless app asks `VitalityPlugin::new().fixed_step(step)` for one fixed tick per `App::update`, or installs a time-advancing `TimeUpdateStrategy` of its own. `handles_wait_task_timers` runs there too, on the fixed clock, so a wait and a cooldown of the same length end on the same tick; the cooldown reads through `cooldown_remaining`.
 
 ## Def files
 
