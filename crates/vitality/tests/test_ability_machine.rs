@@ -718,13 +718,15 @@ fn record_clock(
     marks.0.push((trigger.state, time.elapsed()));
 }
 
-/// The wait shares the fixed clock with the cooldown, so a frame that is not a whole number of
-/// fixed steps cannot end an N-second wait and an N-second cooldown on different ticks.
+/// A wait and a cooldown of equal length end on the same fixed tick, whatever the frame shape.
 #[test]
 fn a_wait_and_a_cooldown_of_the_same_length_end_on_the_same_fixed_tick() {
     let mut app = app_with(WAIT, || bsn! { Tasks [ @wait_task(WAIT) ] });
     app.insert_resource(ClockMarks::default());
     app.add_observer(record_clock);
+    // a slow real frame here would spend the whole wait before the loop below starts
+    let timestep = app.world().resource::<Time<Fixed>>().timestep();
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(timestep));
     app.update();
 
     let owner = spawned_actor(&mut app);
@@ -738,7 +740,6 @@ fn a_wait_and_a_cooldown_of_the_same_length_end_on_the_same_fixed_tick() {
     );
 
     // one and a half fixed steps per frame, the shape that separates a frame clock from the fixed one
-    let timestep = app.world().resource::<Time<Fixed>>().timestep();
     app.insert_resource(TimeUpdateStrategy::ManualDuration(timestep + timestep / 2));
     for _ in 0..40 {
         app.update();
