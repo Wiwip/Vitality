@@ -52,6 +52,10 @@ impl<T: Attribute> std::fmt::Debug for IsAttributeWithinBounds<T> {
 }
 
 impl<T: Attribute> Expr<bool, EffectExprSchema> for IsAttributeWithinBounds<T> {
+    fn render(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self}")
+    }
+
     fn eval(&self, ctx: &EffectExprContext) -> bool {
         let opt_attribute = match self.who {
             EffectSubject::Target => match ctx.target_actor {
@@ -110,6 +114,10 @@ pub struct ChanceCondition(pub f32);
 impl Expr<bool, EffectExprSchema> for ChanceCondition {
     fn eval(&self, ctx: &EffectExprContext) -> bool {
         ctx.rng.next_f32() < self.0
+    }
+
+    fn render(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.2} chance", self.0)
     }
 }
 
@@ -194,6 +202,10 @@ impl<C: Component> HasComponent<C> {
 }
 
 impl<C: Component + Reflect> Expr<bool, EffectExprSchema> for HasComponent<C> {
+    fn render(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "has {} on {:?}", pretty_type_name::<C>(), self.who)
+    }
+
     fn eval(&self, ctx: &EffectExprContext) -> bool {
         match self.who {
             EffectSubject::Target => match ctx.target_actor {
@@ -211,6 +223,10 @@ impl<C: Component + Reflect> Expr<bool, EffectExprSchema> for HasComponent<C> {
 }
 
 impl<C: Component> Expr<bool, ActorExprSchema> for HasComponent<C> {
+    fn render(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "has {} on {:?}", pretty_type_name::<C>(), self.who)
+    }
+
     fn eval(&self, ctx: &ActorExprContext) -> bool {
         match self.who {
             EffectSubject::Target => false,

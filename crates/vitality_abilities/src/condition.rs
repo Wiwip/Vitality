@@ -11,6 +11,10 @@ use vitality_effects::conditions::HasComponent;
 use vitality_effects::modifier::EffectSubject;
 
 impl<C: Component + Reflect> Expr<bool, AbilityExprSchema> for HasComponent<C> {
+    fn render(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "has {} on {:?}", self.who, std::any::type_name::<C>())
+    }
+
     fn eval(&self, ctx: &AbilityExprContext) -> bool {
         match self.who {
             EffectSubject::Target => match ctx.target_ref {
@@ -49,6 +53,10 @@ impl Expr<bool, AbilityExprSchema> for IsAbility {
         ability.handle.id() == self.asset
     }
     fn get_dependencies(&self, _deps: &mut Deps) {}
+
+    fn render(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Is Ability {}", self.asset)
+    }
 }
 
 impl std::fmt::Debug for IsAbility {

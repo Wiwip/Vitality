@@ -480,13 +480,12 @@ impl<T: 'static, N: 'static, C: Context + 'static, Role: 'static> Expr<N, C>
     fn get_dependencies(&self, deps: &mut Deps) {
         deps.insert(DepKey::Type(dep_key::<T, Role>()));
     }
-}
-impl<T, N, C: Context, Role> Copy for AttributeVar<T, N, C, Role> {}
-impl<T, N: fmt::Display, C: Context, Role> fmt::Display for AttributeVar<T, N, C, Role> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+
+    fn render(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", pretty_type_name::<T>())
     }
 }
+impl<T, N, C: Context, Role> Copy for AttributeVar<T, N, C, Role> {}
 
 #[derive(Component, Reflect, Debug)]
 #[relationship(relationship_target = AttributeDependents<T>)]
